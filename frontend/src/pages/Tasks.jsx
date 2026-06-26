@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import TaskCard from "../components/tasks/TaskCard";
 import AddTaskModal from "../components/tasks/AddTaskModal";
-import TaskDetailsDrawer from "../components/tasks/TaskDetailsDrawer";
 import { getTasks, addTask, updateTask, deleteTask } from "../services/taskApi";
 import { FiPlus, FiSearch, FiSliders, FiCheckSquare, FiPlusSquare, FiAlertCircle } from "react-icons/fi";
 import { useToast } from "../context/ToastContext";
@@ -9,6 +9,7 @@ import tasksData from "../data/tasksData";
 
 function Tasks() {
     const { showToast } = useToast();
+    const navigate = useNavigate();
     const [tasks, setTasks] = useState(tasksData);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState("");
@@ -17,7 +18,6 @@ function Tasks() {
 
     // Modal state
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [selectedTask, setSelectedTask] = useState(null);
 
     // Fetch tasks
     const fetchTasks = async () => {
@@ -26,14 +26,6 @@ function Tasks() {
             const response = await getTasks();
             const list = response.data || [];
             setTasks(list);
-            
-            // Sync selectedTask reference if one is open
-            if (selectedTask) {
-                const refreshed = list.find(t => (t._id || t.id) === (selectedTask._id || selectedTask.id));
-                if (refreshed) {
-                    setSelectedTask(refreshed);
-                }
-            }
         } catch (error) {
             console.error("Failed to load tasks", error);
             showToast("Failed to load delegated tasks.", "error");
@@ -105,7 +97,7 @@ function Tasks() {
             (t.project && t.project.toLowerCase().includes(search.toLowerCase())) ||
             (t.description && t.description.toLowerCase().includes(search.toLowerCase()));
         const matchesPriority = priorityFilter === "All" || t.priority === priorityFilter;
-        
+
         let matchesStatus = true;
         if (activeFilter !== "All") {
             const taskStatus = (t.status || "").toLowerCase();
@@ -117,7 +109,7 @@ function Tasks() {
                 matchesStatus = taskStatus === "completed";
             }
         }
-        
+
         return matchesSearch && matchesPriority && matchesStatus;
     });
 
@@ -208,11 +200,10 @@ function Tasks() {
                             key={filter}
                             type="button"
                             onClick={() => setActiveFilter(filter)}
-                            className={`h-10 px-4 text-xs font-semibold rounded-xl transition-all duration-200 cursor-pointer whitespace-nowrap flex items-center justify-center ${
-                                isActive
+                            className={`h-10 px-4 text-xs font-semibold rounded-xl transition-all duration-200 cursor-pointer whitespace-nowrap flex items-center justify-center ${isActive
                                     ? "bg-indigo-600 text-white shadow-sm"
                                     : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-800"
-                            }`}
+                                }`}
                         >
                             {filter}
                         </button>
@@ -251,7 +242,7 @@ function Tasks() {
                             });
 
                             return (
-                                <div 
+                                <div
                                     key={col.title}
                                     className="w-full rounded-2xl border border-slate-200/70 bg-slate-50/60 p-4 space-y-3"
                                 >
@@ -275,7 +266,7 @@ function Tasks() {
                                                     task={task}
                                                     onStatusChange={handleStatusChange}
                                                     onDelete={handleDeleteTask}
-                                                    onClick={() => setSelectedTask(task)}
+                                                    onClick={() => navigate(`/tasks/${task._id || task.id}`)}
                                                 />
                                             ))
                                         ) : (
@@ -302,13 +293,6 @@ function Tasks() {
                 isOpen={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
                 onSave={handleAddTask}
-            />
-
-            {/* Task Details Drawer */}
-            <TaskDetailsDrawer
-                task={selectedTask}
-                onClose={() => setSelectedTask(null)}
-                onUpdate={fetchTasks}
             />
         </div>
     );
