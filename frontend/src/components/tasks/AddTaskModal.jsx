@@ -143,26 +143,28 @@ function AddTaskModal({ isOpen, onClose, onSave }) {
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 overflow-y-auto">
             {/* Backdrop */}
             <div 
                 className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity"
                 onClick={onClose}
             ></div>
 
-            {/* Modal Container */}
-            <div className="relative bg-white border border-slate-200 w-full max-w-md rounded-2xl shadow-xl p-6 md:p-8 animate-slide-up z-10">
-                <button
-                    onClick={onClose}
-                    className="absolute top-4 right-4 p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
-                >
-                    <FiX size={16} />
-                </button>
+            {/* Modal Box Wrapper */}
+            <div className="flex min-h-full items-center justify-center p-3 sm:p-4">
+                {/* Modal Container */}
+                <div className="relative bg-white border border-slate-200 w-full max-w-md rounded-2xl shadow-xl p-5 sm:p-6 md:p-8 animate-slide-up z-10 overflow-hidden">
+                    <button
+                        onClick={onClose}
+                        className="absolute top-4 right-4 p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+                    >
+                        <FiX size={16} />
+                    </button>
 
-                <div className="mb-6">
-                    <h3 className="text-xl font-bold text-slate-900 font-display">Assign New Task</h3>
-                    <p className="text-xs text-slate-500 mt-1">Delegate specific actions to team members and tracks.</p>
-                </div>
+                    <div className="mb-6">
+                        <h3 className="text-xl font-bold text-slate-900 font-display">Assign New Task</h3>
+                        <p className="text-xs text-slate-500 mt-1">Delegate specific actions to team members and tracks.</p>
+                    </div>
 
                 <form onSubmit={handleSubmit} className="space-y-4">
                     {/* Task Title */}
@@ -319,7 +321,8 @@ function AddTaskModal({ isOpen, onClose, onSave }) {
                 </form>
             </div>
         </div>
-    );
+    </div>
+);
 }
 
 export default AddTaskModal;

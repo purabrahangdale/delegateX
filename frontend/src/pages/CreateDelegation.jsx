@@ -17,14 +17,14 @@ const PRIORITY_CONFIG = {
         dot: "bg-emerald-500",
     },
     Medium: {
+        active: "bg-blue-50 border-blue-300 text-blue-700 ring-4 ring-blue-100 shadow-sm scale-[1.01]",
+        badge: "bg-blue-50 text-blue-700 border-blue-200",
+        dot: "bg-blue-500",
+    },
+    High: {
         active: "bg-amber-50 border-amber-300 text-amber-700 ring-4 ring-amber-100 shadow-sm scale-[1.01]",
         badge: "bg-amber-50 text-amber-700 border-amber-200",
         dot: "bg-amber-500",
-    },
-    High: {
-        active: "bg-rose-50 border-rose-300 text-rose-700 ring-4 ring-rose-100 shadow-sm scale-[1.01]",
-        badge: "bg-rose-50 text-rose-700 border-rose-200",
-        dot: "bg-rose-500",
     },
     Urgent: {
         active: "bg-red-50 border-red-300 text-red-700 ring-4 ring-red-100 shadow-sm scale-[1.01]",
@@ -56,7 +56,7 @@ function SectionCard({ icon: Icon, title, subtitle, children, accentColor = "ind
     };
     const accent = colorMap[accentColor] || colorMap.indigo;
     return (
-        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm">
             <div className="flex items-start gap-3.5 px-6 py-5 border-b border-slate-100">
                 <div className={`p-2 rounded-xl border ${accent} flex-shrink-0`}>
                     <Icon size={15} />
@@ -360,85 +360,101 @@ function CreateDelegation() {
                             <div className="space-y-5">
                                 <div>
                                     <InputLabel required>Assign To</InputLabel>
-                                    <div className="relative" ref={employeeDropdownRef}>
-                                        {/* Search input */}
-                                        <div className="relative">
-                                            <FiSearch size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                                            <input
-                                                id="assignee-search"
-                                                type="text"
-                                                placeholder="Search employee by name..."
-                                                value={employeeSearch}
-                                                onChange={(e) => {
-                                                    setEmployeeSearch(e.target.value);
-                                                    setShowEmployeeDropdown(true);
-                                                    if (!e.target.value.trim()) clearEmployee();
-                                                }}
-                                                onFocus={() => setShowEmployeeDropdown(true)}
-                                                className="w-full h-12 rounded-xl border border-slate-200 bg-white pl-10 pr-10 text-sm text-slate-800 placeholder:text-slate-300 focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 transition-all font-sans"
-                                            />
-                                            {form.employee_name ? (
-                                                <button
-                                                    type="button"
-                                                    onClick={clearEmployee}
-                                                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-rose-500 transition p-0.5 rounded-full hover:bg-rose-50"
-                                                >
-                                                    <FiX size={14} />
-                                                </button>
-                                            ) : (
-                                                <FiChevronDown size={14} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                                            )}
-                                        </div>
+                                    <div className="relative">
+                                        {/* Dropdown open trigger button */}
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setEmployeeSearch("");
+                                                setShowEmployeeDropdown(true);
+                                            }}
+                                            className="w-full h-12 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition-all font-sans px-4 text-xs font-semibold text-slate-500 flex items-center justify-between cursor-pointer focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50"
+                                        >
+                                            <span className="flex items-center gap-2">
+                                                <FiUser className="text-slate-400" size={14} />
+                                                {form.employee_name || "Select team member..."}
+                                            </span>
+                                            <FiChevronDown className="text-slate-400" size={14} />
+                                        </button>
 
-                                        {/* Dropdown list */}
+                                        {/* Popup selection card modal */}
                                         {showEmployeeDropdown && (
-                                            <div className="absolute top-full left-0 right-0 mt-2 rounded-2xl border border-slate-200 bg-white shadow-xl z-30 overflow-hidden">
-                                                {loadingEmployees ? (
-                                                    <div className="flex items-center justify-center gap-2 py-6 text-slate-400 text-xs">
-                                                        <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-                                                        Loading employees...
+                                            <div className="fixed inset-0 z-50 overflow-y-auto">
+                                                {/* Backdrop */}
+                                                <div 
+                                                    className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity"
+                                                    onClick={() => setShowEmployeeDropdown(false)}
+                                                ></div>
+
+                                                {/* Modal Box Wrapper */}
+                                                <div className="flex min-h-full items-center justify-center p-3 sm:p-4">
+                                                    {/* Modal Container */}
+                                                    <div className="relative bg-white border border-slate-200 w-full max-w-md rounded-2xl shadow-2xl p-5 sm:p-6 z-10 flex flex-col gap-4 animate-in fade-in zoom-in duration-200 overflow-hidden">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setShowEmployeeDropdown(false)}
+                                                            className="absolute top-4 right-4 p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+                                                        >
+                                                            <FiX size={16} />
+                                                        </button>
+
+                                                        <div className="mb-1">
+                                                            <h3 className="text-base font-bold text-slate-900 font-display">Select Assignee</h3>
+                                                            <p className="text-xs text-slate-500 mt-1 font-sans">Choose the employee to delegate this task to.</p>
+                                                        </div>
+
+
+                                                        {/* Employee list */}
+                                                        <div className="border border-slate-100 rounded-xl overflow-hidden bg-white">
+                                                            {loadingEmployees ? (
+                                                                <div className="flex items-center justify-center gap-2 py-8 text-slate-400 text-xs font-sans">
+                                                                    <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                                                                    Loading employees...
+                                                                </div>
+                                                            ) : filteredEmployees.length === 0 ? (
+                                                                <div className="py-8 text-center font-sans">
+                                                                    <FiUser size={20} className="text-slate-200 mx-auto mb-2" />
+                                                                    <p className="text-xs text-slate-400">No employees found</p>
+                                                                </div>
+                                                            ) : (
+                                                                <div className="max-h-[240px] overflow-y-auto divide-y divide-slate-100">
+                                                                    {filteredEmployees.map((emp) => {
+                                                                        const name = emp.name || emp.employee_name || "Unknown";
+                                                                        const role = emp.role || emp.position || emp.department || "";
+                                                                        const isSelected = form.employee_name === name;
+                                                                        return (
+                                                                            <button
+                                                                                key={emp._id || emp.id}
+                                                                                type="button"
+                                                                                onClick={() => selectEmployee(emp)}
+                                                                                className={`w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-slate-50 transition-all duration-150 cursor-pointer ${
+                                                                                    isSelected ? "bg-indigo-50/70" : ""
+                                                                                }`}
+                                                                            >
+                                                                                <div className={`h-10 w-10 rounded-xl flex items-center justify-center text-sm font-semibold flex-shrink-0 font-display ${
+                                                                                    isSelected
+                                                                                        ? "bg-indigo-600 text-white shadow-sm"
+                                                                                        : "bg-indigo-100 text-indigo-700"
+                                                                                }`}>
+                                                                                    {emp.avatar || getInitials(name)}
+                                                                                </div>
+                                                                                <div className="flex-1 min-w-0">
+                                                                                    <p className="text-sm font-semibold text-slate-800 truncate font-sans">{name}</p>
+                                                                                    {role && <p className="text-xs text-slate-500 truncate font-sans">{role}</p>}
+                                                                                </div>
+                                                                                {isSelected && (
+                                                                                    <div className="w-5 h-5 rounded-full bg-indigo-600 flex items-center justify-center flex-shrink-0">
+                                                                                        <FiCheck size={11} className="text-white" />
+                                                                                    </div>
+                                                                                )}
+                                                                            </button>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            )}
+                                                        </div>
                                                     </div>
-                                                ) : filteredEmployees.length === 0 ? (
-                                                    <div className="py-8 text-center">
-                                                        <FiUser size={20} className="text-slate-200 mx-auto mb-2" />
-                                                        <p className="text-xs text-slate-400 font-sans">No employees found</p>
-                                                    </div>
-                                                ) : (
-                                                    <div className="max-h-[260px] overflow-y-auto divide-y divide-slate-100">
-                                                        {filteredEmployees.map((emp) => {
-                                                            const name = emp.name || emp.employee_name || "Unknown";
-                                                            const role = emp.role || emp.position || emp.department || "";
-                                                            const isSelected = form.employee_name === name;
-                                                            return (
-                                                                <button
-                                                                    key={emp._id || emp.id}
-                                                                    type="button"
-                                                                    onClick={() => selectEmployee(emp)}
-                                                                    className={`w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-slate-50 transition-all duration-150 cursor-pointer ${
-                                                                        isSelected ? "bg-indigo-50/70" : ""
-                                                                    }`}
-                                                                >
-                                                                    <div className={`h-10 w-10 rounded-xl flex items-center justify-center text-sm font-semibold flex-shrink-0 font-display ${
-                                                                        isSelected
-                                                                            ? "bg-indigo-600 text-white shadow-sm"
-                                                                            : "bg-indigo-100 text-indigo-700"
-                                                                    }`}>
-                                                                        {emp.avatar || getInitials(name)}
-                                                                    </div>
-                                                                    <div className="flex-1 min-w-0">
-                                                                        <p className="text-sm font-semibold text-slate-800 truncate font-sans">{name}</p>
-                                                                        {role && <p className="text-xs text-slate-500 truncate font-sans">{role}</p>}
-                                                                    </div>
-                                                                    {isSelected && (
-                                                                        <div className="w-5 h-5 rounded-full bg-indigo-600 flex items-center justify-center flex-shrink-0">
-                                                                            <FiCheck size={11} className="text-white" />
-                                                                        </div>
-                                                                    )}
-                                                                </button>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                )}
+                                                </div>
                                             </div>
                                         )}
                                     </div>
@@ -455,22 +471,16 @@ function CreateDelegation() {
                                                     {selectedEmployeeData?.role || "Assigned Delegate"}
                                                 </p>
                                             </div>
-                                            <span className="text-[10px] font-bold text-indigo-600 bg-indigo-100 px-2.5 py-1 rounded-lg whitespace-nowrap flex-shrink-0">
-                                                ✓ Selected
-                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={clearEmployee}
+                                                className="p-1.5 text-slate-400 hover:text-rose-500 transition-all hover:bg-rose-50 rounded-lg cursor-pointer"
+                                                title="Remove selection"
+                                            >
+                                                <FiX size={15} />
+                                            </button>
                                         </div>
                                     )}
-                                </div>
-                                <div>
-                                    <InputLabel>Project / Department</InputLabel>
-                                    <input
-                                        id="project-field"
-                                        type="text"
-                                        placeholder="e.g. DelegateX Platform, Engineering"
-                                        value={form.project}
-                                        onChange={(e) => handleFieldChange("project", e.target.value)}
-                                        className="w-full h-12 px-4 text-sm text-slate-800 bg-slate-50 border border-slate-200 rounded-xl placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition font-sans"
-                                    />
                                 </div>
                             </div>
                         </SectionCard>

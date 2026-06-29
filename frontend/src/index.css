@@ -40,6 +40,15 @@
     from { transform: translateX(100%); }
     to { transform: translateX(0); }
   }
+  @keyframes slide-in-left {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(0); }
+  }
+  --animate-slide-in-left: slide-in-left 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+html {
+  overflow-x: hidden;
 }
 
 body {
@@ -50,6 +59,11 @@ body {
   color: var(--color-slate-800);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+body.sidebar-open {
+  overflow: hidden;
 }
 
 h1, h2, h3, h4, h5, h6 {

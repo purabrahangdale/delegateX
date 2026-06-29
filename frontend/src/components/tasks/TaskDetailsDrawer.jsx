@@ -4,7 +4,7 @@ import {
     FiX, FiClock, FiLayers, FiActivity, FiUser, FiUserCheck, FiCalendar,
     FiCheckSquare, FiMessageSquare, FiPaperclip, FiInfo, FiEdit,
     FiRefreshCw, FiCheckCircle, FiFileText, FiSend,
-    FiTrendingUp, FiSettings
+    FiTrendingUp, FiSettings, FiArrowLeft
 } from "react-icons/fi";
 import { updateTask } from "../../services/taskApi";
 import { getEmployees } from "../../services/employeeApi";
@@ -14,6 +14,7 @@ function TaskDetailsDrawer({ task, onUpdate }) {
     const { showToast } = useToast();
     const navigate = useNavigate();
     const [currentTask, setCurrentTask] = useState(task);
+    const [activeTab, setActiveTab] = useState("overview");
 
     // Edit states
     const [isEditing, setIsEditing] = useState(false);
@@ -85,15 +86,17 @@ function TaskDetailsDrawer({ task, onUpdate }) {
 
     if (!task || !currentTask) return null;
 
-    // Helper colors
+    // Priority styles aligned to CreateDelegation / Dashboard
     const getPriorityStyle = (priority) => {
         switch (priority) {
             case "High":
-                return "bg-rose-50 text-rose-700 border-rose-100";
-            case "Medium":
                 return "bg-amber-50 text-amber-700 border-amber-100";
+            case "Medium":
+                return "bg-blue-50 text-blue-700 border-blue-100";
             case "Low":
                 return "bg-emerald-50 text-emerald-700 border-emerald-100";
+            case "Urgent":
+                return "bg-red-50 text-red-700 border-red-100";
             default:
                 return "bg-slate-50 text-slate-500 border-slate-200";
         }
@@ -106,7 +109,7 @@ function TaskDetailsDrawer({ task, onUpdate }) {
             case "In Progress":
                 return "bg-indigo-50 text-indigo-700 border-indigo-100";
             case "Cancelled":
-                return "bg-slate-100 text-slate-600 border-slate-200";
+                return "bg-slate-150 text-slate-650 border-slate-200";
             default:
                 return "bg-amber-50 text-amber-700 border-amber-100";
         }
@@ -122,6 +125,27 @@ function TaskDetailsDrawer({ task, onUpdate }) {
     else if (currentTask.status === "Cancelled") overallProgress = 0;
     else if (currentTask.status === "In Progress") overallProgress = Math.max(checklistProgress, 50);
     else overallProgress = checklistProgress;
+
+    // Helper relative time
+    const getRelativeTimelineText = (deadlineDateStr) => {
+        if (!deadlineDateStr) return "";
+        const deadline = new Date(deadlineDateStr);
+        const today = new Date();
+        deadline.setHours(0, 0, 0, 0);
+        today.setHours(0, 0, 0, 0);
+        
+        const diffTime = deadline - today;
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        
+        if (diffDays < 0) {
+            const absDays = Math.abs(diffDays);
+            return `${absDays} day${absDays !== 1 ? 's' : ''} ago`;
+        } else if (diffDays === 0) {
+            return "today";
+        } else {
+            return `in ${diffDays} day${diffDays !== 1 ? 's' : ''}`;
+        }
+    };
 
     // Operations / Button Action Handlers
 
@@ -371,459 +395,634 @@ function TaskDetailsDrawer({ task, onUpdate }) {
         return nameMatch || roleMatch || emailMatch;
     });
 
+    const taskCode = currentTask._id 
+        ? `DLG-${currentTask._id.substring(18).toUpperCase()}` 
+        : `DLG-${currentTask.id || "001"}`;
+
+    const tabs = [
+        { id: "overview", label: "Overview", icon: FiFileText },
+        { id: "checklist", label: "Checklist", count: totalChecklist, countLabel: `${completedChecklist}/${totalChecklist}`, icon: FiCheckSquare },
+        { id: "comments", label: "Comments", count: comments.length, icon: FiMessageSquare },
+        { id: "attachments", label: "Attachments", count: attachments.length, icon: FiPaperclip },
+        { id: "activity", label: "Activity", icon: FiActivity }
+    ];
+
+    const getActivityIcon = (text) => {
+        const lower = text.toLowerCase();
+        if (lower.includes("checklist") || lower.includes("reopened") || lower.includes("completed")) {
+            return {
+                icon: FiCheckSquare,
+                bg: "bg-indigo-600 text-white"
+            };
+        }
+        if (lower.includes("comment") || lower.includes("feedback")) {
+            return {
+                icon: FiMessageSquare,
+                bg: "bg-purple-650 text-white"
+            };
+        }
+        if (lower.includes("file") || lower.includes("attachment") || lower.includes("attached")) {
+            return {
+                icon: FiPaperclip,
+                bg: "bg-indigo-600 text-white"
+            };
+        }
+        return {
+            icon: FiActivity,
+            bg: "bg-slate-500 text-white"
+        };
+    };
+
     return (
-        <div className="w-full flex flex-col gap-5 font-sans">
-            {/* Header Section */}
-            <div className="flex flex-wrap items-start justify-between gap-4">
-                {/* LEFT SIDE */}
-                <div className="space-y-1.5 flex-1 min-w-0">
-                    {/* Badges row */}
-                    <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="bg-indigo-50 border border-indigo-100 text-indigo-700 px-2.5 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider">
-                            Task ID: #{currentTask._id ? currentTask._id.substring(18) : currentTask.id || "001"}
-                        </span>
-                        <span className={`px-2.5 py-0.5 rounded-lg text-[10px] font-bold border uppercase tracking-wider ${getStatusStyle(currentTask.status)}`}>
-                            {currentTask.status || "Pending"}
-                        </span>
-                        <span className={`px-2.5 py-0.5 rounded-lg text-[10px] font-bold border uppercase tracking-wider ${getPriorityStyle(currentTask.priority)}`}>
-                            {currentTask.priority || "Medium"} Priority
-                        </span>
-                    </div>
+        <div className="w-full flex flex-col gap-5 font-sans text-slate-800 animate-fade-in">
+            {/* Top link & Header Section */}
+            <div className="space-y-2">
 
-                    {/* Title */}
-                    <h2 className="text-xl md:text-2xl font-bold font-display text-slate-900 tracking-tight leading-tight">
-                        {currentTask.title}
-                    </h2>
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                    {/* LEFT SIDE */}
+                    <div className="space-y-1.5 flex-1 min-w-0">
+                        {/* Badges row */}
+                        <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="bg-indigo-50 border border-indigo-100 text-indigo-700 px-2.5 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider">
+                                {taskCode}
+                            </span>
+                            <span className={`px-2.5 py-0.5 rounded-lg text-[10px] font-bold border uppercase tracking-wider ${getStatusStyle(currentTask.status)}`}>
+                                {currentTask.status || "Pending"}
+                            </span>
+                            <span className={`px-2.5 py-0.5 rounded-lg text-[10px] font-bold border uppercase tracking-wider ${getPriorityStyle(currentTask.priority)}`}>
+                                {currentTask.priority || "Medium"} Priority
+                            </span>
+                        </div>
 
-                    {/* Meta info row */}
-                    <div className="flex flex-wrap items-center gap-y-1 gap-x-3 text-[11px] font-medium text-slate-500 uppercase tracking-wider pt-0.5">
-                        <div className="flex items-center gap-1.5 text-slate-600">
-                            <FiLayers size={12} className="text-slate-400" />
-                            <span>Project:</span>
-                            <span className="text-slate-900 font-bold ml-1">{currentTask.project}</span>
-                        </div>
-                        <span className="text-slate-300">|</span>
-                        <div className="flex items-center gap-1.5 text-slate-600">
-                            <FiUserCheck size={12} className="text-slate-400" />
-                            <span>Assignee:</span>
-                            <span className="text-indigo-600 font-bold ml-1">{currentTask.employee}</span>
-                        </div>
-                        <span className="text-slate-300">|</span>
-                        <div className="flex items-center gap-1.5 text-slate-600">
-                            <FiCalendar size={12} className="text-slate-400" />
-                            <span>Due:</span>
-                            <span className="text-slate-900 font-bold ml-1">{currentTask.deadline}</span>
-                        </div>
-                    </div>
-                </div>
+                        {/* Title */}
+                        <h2 className="text-xl md:text-2xl font-bold font-display text-slate-900 tracking-tight leading-tight">
+                            {currentTask.title}
+                        </h2>
 
-                {/* RIGHT SIDE */}
-                <div className="flex items-center gap-4 shrink-0">
-                    {/* Progress Circle Wrapper */}
-                    <div className="flex items-center gap-3">
-                        <div className="h-14 w-14 rounded-full flex items-center justify-center bg-slate-50 border border-slate-200 shrink-0 relative">
-                            <svg width="40" height="40" viewBox="0 0 80 80" className="transform -rotate-90">
-                                <circle
-                                    cx="40"
-                                    cy="40"
-                                    r="32"
-                                    className="text-slate-100"
-                                    strokeWidth="5"
-                                    stroke="currentColor"
-                                    fill="transparent"
-                                />
-                                <circle
-                                    cx="40"
-                                    cy="40"
-                                    r="32"
-                                    className="text-indigo-600 transition-all duration-500 ease-out"
-                                    strokeWidth="5"
-                                    strokeDasharray="201.06"
-                                    strokeDashoffset={201.06 - (overallProgress / 100) * 201.06}
-                                    strokeLinecap="round"
-                                    stroke="currentColor"
-                                    fill="transparent"
-                                />
-                            </svg>
-                            <span className="text-[10px] font-bold text-slate-700 absolute">{overallProgress}%</span>
-                        </div>
-                        <div className="text-left leading-none hidden sm:block">
-                            <span className="text-[9px] font-bold text-slate-400 block uppercase tracking-wider mb-1">Overall Progress</span>
-                            <span className="text-xs font-bold text-slate-700 uppercase tracking-tight block">Track Position</span>
+                        {/* Meta info row */}
+                        <div className="flex flex-wrap items-center gap-y-1 gap-x-4 text-xs font-semibold text-slate-500 pt-1">
+                            <div className="flex items-center gap-1.5">
+                                <div className="w-5.5 h-5.5 rounded-md bg-indigo-50 text-indigo-750 border border-indigo-100/50 flex items-center justify-center font-bold text-[9px] shrink-0 font-display">
+                                    {currentTask.employee?.charAt(0) || "?"}
+                                </div>
+                                <span className="text-slate-700 font-bold">{currentTask.employee}</span>
+                            </div>
+                            <span className="text-slate-300">|</span>
+                            <div className="flex items-center gap-1.5">
+                                <FiCalendar size={13} className="text-slate-400" />
+                                <span>Due {currentTask.deadline} {currentTask.deadline && `(${getRelativeTimelineText(currentTask.deadline)})`}</span>
+                            </div>
                         </div>
                     </div>
 
-                    {/* Back Button */}
-                    <button
-                        onClick={() => navigate("/tasks")}
-                        className="h-10 px-4 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-sm font-medium transition-all duration-200 flex items-center gap-2"
-                    >
-                        <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7"></path>
-                        </svg>
-                        <span>Back to Tasks</span>
-                    </button>
+                    {/* RIGHT SIDE */}
+                    <div className="flex items-center gap-4 shrink-0">
+                        {/* Progress Circle Wrapper */}
+                        <div className="flex items-center gap-3">
+                            <div className="h-16 w-16 rounded-full flex items-center justify-center bg-white border border-slate-200 shrink-0 relative">
+                                <svg width="56" height="56" viewBox="0 0 80 80" className="transform -rotate-90">
+                                    <circle
+                                        cx="40"
+                                        cy="40"
+                                        r="34"
+                                        className="text-slate-100"
+                                        strokeWidth="6"
+                                        stroke="currentColor"
+                                        fill="transparent"
+                                    />
+                                    <circle
+                                        cx="40"
+                                        cy="40"
+                                        r="34"
+                                        className="text-indigo-650 transition-all duration-500 ease-out"
+                                        strokeWidth="6"
+                                        strokeDasharray="213.63"
+                                        strokeDashoffset={213.63 - (overallProgress / 100) * 213.63}
+                                        strokeLinecap="round"
+                                        stroke="currentColor"
+                                        fill="transparent"
+                                    />
+                                </svg>
+                                <span className="text-xs font-bold text-slate-700 absolute">{overallProgress}%</span>
+                            </div>
+                            <div className="text-left leading-none hidden sm:block">
+                                <span className="text-[9px] font-bold text-slate-400 block uppercase tracking-wider mb-1">Overall Progress</span>
+                                <span className="text-xs font-bold text-slate-700 uppercase tracking-tight block">Track Position</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
             {/* Main Dashboard Grid */}
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-                {/* LEFT COLUMN */}
-                <div className="space-y-5">
-                    {/* Description Card */}
-                    <div className="rounded-2xl border border-slate-200/80 bg-white shadow-sm p-5 space-y-4">
-                        <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-                            <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                                <FiFileText className="text-slate-400" size={16} />
-                                Description
-                            </h3>
-                            {!isEditing && (
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
+                {/* LEFT COLUMN: Tabbed Card (Spans 2 columns on xl) */}
+                <div className="xl:col-span-2 space-y-5">
+                    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5 flex flex-col min-w-0">
+                    {/* Tab Navigation */}
+                    <div className="flex flex-wrap gap-2 border-b border-slate-150 pb-3 flex-shrink-0">
+                        {tabs.map(tab => {
+                            const TabIcon = tab.icon;
+                            const isActive = activeTab === tab.id;
+                            return (
                                 <button
-                                    onClick={startEdit}
-                                    className="text-indigo-650 hover:text-indigo-800 text-xs font-semibold flex items-center gap-1"
+                                    key={tab.id}
+                                    onClick={() => setActiveTab(tab.id)}
+                                    className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl transition cursor-pointer border outline-none ${
+                                        isActive
+                                            ? "bg-indigo-50 border-indigo-150 text-indigo-700"
+                                            : "text-slate-500 border-transparent hover:text-slate-700 hover:bg-slate-50"
+                                    }`}
                                 >
-                                    <FiEdit size={12} />
-                                    Edit Details
+                                    <TabIcon size={14} />
+                                    <span>{tab.label}</span>
+                                    {tab.count !== undefined && (
+                                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                                            isActive ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-500"
+                                        }`}>
+                                            {tab.countLabel || tab.count}
+                                        </span>
+                                    )}
                                 </button>
-                            )}
-                        </div>
+                            );
+                        })}
+                    </div>
 
-                        {isEditing ? (
-                            <form onSubmit={handleSaveEdit} className="space-y-4">
-                                <div className="space-y-3">
-                                    <div>
-                                        <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Task Title</label>
-                                        <input
-                                            type="text"
-                                            value={editForm.title}
-                                            onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
-                                            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:border-indigo-500 outline-none transition font-sans"
-                                            required
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Description Summary</label>
-                                        <textarea
-                                            rows="3"
-                                            value={editForm.description}
-                                            onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                                            className="w-full bg-white border border-slate-200 rounded-xl p-3 text-xs text-slate-800 focus:border-indigo-500 outline-none transition font-sans resize-none"
-                                        />
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div>
-                                            <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Priority</label>
-                                            <select
-                                                value={editForm.priority}
-                                                onChange={(e) => setEditForm({ ...editForm, priority: e.target.value })}
-                                                className="w-full bg-white border border-slate-200 rounded-xl px-2 py-2 text-xs text-slate-705 focus:border-indigo-500 outline-none transition font-sans cursor-pointer"
+                    {/* Tab Content Area */}
+                    <div className="pt-4 min-h-[300px] flex-1">
+                        {activeTab === "overview" && (
+                            <div className="space-y-5 animate-fade-in">
+                                {isEditing ? (
+                                    <form onSubmit={handleSaveEdit} className="space-y-4">
+                                        <div className="space-y-3">
+                                            <div>
+                                                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Task Title</label>
+                                                <input
+                                                    type="text"
+                                                    value={editForm.title}
+                                                    onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                                                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:border-indigo-500 outline-none transition font-sans"
+                                                    required
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Description Summary</label>
+                                                <textarea
+                                                    rows="3"
+                                                    value={editForm.description}
+                                                    onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                                                    className="w-full bg-white border border-slate-200 rounded-xl p-3 text-xs text-slate-850 focus:border-indigo-500 outline-none transition font-sans resize-none"
+                                                />
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div>
+                                                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Priority</label>
+                                                    <select
+                                                        value={editForm.priority}
+                                                        onChange={(e) => setEditForm({ ...editForm, priority: e.target.value })}
+                                                        className="w-full bg-white border border-slate-200 rounded-xl px-2 py-2 text-xs text-slate-705 focus:border-indigo-500 outline-none transition font-sans cursor-pointer"
+                                                    >
+                                                        <option>High</option>
+                                                        <option>Medium</option>
+                                                        <option>Low</option>
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Due Date</label>
+                                                    <input
+                                                        type="date"
+                                                        value={editForm.deadline}
+                                                        onChange={(e) => setEditForm({ ...editForm, deadline: e.target.value })}
+                                                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-850 focus:border-indigo-500 outline-none transition font-sans"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex gap-3 pt-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsEditing(false)}
+                                                className="flex-1 h-9 text-xs rounded-xl font-semibold border border-slate-200 bg-white hover:bg-slate-50 text-slate-650 transition-all cursor-pointer"
                                             >
-                                                <option>High</option>
-                                                <option>Medium</option>
-                                                <option>Low</option>
-                                            </select>
+                                                Cancel
+                                            </button>
+                                            <button
+                                                type="submit"
+                                                className="flex-1 h-9 text-xs rounded-xl font-semibold bg-indigo-650 hover:bg-indigo-750 text-white transition-all cursor-pointer"
+                                            >
+                                                Save Details
+                                            </button>
                                         </div>
-                                        <div>
-                                            <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Due Date</label>
-                                            <input
-                                                type="date"
-                                                value={editForm.deadline}
-                                                onChange={(e) => setEditForm({ ...editForm, deadline: e.target.value })}
-                                                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-850 focus:border-indigo-500 outline-none transition font-sans"
-                                            />
+                                    </form>
+                                ) : (
+                                    <div className="space-y-5">
+                                        <div className="space-y-2">
+                                            <div className="flex justify-between items-center">
+                                                <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Description</h4>
+                                                <button
+                                                    onClick={startEdit}
+                                                    className="text-indigo-650 hover:text-indigo-805 text-xs font-semibold flex items-center gap-1 bg-transparent border-0 outline-none cursor-pointer p-0"
+                                                >
+                                                    <FiEdit size={12} />
+                                                    Edit Details
+                                                </button>
+                                            </div>
+                                            <p className="text-slate-600 text-xs leading-relaxed font-sans whitespace-pre-wrap">
+                                                {currentTask.description || "No description provided."}
+                                            </p>
                                         </div>
-                                    </div>
-                                </div>
 
-                                <div className="flex gap-3 pt-2">
-                                    <button
-                                        type="button"
-                                        onClick={() => setIsEditing(false)}
-                                        className="flex-1 h-9 text-xs rounded-xl font-semibold border border-slate-200 bg-white hover:bg-slate-50 text-slate-650 transition-all cursor-pointer"
-                                    >
-                                        Cancel
-                                    </button>
-                                    <button
-                                        type="submit"
-                                        className="flex-1 h-9 text-xs rounded-xl font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition-all cursor-pointer"
-                                    >
-                                        Save Details
-                                    </button>
-                                </div>
-                            </form>
-                        ) : (
-                            <div className="space-y-4">
-                                <p className="text-slate-600 text-xs leading-relaxed font-sans whitespace-pre-wrap">
-                                    {currentTask.description || "No description provided."}
-                                </p>
+                                        {/* Meta cards */}
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 border-t border-slate-100">
+                                            <div className="bg-slate-50 border border-slate-150 p-3 rounded-xl flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs shrink-0 font-display">
+                                                    {(currentTask.created_by || "System Admin").charAt(0)}
+                                                </div>
+                                                <div>
+                                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">CREATED BY</span>
+                                                    <span className="text-xs font-bold text-slate-700 block truncate">{currentTask.created_by || "System Admin"}</span>
+                                                </div>
+                                            </div>
+                                            <div className="bg-slate-50 border border-slate-150 p-3 rounded-xl flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-xl bg-white border border-slate-150 text-slate-400 flex items-center justify-center shrink-0">
+                                                    <FiCalendar size={14} />
+                                                </div>
+                                                <div>
+                                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">CREATED ON</span>
+                                                    <span className="text-xs font-bold text-slate-700 block">Jun 20, 2026</span>
+                                                </div>
+                                            </div>
+                                            <div className="bg-slate-50 border border-slate-150 p-3 rounded-xl flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-xl bg-white border border-slate-150 text-slate-400 flex items-center justify-center shrink-0">
+                                                    <FiClock size={14} />
+                                                </div>
+                                                <div>
+                                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">LAST SYNC</span>
+                                                    <span className="text-xs font-bold text-slate-700 block">Just now</span>
+                                                </div>
+                                            </div>
+                                        </div>
 
-                                <div className="pt-4 border-t border-slate-100 space-y-4">
-                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                        {[
-                                            { label: "Created By", val: currentTask.created_by || "System Admin", icon: FiUser },
-                                            { label: "Created On", val: "Jun 20, 2026", icon: FiCalendar },
-                                            { label: "Last Sync", val: "Just now", icon: FiRefreshCw }
-                                        ].map((meta, idx) => {
-                                            const MetaIcon = meta.icon;
-                                            return (
-                                                <div key={idx} className="bg-slate-50 border border-slate-200/65 p-2.5 rounded-xl flex items-center gap-2">
-                                                    <div className="p-1.5 rounded bg-white border border-slate-150 text-slate-400 shrink-0">
-                                                        <MetaIcon size={12} />
-                                                    </div>
-                                                    <div className="min-w-0">
-                                                        <span className="text-[8px] font-semibold text-slate-450 uppercase tracking-wider block mb-0.5">{meta.label}</span>
-                                                        <span className="text-xs font-bold text-slate-700 block truncate">{meta.val}</span>
+                                        {/* Details table */}
+                                        <div className="space-y-3 pt-2 border-t border-slate-100">
+                                            <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Details</h4>
+                                            <div className="divide-y divide-slate-100 border-t border-b border-slate-100">
+                                                <div className="flex justify-between items-center py-2.5 text-xs">
+                                                    <span className="text-slate-500 font-semibold">Priority</span>
+                                                    <span className={`px-2.5 py-0.5 rounded-lg text-[10px] font-bold border uppercase tracking-wider ${getPriorityStyle(currentTask.priority)}`}>
+                                                        {currentTask.priority || "Medium"}
+                                                    </span>
+                                                </div>
+                                                <div className="flex justify-between items-center py-2.5 text-xs">
+                                                    <span className="text-slate-500 font-semibold">Assigned Representative</span>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <div className="w-5.5 h-5.5 rounded-md bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold text-[9px] shrink-0 font-display">
+                                                            {currentTask.employee?.charAt(0) || "?"}
+                                                        </div>
+                                                        <span className="font-bold text-slate-800">{currentTask.employee}</span>
                                                     </div>
                                                 </div>
-                                            );
-                                        })}
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <h4 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Specifications</h4>
-                                        <div className="divide-y divide-slate-100 text-xs">
-                                            {[
-                                                { label: "Priority Level", val: `${currentTask.priority || "Medium"} Priority`, icon: FiTrendingUp, color: "text-amber-600" },
-                                                { label: "Assigned Representative", val: currentTask.employee, icon: FiUser, color: "text-indigo-650" },
-                                                { label: "Work status", val: currentTask.status || "Pending", icon: FiActivity, color: "text-slate-700" },
-                                                { label: "Due Date Target", val: currentTask.deadline, icon: FiClock, color: "text-rose-500" }
-                                            ].map((row, idx) => {
-                                                const RowIcon = row.icon;
-                                                return (
-                                                    <div key={idx} className="flex justify-between items-center py-2">
-                                                        <div className="flex items-center gap-2 text-slate-400 font-semibold uppercase tracking-wider text-[9px]">
-                                                            <RowIcon size={12} className="text-slate-300" />
-                                                            <span>{row.label}</span>
-                                                        </div>
-                                                        <span className={`font-bold text-xs ${row.color}`}>{row.val}</span>
-                                                    </div>
-                                                );
-                                            })}
+                                                <div className="flex justify-between items-center py-2.5 text-xs">
+                                                    <span className="text-slate-500 font-semibold">Work Status</span>
+                                                    <span className={`px-2.5 py-0.5 rounded-lg text-[10px] font-bold border uppercase tracking-wider ${getStatusStyle(currentTask.status)}`}>
+                                                        {currentTask.status || "Pending"}
+                                                    </span>
+                                                </div>
+                                                <div className="flex justify-between items-center py-2.5 text-xs">
+                                                    <span className="text-slate-500 font-semibold">Due Date Target</span>
+                                                    <span className="font-bold text-slate-800">
+                                                        {currentTask.deadline} {currentTask.deadline && `(${getRelativeTimelineText(currentTask.deadline)})`}
+                                                    </span>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
+                                )}
+                            </div>
+                        )}
+
+                        {activeTab === "checklist" && (
+                            <div className="space-y-4 animate-fade-in">
+                                <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Checklist Tasks</h3>
+                                    <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2.5 py-0.5 border border-indigo-100 rounded-full">
+                                        {completedChecklist}/{totalChecklist} Done
+                                    </span>
+                                </div>
+                                <div className="space-y-2">
+                                    {checklist.map((item) => (
+                                        <div
+                                            key={item.id}
+                                            onClick={() => toggleChecklistItem(item.id)}
+                                            className={`flex items-start gap-2.5 py-2.5 px-3 border rounded-xl cursor-pointer transition text-xs font-medium ${
+                                                item.done
+                                                    ? "bg-slate-50/50 border-slate-150 text-slate-400 line-through"
+                                                    : "bg-white border-slate-200/80 text-slate-700 hover:border-slate-300 hover:bg-slate-50/20"
+                                            }`}
+                                        >
+                                            <div className={`mt-0.5 shrink-0 h-4 w-4 border rounded flex items-center justify-center transition ${
+                                                item.done ? "bg-indigo-600 border-indigo-600 text-white" : "border-slate-300 bg-white"
+                                            }`}>
+                                                {item.done && <FiX size={10} className="rotate-45" />}
+                                            </div>
+                                            <span className="font-sans leading-tight">{item.text}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === "comments" && (
+                            <div className="space-y-4 animate-fade-in">
+                                <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Comments Feed</h3>
+                                    <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2.5 py-0.5 border border-indigo-100 rounded-full">
+                                        {comments.length} Total
+                                    </span>
+                                </div>
+                                <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
+                                    {comments.map((comment) => (
+                                        <div key={comment.id} className="bg-slate-50/50 border border-slate-200/60 p-3 rounded-xl space-y-1.5">
+                                            <div className="flex justify-between items-center text-[10px]">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-bold text-slate-750">{comment.author}</span>
+                                                    <span className="text-[8px] bg-indigo-50 text-indigo-650 font-bold px-1.5 py-0.5 rounded uppercase tracking-wider">{comment.role}</span>
+                                                </div>
+                                                <span className="text-slate-400 font-semibold">{comment.time}</span>
+                                            </div>
+                                            <p className="text-xs text-slate-600 leading-relaxed font-sans whitespace-pre-wrap">{comment.text}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                                <form onSubmit={handleAddComment} className="flex gap-2 pt-2">
+                                    <input
+                                        type="text"
+                                        placeholder="Write comment updates..."
+                                        value={newComment}
+                                        onChange={(e) => setNewComment(e.target.value)}
+                                        className="flex-1 bg-slate-55 border border-slate-200 rounded-xl px-4 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:bg-white focus:border-indigo-500 transition font-sans"
+                                    />
+                                    <button
+                                        type="submit"
+                                        className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 rounded-xl shadow-xs transition active:scale-[0.98] cursor-pointer flex items-center justify-center shrink-0 border-0 outline-none"
+                                    >
+                                        <FiSend size={14} />
+                                    </button>
+                                </form>
+                            </div>
+                        )}
+
+                        {activeTab === "attachments" && (
+                            <div className="space-y-4 animate-fade-in">
+                                <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Task Attachments</h3>
+                                    <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2.5 py-0.5 border border-indigo-100 rounded-full">
+                                        {attachments.length} files
+                                    </span>
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    {attachments.map((file) => (
+                                        <div key={file.id} className="bg-slate-50/50 border border-slate-200 p-3 rounded-xl flex items-center justify-between gap-2 shadow-xs">
+                                            <div className="flex items-center gap-2.5 min-w-0">
+                                                <div className="p-2 rounded-lg bg-white border border-slate-200 text-indigo-600 shrink-0">
+                                                    <FiFileText size={14} />
+                                                </div>
+                                                <div className="min-w-0 leading-tight">
+                                                    <span className="text-xs font-bold text-slate-800 block truncate" title={file.name}>{file.name}</span>
+                                                    <span className="text-[9px] text-slate-400 font-semibold block uppercase tracking-wider mt-0.5">{file.size} • {file.date}</span>
+                                                </div>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                className="text-[10px] text-indigo-650 hover:text-indigo-805 font-bold py-1.5 px-3 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg shadow-xs transition shrink-0 cursor-pointer outline-none"
+                                            >
+                                                View
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === "activity" && (
+                            <div className="space-y-4 animate-fade-in">
+                                <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Activity Feed</h3>
+                                </div>
+                                <div className="relative pl-4 border-l border-slate-150 space-y-4 py-1.5 ml-2">
+                                    {activities.map((act) => (
+                                        <div key={act.id} className="relative text-xs">
+                                            <div className="absolute -left-[20.5px] top-1 h-2 w-2 rounded-full border border-white bg-indigo-600 ring-4 ring-white"></div>
+                                            <span className="font-bold text-slate-700">{act.author}</span>{" "}
+                                            <span className="text-slate-600 font-medium font-sans">{act.text}</span>
+                                            <span className="block text-[8px] text-slate-400 mt-1 font-bold uppercase tracking-wider">{act.time}</span>
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
                         )}
                     </div>
-
-                    {/* Checklist Card */}
-                    <div className="rounded-2xl border border-slate-200/80 bg-white shadow-sm p-5 space-y-4">
-                        <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-                            <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                                <FiCheckSquare className="text-slate-400" size={16} />
-                                Checklist Tasks
-                            </h3>
-                            <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-full">
-                                {completedChecklist}/{totalChecklist} Done
-                            </span>
-                        </div>
-                        <div className="space-y-2">
-                            {checklist.map((item) => (
-                                <div
-                                    key={item.id}
-                                    onClick={() => toggleChecklistItem(item.id)}
-                                    className={`flex items-start gap-2.5 py-2.5 px-3 border rounded-xl cursor-pointer transition text-xs font-medium ${item.done
-                                            ? "bg-slate-50/50 border-slate-150 text-slate-400 line-through"
-                                            : "bg-white border-slate-200/80 text-slate-700 hover:border-slate-300 hover:bg-slate-50/20"
-                                        }`}
-                                >
-                                    <div className={`mt-0.5 shrink-0 h-4 w-4 border rounded flex items-center justify-center transition ${item.done ? "bg-indigo-600 border-indigo-600 text-white" : "border-slate-300 bg-white"
-                                        }`}>
-                                        {item.done && <FiX size={10} className="rotate-45" />}
-                                    </div>
-                                    <span className="font-sans leading-tight">{item.text}</span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* Comments Card */}
-                    <div className="rounded-2xl border border-slate-200/80 bg-white shadow-sm p-5 space-y-4">
-                        <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 pb-2 border-b border-slate-100">
-                            <FiMessageSquare className="text-slate-400" size={16} />
-                            Comments ({comments.length})
-                        </h3>
-                        <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
-                            {comments.map((comment) => (
-                                <div key={comment.id} className="bg-slate-50/50 border border-slate-200/60 p-3 rounded-xl space-y-1.5">
-                                    <div className="flex justify-between items-center text-[10px]">
-                                        <div className="flex items-center gap-2">
-                                            <span className="font-bold text-slate-700">{comment.author}</span>
-                                            <span className="text-[8px] bg-indigo-50 text-indigo-600 font-bold px-1.5 py-0.5 rounded uppercase tracking-wider">{comment.role}</span>
-                                        </div>
-                                        <span className="text-slate-400 font-semibold">{comment.time}</span>
-                                    </div>
-                                    <p className="text-xs text-slate-650 leading-relaxed font-sans whitespace-pre-wrap">{comment.text}</p>
-                                </div>
-                            ))}
-                        </div>
-                        <form onSubmit={handleAddComment} className="flex gap-2">
-                            <input
-                                type="text"
-                                placeholder="Write comment updates..."
-                                value={newComment}
-                                onChange={(e) => setNewComment(e.target.value)}
-                                className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:bg-white focus:border-indigo-500 transition font-sans"
-                            />
-                            <button
-                                type="submit"
-                                className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl shadow-xs transition active:scale-[0.98] cursor-pointer flex items-center justify-center shrink-0"
-                            >
-                                <FiSend size={14} />
-                            </button>
-                        </form>
-                    </div>
                 </div>
 
-                {/* RIGHT COLUMN */}
+                {/* Dedicated Cards for Checklist Preview & Recent Discussion */}
+                    {activeTab === "overview" && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 animate-fade-in">
+                            {/* Card 1: Checklist Preview */}
+                            <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5 space-y-3">
+                                <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                                    <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5 font-display">
+                                        <FiCheckSquare className="text-slate-400" size={14} /> Checklist Preview
+                                    </h4>
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveTab("checklist")}
+                                        className="text-indigo-650 hover:text-indigo-855 text-xs font-bold bg-transparent border-0 outline-none cursor-pointer p-0 font-sans"
+                                    >
+                                        View Full
+                                    </button>
+                                </div>
+                                <div className="space-y-2">
+                                    {checklist.slice(0, 3).map((item) => (
+                                        <div
+                                            key={item.id}
+                                            className={`flex items-start gap-2.5 py-2.5 px-3 border rounded-xl text-xs font-medium ${
+                                                item.done ? "bg-slate-50/50 border-slate-150 text-slate-400 line-through" : "bg-white border-slate-200 text-slate-700"
+                                            }`}
+                                        >
+                                            <div className={`mt-0.5 shrink-0 h-4 w-4 border rounded flex items-center justify-center ${
+                                                item.done ? "bg-indigo-650 border-indigo-650 text-white" : "border-slate-300 bg-white"
+                                            }`}>
+                                                {item.done && <FiX size={8} className="rotate-45" />}
+                                            </div>
+                                            <span className="font-sans leading-tight truncate">{item.text}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Card 2: Recent Discussion */}
+                            <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5 space-y-3">
+                                <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                                    <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5 font-display">
+                                        <FiMessageSquare className="text-slate-400" size={14} /> Recent Discussion
+                                    </h4>
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveTab("comments")}
+                                        className="text-indigo-650 hover:text-indigo-855 text-xs font-bold bg-transparent border-0 outline-none cursor-pointer p-0 font-sans"
+                                    >
+                                        Join Discussion
+                                    </button>
+                                </div>
+                                <div className="space-y-3">
+                                    {comments.slice(0, 2).map((comment) => (
+                                        <div key={comment.id} className="bg-slate-50/50 border border-slate-200/60 p-3 rounded-xl leading-relaxed">
+                                            <div className="flex justify-between items-center text-[10px] mb-1">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-bold text-slate-750">{comment.author}</span>
+                                                    <span className="text-[8px] bg-indigo-50 text-indigo-650 font-bold px-1.5 py-0.5 rounded uppercase tracking-wider">{comment.role}</span>
+                                                </div>
+                                                <span className="text-slate-400 font-semibold">{comment.time}</span>
+                                            </div>
+                                            <p className="text-xs text-slate-655 font-sans">{comment.text}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* RIGHT COLUMN: Quick Actions, Delegation Summary, Timeline Logs */}
                 <div className="space-y-5">
                     {/* Quick Operations Card */}
-                    <div className="rounded-2xl border border-slate-200/80 bg-white shadow-sm p-5 space-y-4">
-                        <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 pb-2 border-b border-slate-100">
-                            <FiSettings className="text-slate-400" size={16} />
+                    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5 space-y-4">
+                        <h3 className="text-sm font-bold text-slate-800 pb-2 border-b border-slate-100 font-display">
                             Quick Operations
                         </h3>
-                        <div className="flex flex-wrap gap-3">
-                            <button
-                                type="button"
-                                onClick={startEdit}
-                                className="h-10 px-4 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-sm font-medium transition-all duration-200"
-                            >
-                                Edit Details
-                            </button>
-                            <button
-                                type="button"
-                                onClick={openAssigneeList}
-                                className="h-10 px-4 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-sm font-medium transition-all duration-200"
-                            >
-                                Assign Team
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setIsChangingStatus(true)}
-                                className="h-10 px-4 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-sm font-medium transition-all duration-200"
-                            >
-                                Change Status
-                            </button>
-                            <button
-                                type="button"
-                                onClick={handleMarkComplete}
-                                className="h-10 px-4 rounded-xl bg-indigo-600 border border-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium transition-all duration-200 flex items-center gap-1.5"
-                            >
-                                <FiCheckCircle size={14} />
-                                Mark Complete
-                            </button>
-                        </div>
+                        {currentTask.status === "Cancelled" ? (
+                            <div className="text-xs text-slate-400 py-2 font-medium">
+                                No actions available for this status.
+                            </div>
+                        ) : (
+                            <div className="flex flex-wrap gap-3">
+                                <button
+                                    type="button"
+                                    onClick={startEdit}
+                                    className="h-10 px-4 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-all duration-200 cursor-pointer outline-none"
+                                >
+                                    Edit Details
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={openAssigneeList}
+                                    className="h-10 px-4 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-all duration-200 cursor-pointer outline-none"
+                                >
+                                    Assign Team
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setIsChangingStatus(true)}
+                                    className="h-10 px-4 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-all duration-200 cursor-pointer outline-none"
+                                >
+                                    Change Status
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleMarkComplete}
+                                    className="h-10 px-4 rounded-xl bg-indigo-650 hover:bg-indigo-755 text-white text-xs font-semibold transition-all duration-200 flex items-center gap-1.5 cursor-pointer outline-none border-0"
+                                >
+                                    <FiCheckCircle size={14} />
+                                    Mark Complete
+                                </button>
+                            </div>
+                        )}
                     </div>
 
                     {/* Delegation Summary Card */}
-                    <div className="rounded-2xl border border-slate-200/80 bg-white shadow-sm p-5 space-y-4">
+                    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5 space-y-4">
                         <h3 className="text-sm font-bold text-slate-800 pb-2 border-b border-slate-100 font-display">
                             Delegation Summary
                         </h3>
-                        <div className="space-y-3">
+                        <div className="space-y-4">
                             <div>
-                                <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-                                    <span>Tasks Checklist</span>
-                                    <span>{checklistProgress}%</span>
+                                <div className="flex justify-between items-center text-xs font-semibold text-slate-600 mb-2 font-sans">
+                                    <span className="flex items-center gap-1.5"><FiCheckSquare size={13} className="text-slate-400" /> Checklist Progress</span>
+                                    <span className="font-bold">{completedChecklist} of {totalChecklist}</span>
                                 </div>
-                                <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                                <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
                                     <div className="bg-indigo-600 h-full rounded-full transition-all duration-350" style={{ width: `${checklistProgress}%` }}></div>
                                 </div>
                             </div>
-                            <div className="divide-y divide-slate-100 text-xs">
-                                {[
-                                    { label: "Checklist Items", val: totalChecklist },
-                                    { label: "Comments Feed", val: comments.length },
-                                    { label: "Attachments", val: attachments.length },
-                                    { label: "Timeline Logs", val: activities.length }
-                                ].map((stat, idx) => (
-                                    <div key={idx} className="flex justify-between py-2 text-[10px]">
-                                        <span className="text-slate-400 font-semibold uppercase tracking-wider">{stat.label}</span>
-                                        <span className="font-extrabold text-slate-700">{stat.val}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Attachments Card */}
-                    <div className="rounded-2xl border border-slate-200/80 bg-white shadow-sm p-5 space-y-4">
-                        <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 pb-2 border-b border-slate-100">
-                            <FiPaperclip className="text-slate-400" size={16} />
-                            Attachments ({attachments.length})
-                        </h3>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            {attachments.map((file) => (
-                                <div key={file.id} className="bg-slate-50/50 border border-slate-200 p-3 rounded-xl flex items-center justify-between gap-2 shadow-sm">
-                                    <div className="flex items-center gap-2.5 min-w-0">
-                                        <div className="p-2 rounded-lg bg-white border border-slate-200 text-indigo-600 shrink-0">
-                                            <FiFileText size={14} />
-                                        </div>
-                                        <div className="min-w-0 leading-tight">
-                                            <span className="text-xs font-bold text-slate-850 block truncate" title={file.name}>{file.name}</span>
-                                            <span className="text-[9px] text-slate-400 font-semibold block uppercase tracking-wider mt-0.5">{file.size} • {file.date}</span>
-                                        </div>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        className="text-[10px] text-indigo-650 hover:text-indigo-800 font-bold py-1 px-2.5 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg shadow-sm transition shrink-0 cursor-pointer"
-                                    >
-                                        View
-                                    </button>
+                            <div className="divide-y divide-slate-100 text-xs text-slate-600">
+                                <div className="flex justify-between py-2.5">
+                                    <span className="flex items-center gap-1.5"><FiMessageSquare size={13} className="text-slate-400" /> Comments</span>
+                                    <span className="font-bold text-slate-800">{comments.length}</span>
                                 </div>
-                            ))}
+                                <div className="flex justify-between py-2.5">
+                                    <span className="flex items-center gap-1.5"><FiPaperclip size={13} className="text-slate-400" /> Attachments</span>
+                                    <span className="font-bold text-slate-800">{attachments.length}</span>
+                                </div>
+                                <div className="flex justify-between py-2.5">
+                                    <span className="flex items-center gap-1.5"><FiActivity size={13} className="text-slate-400" /> Total Activity</span>
+                                    <span className="font-bold text-slate-800">{activities.length}</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
                     {/* Timeline Logs Card */}
-                    <div className="rounded-2xl border border-slate-200/80 bg-white shadow-sm p-5 space-y-4">
-                        <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 pb-2 border-b border-slate-100 font-display">
-                            <FiActivity className="text-slate-400" size={16} />
-                            Timeline Logs
+                    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5 space-y-4">
+                        <h3 className="text-sm font-bold text-slate-800 pb-2 border-b border-slate-100 font-display">
+                            Timeline <span className="text-xs text-slate-400 font-normal font-sans">(Latest Activity)</span>
                         </h3>
-                        <div className="relative pl-4 border-l border-slate-100 space-y-3">
-                            {activities.map((act) => (
-                                <div key={act.id} className="relative text-xs">
-                                    <div className="absolute -left-[20.5px] top-1 h-2 w-2 rounded-full border border-white bg-slate-350 ring-4 ring-white"></div>
-                                    <span className="font-bold text-slate-700">{act.author}</span>{" "}
-                                    <span className="text-slate-555 font-medium font-sans">{act.text}</span>
-                                    <span className="block text-[8px] text-slate-400 mt-1 font-bold uppercase tracking-wider">{act.time}</span>
-                                </div>
-                            ))}
+                        <div className="relative pl-6 border-l border-slate-150 space-y-4 py-1.5 ml-2">
+                            {activities.map((act) => {
+                                const { icon: ActIcon, bg: actBg } = getActivityIcon(act.text);
+                                return (
+                                    <div key={act.id} className="relative text-xs">
+                                        <div className={`absolute -left-[35px] top-0 h-6 w-6 rounded-full flex items-center justify-center ${actBg} ring-4 ring-white shadow-sm`}>
+                                            <ActIcon size={12} />
+                                        </div>
+                                        <div className="leading-tight">
+                                            <span className="font-bold text-slate-800 block">{act.text}</span>
+                                            <span className="text-[10px] text-slate-400 mt-0.5 block font-medium">
+                                                by {act.author} • {act.time}
+                                            </span>
+                                        </div>
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
                 </div>
             </div>
 
             {/* MODALS SECTION */}
-
-            {/* 1. Assign Team Modal (Searchable, Compact List, Highlight selected) */}
+            {/* Assign Team Modal */}
             {isAssigning && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                    {/* Backdrop */}
                     <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity" onClick={() => setIsAssigning(false)}></div>
-                    {/* Wrapper */}
-                    <div className="relative rounded-xl border border-slate-200 bg-white shadow-sm w-full max-w-sm p-4 z-10 space-y-3.5 animate-slide-up">
-                        <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-                            <span className="text-xs font-bold text-slate-550 uppercase tracking-wide">Assign Team Representative</span>
-                            <button onClick={() => setIsAssigning(false)} className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"><FiX size={16} /></button>
+                    <div className="relative rounded-xl border border-slate-200 bg-white shadow-lg w-full max-w-sm p-4 z-10 space-y-3.5 animate-slide-up">
+                        <div className="flex justify-between items-center pb-2 border-b border-slate-150">
+                            <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">Assign Team Representative</span>
+                            <button onClick={() => setIsAssigning(false)} className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer border-0 bg-transparent outline-none"><FiX size={16} /></button>
                         </div>
-                        {/* Compact Search Bar */}
                         <div className="relative">
                             <input
                                 type="text"
-                                placeholder="Search by name, role or email..."
                                 value={employeeSearch}
                                 onChange={(e) => setEmployeeSearch(e.target.value)}
-                                className="w-full h-10 rounded-lg border border-slate-200 px-3 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 transition font-sans"
+                                placeholder="Search by name, role or email..."
+                                className="w-full h-10 rounded-lg border border-slate-200 px-3 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100/50 transition font-sans bg-slate-50"
                                 autoFocus
                             />
                         </div>
                         {loadingEmployees ? (
                             <div className="py-6 text-center text-xs text-slate-400">Loading team members...</div>
                         ) : filteredEmployees.length === 0 ? (
-                            <div className="py-6 text-center text-xs text-slate-400 bg-slate-50 rounded-lg border border-slate-100">No representatives found</div>
+                            <div className="py-6 text-center text-xs text-slate-400 bg-slate-50 rounded-lg border border-slate-150/40">No representatives found</div>
                         ) : (
                             <div className="space-y-1 max-h-[240px] overflow-y-auto pr-1">
                                 {filteredEmployees.map(emp => {
@@ -834,12 +1033,12 @@ function TaskDetailsDrawer({ task, onUpdate }) {
                                             onClick={() => handleSaveAssignee(emp)}
                                             className={`flex items-center gap-2.5 p-2 rounded-lg cursor-pointer transition-colors duration-150 text-left ${isSelected
                                                     ? "bg-indigo-50 text-indigo-700 font-bold"
-                                                    : "hover:bg-slate-50 text-slate-700"
+                                                    : "hover:bg-slate-55 text-slate-700"
                                                 }`}
                                         >
                                             <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 font-display ${isSelected
                                                     ? "bg-indigo-100 text-indigo-700"
-                                                    : "bg-indigo-50 text-indigo-600 border border-indigo-100/50"
+                                                    : "bg-indigo-50 text-indigo-650 border border-indigo-100/40"
                                                 }`}>
                                                 {emp.name.charAt(0)}
                                             </div>
@@ -856,14 +1055,14 @@ function TaskDetailsDrawer({ task, onUpdate }) {
                 </div>
             )}
 
-            {/* 2. Change Status Modal */}
+            {/* Change Status Modal */}
             {isChangingStatus && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
                     <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity" onClick={() => setIsChangingStatus(false)}></div>
-                    <div className="relative rounded-xl border border-slate-200 bg-white shadow-sm w-full max-w-xs p-4 z-10 space-y-3 animate-slide-up">
-                        <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-                            <span className="text-xs font-bold text-slate-550 uppercase tracking-wide">Update Status</span>
-                            <button onClick={() => setIsChangingStatus(false)} className="text-slate-400 hover:text-slate-660 p-1 cursor-pointer"><FiX size={16} /></button>
+                    <div className="relative rounded-xl border border-slate-200 bg-white shadow-lg w-full max-w-xs p-4 z-10 space-y-3 animate-slide-up">
+                        <div className="flex justify-between items-center pb-2 border-b border-slate-150">
+                            <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">Update Status</span>
+                            <button onClick={() => setIsChangingStatus(false)} className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer border-0 bg-transparent outline-none"><FiX size={16} /></button>
                         </div>
                         <div className="space-y-1">
                             {["Pending", "In Progress", "Completed", "Cancelled"].map(st => {
@@ -872,7 +1071,7 @@ function TaskDetailsDrawer({ task, onUpdate }) {
                                     <div
                                         key={st}
                                         onClick={() => handleSaveStatus(st)}
-                                        className={`p-2 rounded-lg hover:bg-slate-50 cursor-pointer transition text-left text-xs font-bold ${isSelected ? "text-indigo-600 bg-indigo-50/50" : "text-slate-650"
+                                        className={`p-2 rounded-lg hover:bg-slate-50 cursor-pointer transition text-left text-xs font-bold ${isSelected ? "text-indigo-600 bg-indigo-50/50" : "text-slate-600"
                                             }`}
                                     >
                                         {st}

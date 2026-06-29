@@ -159,14 +159,14 @@ function Navbar({ onToggleMobileMenu }) {
                 </div>
 
                 {/* Right section: Search button, Notifications, Profile */}
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-1.5 sm:gap-3">
                     {/* Search trigger (Cmd+K design) */}
                     <button
                         onClick={() => setIsSearchOpen(true)}
-                        className="flex items-center gap-2.5 px-3 py-2 border border-slate-200 hover:border-slate-300 bg-slate-50/50 hover:bg-slate-50 text-slate-400 hover:text-slate-600 rounded-xl transition text-left text-xs cursor-pointer w-48 sm:w-56"
+                        className="flex items-center gap-2.5 px-2.5 sm:px-3 py-2 border border-slate-200 hover:border-slate-300 bg-slate-50/50 hover:bg-slate-50 text-slate-400 hover:text-slate-600 rounded-xl transition text-left text-xs cursor-pointer w-auto sm:w-56"
                     >
                         <FiSearch size={14} />
-                        <span className="flex-1 text-[11px] font-sans">Search workspace...</span>
+                        <span className="hidden sm:inline flex-1 text-[11px] font-sans">Search workspace...</span>
                         <kbd className="hidden sm:inline-flex items-center bg-white px-1.5 py-0.5 border border-slate-200 text-[9px] font-bold text-slate-400 rounded-md font-sans shadow-sm select-none">
                             Ctrl K
                         </kbd>
