@@ -107,7 +107,7 @@ def seed_database():
     tasks = [
         # Aman Verma (Frontend Engineer - Ecommerce Platform)
         {
-            "title": "Design Product Catalog Grid UI",
+            "title": "Delegation Assigned",
             "description": "Create a responsive checkout list grid using modern HSL colors and hover scales.",
             "employee": "Aman Verma",
             "project": "Ecommerce Platform",
