@@ -52,15 +52,17 @@ function AddProjectModal({ isOpen, onClose, onSave, projectToEdit }) {
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 overflow-y-auto">
             {/* Overlay backdrop */}
             <div 
                 className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity"
                 onClick={onClose}
             ></div>
 
-            {/* Modal Box */}
-            <div className="relative bg-white border border-slate-200 w-full max-w-md rounded-2xl shadow-xl p-6 md:p-8 animate-slide-up z-10">
+            {/* Modal Box Wrapper */}
+            <div className="flex min-h-full items-center justify-center p-3 sm:p-4">
+                {/* Modal Box */}
+                <div className="relative bg-white border border-slate-200 w-full max-w-md rounded-2xl shadow-xl p-5 sm:p-6 md:p-8 animate-slide-up z-10 overflow-hidden">
                 <button
                     onClick={onClose}
                     className="absolute top-4 right-4 p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
@@ -168,7 +170,8 @@ function AddProjectModal({ isOpen, onClose, onSave, projectToEdit }) {
                 </form>
             </div>
         </div>
-    );
+    </div>
+);
 }
 
 export default AddProjectModal;

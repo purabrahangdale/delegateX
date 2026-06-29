@@ -6,6 +6,11 @@ import Employees from "../pages/Employees";
 import Projects from "../pages/Projects";
 import Tasks from "../pages/Tasks";
 import Login from "../pages/Login";
+import TaskDetailsPage from "../pages/TaskDetailsPage";
+import CreateDelegation from "../pages/CreateDelegation";
+import DelegationDashboard from "../pages/DelegationDashboard";
+import CRMView from "../pages/CRMView";
+import EmployeeWorkInsights from "../pages/EmployeeWorkInsights";
 
 function AppRoutes() {
     return (
@@ -17,10 +22,17 @@ function AppRoutes() {
                     <Route path="/employees" element={<Employees />} />
                     <Route path="/projects" element={<Projects />} />
                     <Route path="/tasks" element={<Tasks />} />
+                    <Route path="/tasks/:taskId" element={<TaskDetailsPage />} />
+                    <Route path="/dashboard-delegation" element={<DelegationDashboard />} />
+                    <Route path="/employees/dashboard" element={<EmployeeWorkInsights />} />
+
+                    <Route path="/create-delegation" element={<CreateDelegation />} />
+
+                    <Route path="/crm/:view" element={<CRMView />} />
                 </Route>
             </Routes>
         </BrowserRouter>
     );
 }
 
-export default AppRoutes;
+export default AppRoutes;
