@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import {
     FiUser, FiMail, FiPhone, FiLayers, FiCheckCircle, FiXCircle,
     FiCalendar, FiDollarSign, FiSearch, FiSliders, FiPlus, FiAlertCircle,
     FiX, FiCheck, FiZap, FiChevronDown, FiGift, FiFileText,
-    FiList, FiVideo, FiMapPin, FiClock, FiInfo, FiChevronLeft, FiChevronRight
+    FiList, FiVideo, FiMapPin, FiClock, FiInfo, FiChevronLeft, FiChevronRight,
+    FiTrendingUp, FiTrendingDown, FiRefreshCw, FiActivity
 } from "react-icons/fi";
 import { useToast } from "../context/ToastContext";
 
@@ -272,6 +273,278 @@ export default function CRMView() {
 
     const [searchQuery, setSearchQuery] = useState("");
 
+    // Converted Leads mock database and filter states
+    const [convertedLeads, setConvertedLeads] = useState([
+        { id: "CRM-2026-4101", name: "Aarav Mehta", phone: "+91 98765 43210", email: "aarav.mehta@gmail.com", location: "Mumbai", projectType: "Residential", date: "2026-06-28", priority: "High" },
+        { id: "CRM-2026-4102", name: "Priya Kulkarni", phone: "+91 91234 56789", email: "priya.k@yahoo.com", location: "Pune", projectType: "Commercial", date: "2026-06-26", priority: "Medium" },
+        { id: "CRM-2026-4103", name: "Rohan Deshmukh", phone: "+91 88888 77777", email: "rohan.d@outlook.com", location: "Bengaluru", projectType: "Corporate", date: "2026-06-24", priority: "High" },
+        { id: "CRM-2026-4104", name: "Kavya Nair", phone: "+91 77777 66666", email: "kavya.nair@gmail.com", location: "Hyderabad", projectType: "Retail", date: "2026-06-22", priority: "Low" },
+        { id: "CRM-2026-4105", name: "Arjun Verma", phone: "+91 99999 88888", email: "arjun.v@gmail.com", location: "Indore", projectType: "Residential", date: "2026-06-20", priority: "Medium" },
+        { id: "CRM-2026-4106", name: "Sneha Patil", phone: "+91 92222 33333", email: "sneha.patil@yahoo.in", location: "Ahmedabad", projectType: "Commercial", date: "2026-06-18", priority: "High" },
+        { id: "CRM-2026-4107", name: "Vikram Malhotra", phone: "+91 93333 44444", email: "vikram.m@malhotra.co", location: "Mumbai", projectType: "Corporate", date: "2026-06-15", priority: "Medium" },
+        { id: "CRM-2026-4108", name: "Ananya Sen", phone: "+91 94444 55555", email: "ananya.sen@gmail.com", location: "Bengaluru", projectType: "Retail", date: "2026-06-12", priority: "Low" },
+        { id: "CRM-2026-4109", name: "Kabir Joshi", phone: "+91 95555 66666", email: "kabir.j@hotmail.com", location: "Pune", projectType: "Residential", date: "2026-06-10", priority: "High" },
+        { id: "CRM-2026-4110", name: "Meera Reddy", phone: "+91 96666 77777", email: "meera.reddy@gmail.com", location: "Hyderabad", projectType: "Commercial", date: "2026-06-08", priority: "Medium" },
+        { id: "CRM-2026-4111", name: "Devendra Singh", phone: "+91 97777 88888", email: "devendra.s@gmail.com", location: "Indore", projectType: "Corporate", date: "2026-06-05", priority: "Low" },
+        { id: "CRM-2026-4112", name: "Ishita Sharma", phone: "+91 98888 99999", email: "ishita.s@yahoo.com", location: "Ahmedabad", projectType: "Retail", date: "2026-06-02", priority: "High" }
+    ]);
+
+    const [convertedSearchQuery, setConvertedSearchQuery] = useState("");
+    const [convertedSortOption, setConvertedSortOption] = useState("newest");
+    const [convertedProjectType, setConvertedProjectType] = useState("All Types");
+    const [convertedDatePreset, setConvertedDatePreset] = useState("All Time");
+
+    // Lost Leads mock database and filter states
+    const [lostLeads, setLostLeads] = useState([
+        { id: "CRM-2026-9051", name: "Aditya Sen", phone: "+91 90000 11111", email: "aditya.sen@gmail.com", location: "Mumbai", projectType: "Residential", date: "2026-06-19", priority: "High" },
+        { id: "CRM-2026-9052", name: "Maya Patel", phone: "+91 91111 22222", email: "maya.patel@yahoo.com", location: "Pune", projectType: "Commercial", date: "2026-06-16", priority: "Medium" },
+        { id: "CRM-2026-9053", name: "Kabir Roy", phone: "+91 92222 33333", email: "kabir.roy@gmail.com", location: "Bengaluru", projectType: "Corporate", date: "2026-06-13", priority: "High" },
+        { id: "CRM-2026-9054", name: "Divya Rao", phone: "+91 93333 44444", email: "divya.rao@outlook.com", location: "Hyderabad", projectType: "Retail", date: "2026-06-10", priority: "Low" },
+        { id: "CRM-2026-9055", name: "Neha Sharma", phone: "+91 94444 55555", email: "neha.sharma@gmail.com", location: "Indore", projectType: "Residential", date: "2026-06-07", priority: "Medium" },
+        { id: "CRM-2026-9056", name: "Rajiv Reddy", phone: "+91 95555 66666", email: "rajiv.reddy@gmail.com", location: "Ahmedabad", projectType: "Commercial", date: "2026-06-04", priority: "High" },
+        { id: "CRM-2026-9057", name: "Siddharth Dixit", phone: "+91 96666 77777", email: "sid.dixit@yahoo.in", location: "Pune", projectType: "Corporate", date: "2026-06-01", priority: "Medium" },
+        { id: "CRM-2026-9058", name: "Kriti Kapoor", phone: "+91 97777 88888", email: "kriti.k@gmail.com", location: "Bengaluru", projectType: "Retail", date: "2026-05-28", priority: "Low" }
+    ]);
+
+    const [lostSearchQuery, setLostSearchQuery] = useState("");
+    const [lostSortOption, setLostSortOption] = useState("newest");
+    const [lostProjectType, setLostProjectType] = useState("All Types");
+    const [lostDatePreset, setLostDatePreset] = useState("All Time");
+
+    const getFilteredLostLeads = () => {
+        let list = [...lostLeads];
+
+        // Search filter
+        if (lostSearchQuery.trim()) {
+            const q = lostSearchQuery.toLowerCase();
+            list = list.filter(l => 
+                l.name.toLowerCase().includes(q) ||
+                l.phone.includes(q) ||
+                l.projectType.toLowerCase().includes(q) ||
+                l.location.toLowerCase().includes(q) ||
+                l.id.toLowerCase().includes(q)
+            );
+        }
+
+        // Project Type filter
+        if (lostProjectType !== "All Types") {
+            list = list.filter(l => l.projectType === lostProjectType);
+        }
+
+        // Date range filter presets
+        if (lostDatePreset !== "All Time") {
+            const today = new Date();
+            list = list.filter(l => {
+                const leadDate = new Date(l.date);
+                const diffTime = Math.abs(today - leadDate);
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                
+                if (lostDatePreset === "7-days") return diffDays <= 7;
+                if (lostDatePreset === "30-days") return diffDays <= 30;
+                if (lostDatePreset === "90-days") return diffDays <= 90;
+                return true;
+            });
+        }
+
+        // Sorting logic
+        list.sort((a, b) => {
+            if (lostSortOption === "newest") {
+                return new Date(b.date) - new Date(a.date);
+            }
+            if (lostSortOption === "oldest") {
+                return new Date(a.date) - new Date(b.date);
+            }
+            if (lostSortOption === "alpha-asc") {
+                return a.name.localeCompare(b.name);
+            }
+            if (lostSortOption === "alpha-desc") {
+                return b.name.localeCompare(a.name);
+            }
+            return 0;
+        });
+
+        return list;
+    };
+
+    // All Leads Registry Mock Database (35 entries)
+    const [allLeadsRegistry, setAllLeadsRegistry] = useState([
+        { id: "CLI-2026-0115", name: "Mukesh Sahu", phone: "+91 98759 45483", email: "nidhisahu@dtableanalytics.com", location: "Bhopal, Madhya Pradesh", projectType: "Residential", status: "Converted", stage: "Project Started", date: "2026-06-26", priority: "High", source: "Referral" },
+        { id: "CLI-2026-0114", name: "Purab Jain", phone: "+91 98774 93287", email: "purab@gmail.com", location: "Gwalior, Madhya Pradesh", projectType: "Residential", status: "Meeting Done", stage: "Follow-up Due", date: "2026-06-26", priority: "Medium", source: "Website" },
+        { id: "CLI-2026-0113", name: "Neha Yadav", phone: "+91 98995 95948", email: "nehayadav@gmail.com", location: "Indore, Madhya Pradesh", projectType: "Residential", status: "Meeting Done", stage: "Follow-up Due", date: "2026-06-26", priority: "Medium", source: "Walk-In" },
+        { id: "CLI-2026-0112", name: "Neha Sahu", phone: "+91 95959 59595", email: "neha@gmail.com", location: "Bhopal, Madhya Pradesh", projectType: "Residential", status: "Converted", stage: "Project Started", date: "2026-06-23", priority: "High", source: "Referral" },
+        { id: "CLI-2026-0111", name: "Abhishek Rawat", phone: "+91 91777 30914", email: "abhishekrawat@dtable.com", location: "Bhopal, Madhya Pradesh", projectType: "Residential", status: "Meeting Done", stage: "Interested", date: "2026-06-22", priority: "Low", source: "Cold Call" },
+        { id: "CLI-2026-0110", name: "Rajesh Sharma", phone: "+91 98260 12345", email: "rajesh.s@yahoo.com", location: "Indore, Madhya Pradesh", projectType: "Commercial", status: "Contacted", stage: "Discovery", date: "2026-06-20", priority: "Medium", source: "Instagram" },
+        { id: "CLI-2026-0109", name: "Anjali Gupta", phone: "+91 94250 54321", email: "anjali@gmail.com", location: "Jabalpur, Madhya Pradesh", projectType: "Corporate", status: "Converted", stage: "Project Started", date: "2026-06-18", priority: "High", source: "Referral" },
+        { id: "CLI-2026-0108", name: "Suresh Patel", phone: "+91 98930 98765", email: "suresh.p@gmail.com", location: "Bhopal, Madhya Pradesh", projectType: "Retail", status: "Lost", stage: "Archived", date: "2026-06-15", priority: "Low", source: "Google Search" },
+        { id: "CLI-2026-0107", name: "Vikram Singh", phone: "+91 91111 22222", email: "vikram.s@outlook.com", location: "Ujjain, Madhya Pradesh", projectType: "Residential", status: "Meeting Done", stage: "Proposal Sent", date: "2026-06-12", priority: "High", source: "Facebook Ad" },
+        { id: "CLI-2026-0106", name: "Divya Sharma", phone: "+91 93000 44444", email: "divya@yahoo.com", location: "Indore, Madhya Pradesh", projectType: "Commercial", status: "Contacted", stage: "Discovery", date: "2026-06-10", priority: "Medium", source: "Website" },
+        { id: "CLI-2026-0105", name: "Amit Mishra", phone: "+91 94066 55555", email: "amit.m@gmail.com", location: "Gwalior, Madhya Pradesh", projectType: "Corporate", status: "Converted", stage: "Project Started", date: "2026-06-08", priority: "High", source: "Walk-In" },
+        { id: "CLI-2026-0104", name: "Kiran Lodhi", phone: "+91 98270 66666", email: "kiran@gmail.com", location: "Bhopal, Madhya Pradesh", projectType: "Retail", status: "Meeting Done", stage: "Negotiation", date: "2026-06-05", priority: "Medium", source: "Cold Call" },
+        { id: "CLI-2026-0103", name: "Deepak Chaurasia", phone: "+91 98935 77777", email: "deepak@chaurasia.co", location: "Jabalpur, Madhya Pradesh", projectType: "Residential", status: "Contacted", stage: "Enquiry", date: "2026-06-02", priority: "Low", source: "Instagram" },
+        { id: "CLI-2026-0102", name: "Pooja Verma", phone: "+91 91790 88888", email: "pooja@yahoo.com", location: "Indore, Madhya Pradesh", projectType: "Commercial", status: "Converted", stage: "Project Started", date: "2026-05-30", priority: "High", source: "Referral" },
+        { id: "CLI-2026-0101", name: "Sunil Dutt", phone: "+91 98263 99999", email: "sunildutt@gmail.com", location: "Bhopal, Madhya Pradesh", projectType: "Corporate", status: "Lost", stage: "Archived", date: "2026-05-28", priority: "High", source: "Website" },
+        { id: "CLI-2026-0100", name: "Shalini Dixit", phone: "+91 98932 11111", email: "shalini@outlook.com", location: "Ujjain, Madhya Pradesh", projectType: "Retail", status: "Meeting Done", stage: "Interested", date: "2026-05-25", priority: "Medium", source: "Facebook Ad" },
+        { id: "CLI-2026-0099", name: "Rakesh Roshan", phone: "+91 94253 22222", email: "rakesh@roshan.com", location: "Bhopal, Madhya Pradesh", projectType: "Residential", status: "Contacted", stage: "Discovery", date: "2026-05-22", priority: "Low", source: "Cold Call" },
+        { id: "CLI-2026-0098", name: "Kirti Azad", phone: "+91 98272 33333", email: "kirti@azad.in", location: "Indore, Madhya Pradesh", projectType: "Commercial", status: "Converted", stage: "Project Started", date: "2026-05-20", priority: "High", source: "Referral" },
+        { id: "CLI-2026-0097", name: "Vijay Mallya", phone: "+91 91111 44444", email: "vijay@ub.com", location: "Gwalior, Madhya Pradesh", projectType: "Corporate", status: "Lost", stage: "Archived", date: "2026-05-18", priority: "High", source: "Google Search" },
+        { id: "CLI-2026-0096", name: "Sanjay Dutt", phone: "+91 93000 55555", email: "sanjay@gmail.com", location: "Jabalpur, Madhya Pradesh", projectType: "Residential", status: "Meeting Done", stage: "Follow-up Due", date: "2026-05-15", priority: "Medium", source: "Walk-In" },
+        { id: "CLI-2026-0095", name: "Pradeep Kumar", phone: "+91 94065 66666", email: "pradeep@gmail.com", location: "Bhopal, Madhya Pradesh", projectType: "Retail", status: "Contacted", stage: "Discovery", date: "2026-05-12", priority: "Low", source: "Instagram" },
+        { id: "CLI-2026-0094", name: "Raman Singh", phone: "+91 98275 77777", email: "raman@yahoo.com", location: "Indore, Madhya Pradesh", projectType: "Residential", status: "Converted", stage: "Project Started", date: "2026-05-09", priority: "High", source: "Referral" },
+        { id: "CLI-2026-0093", name: "Harish Rawat", phone: "+91 98933 88888", email: "harish@rawat.co", location: "Ujjain, Madhya Pradesh", projectType: "Commercial", status: "Lost", stage: "Archived", date: "2026-05-06", priority: "Medium", source: "Cold Call" },
+        { id: "CLI-2026-0092", name: "Geeta Johri", phone: "+91 91795 99999", email: "geeta@johri.org", location: "Bhopal, Madhya Pradesh", projectType: "Corporate", status: "Meeting Done", stage: "Proposal Sent", date: "2026-05-03", priority: "High", source: "Website" },
+        { id: "CLI-2026-0091", name: "Kamal Nath", phone: "+91 98264 11112", email: "kamal@nath.com", location: "Chhindwara, Madhya Pradesh", projectType: "Retail", status: "Contacted", stage: "Discovery", date: "2026-04-30", priority: "Medium", source: "Instagram" },
+        { id: "CLI-2026-0090", name: "Shivraj Chouhan", phone: "+91 98934 22223", email: "shivraj@gmail.com", location: "Bhopal, Madhya Pradesh", projectType: "Residential", status: "Converted", stage: "Project Started", date: "2026-04-27", priority: "High", source: "Referral" },
+        { id: "CLI-2026-0089", name: "Jyotiraditya Scindia", phone: "+91 94254 33334", email: "jyotiraditya@scindia.co", location: "Gwalior, Madhya Pradesh", projectType: "Commercial", status: "Meeting Done", stage: "Negotiation", date: "2026-04-24", priority: "Medium", source: "Website" },
+        { id: "CLI-2026-0088", name: "Digvijaya Singh", phone: "+91 98274 44445", email: "digvijaya@singh.in", location: "Bhopal, Madhya Pradesh", projectType: "Corporate", status: "Contacted", stage: "Enquiry", date: "2026-04-21", priority: "Low", source: "Cold Call" },
+        { id: "CLI-2026-0087", name: "Uma Bharti", phone: "+91 91112 55556", email: "uma@bharti.org", location: "Tikamgarh, Madhya Pradesh", projectType: "Retail", status: "Converted", stage: "Project Started", date: "2026-04-18", priority: "High", source: "Referral" },
+        { id: "CLI-2026-0086", name: "Babulal Gaur", phone: "+91 93001 66667", email: "babulal@gaur.com", location: "Bhopal, Madhya Pradesh", projectType: "Residential", status: "Lost", stage: "Archived", date: "2026-04-15", priority: "Low", source: "Google Search" },
+        { id: "CLI-2026-0085", name: "Kailash Joshi", phone: "+91 94064 77778", email: "kailash@joshi.co", location: "Indore, Madhya Pradesh", projectType: "Commercial", status: "Contacted", stage: "Discovery", date: "2026-04-12", priority: "Medium", source: "Walk-In" },
+        { id: "CLI-2026-0084", name: "Sunderlal Patwa", phone: "+91 98276 88889", email: "sunderlal@patwa.org", location: "Bhopal, Madhya Pradesh", projectType: "Corporate", status: "Converted", stage: "Project Started", date: "2026-04-09", priority: "High", source: "Referral" },
+        { id: "CLI-2026-0083", name: "Virendra Saklecha", phone: "+91 98936 99990", email: "virendra@saklecha.com", location: "Indore, Madhya Pradesh", projectType: "Retail", status: "Meeting Done", stage: "Follow-up Due", date: "2026-04-06", priority: "Medium", source: "Website" },
+        { id: "CLI-2026-0082", name: "Motilal Vora", phone: "+91 91796 11113", email: "motilal@vora.org", location: "Bhopal, Madhya Pradesh", projectType: "Residential", status: "Contacted", stage: "Enquiry", date: "2026-04-03", priority: "Low", source: "Cold Call" },
+        { id: "CLI-2026-0081", name: "Arjun Singh", phone: "+91 98265 22224", email: "arjun@singh.co", location: "Sidhi, Madhya Pradesh", projectType: "Commercial", status: "Converted", stage: "Project Started", date: "2026-03-31", priority: "High", source: "Referral" }
+    ]);
+
+    const [leadsSearchQuery, setLeadsSearchQuery] = useState("");
+    const [leadsSortOption, setLeadsSortOption] = useState("newest");
+    const [leadsStatusFilter, setLeadsStatusFilter] = useState("All Statuses");
+    const [leadsProjectTypeFilter, setLeadsProjectTypeFilter] = useState("All Types");
+    const [leadsLifecycleStageFilter, setLeadsLifecycleStageFilter] = useState("All Stages");
+    const [leadsSourceFilter, setLeadsSourceFilter] = useState("All Sources");
+    const [leadsPriorityFilter, setLeadsPriorityFilter] = useState("All Priorities");
+    const [leadsDatePresetFilter, setLeadsDatePresetFilter] = useState("All Time");
+    const [leadsPage, setLeadsPage] = useState(1);
+
+    const getFilteredAllRegistryLeads = () => {
+        let list = [...allLeadsRegistry];
+
+        // Search match (name, phone, email, location, id)
+        if (leadsSearchQuery.trim()) {
+            const q = leadsSearchQuery.toLowerCase();
+            list = list.filter(l => 
+                l.name.toLowerCase().includes(q) ||
+                l.phone.includes(q) ||
+                l.email.toLowerCase().includes(q) ||
+                l.location.toLowerCase().includes(q) ||
+                l.id.toLowerCase().includes(q)
+            );
+        }
+
+        // Status match
+        if (leadsStatusFilter !== "All Statuses") {
+            list = list.filter(l => l.status === leadsStatusFilter);
+        }
+
+        // Project Type match
+        if (leadsProjectTypeFilter !== "All Types") {
+            list = list.filter(l => l.projectType === leadsProjectTypeFilter);
+        }
+
+        // Lifecycle Stage match
+        if (leadsLifecycleStageFilter !== "All Stages") {
+            list = list.filter(l => l.stage === leadsLifecycleStageFilter);
+        }
+
+        // Source match
+        if (leadsSourceFilter !== "All Sources") {
+            list = list.filter(l => l.source === leadsSourceFilter);
+        }
+
+        // Priority match
+        if (leadsPriorityFilter !== "All Priorities") {
+            list = list.filter(l => l.priority === leadsPriorityFilter);
+        }
+
+        // Date preset range filter
+        if (leadsDatePresetFilter !== "All Time") {
+            const today = new Date();
+            list = list.filter(l => {
+                const leadDate = new Date(l.date);
+                const diffTime = Math.abs(today - leadDate);
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                
+                if (leadsDatePresetFilter === "7-days") return diffDays <= 7;
+                if (leadsDatePresetFilter === "30-days") return diffDays <= 30;
+                if (leadsDatePresetFilter === "90-days") return diffDays <= 90;
+                return true;
+            });
+        }
+
+        // Sorting logic
+        list.sort((a, b) => {
+            if (leadsSortOption === "newest") {
+                return new Date(b.date) - new Date(a.date);
+            }
+            if (leadsSortOption === "oldest") {
+                return new Date(a.date) - new Date(b.date);
+            }
+            if (leadsSortOption === "alpha-asc") {
+                return a.name.localeCompare(b.name);
+            }
+            if (leadsSortOption === "alpha-desc") {
+                return b.name.localeCompare(a.name);
+            }
+            return 0;
+        });
+
+        return list;
+    };
+
+    const getFilteredConvertedLeads = () => {
+        let list = [...convertedLeads];
+
+        // Search filter
+        if (convertedSearchQuery.trim()) {
+            const q = convertedSearchQuery.toLowerCase();
+            list = list.filter(l => 
+                l.name.toLowerCase().includes(q) ||
+                l.phone.includes(q) ||
+                l.projectType.toLowerCase().includes(q) ||
+                l.location.toLowerCase().includes(q) ||
+                l.id.toLowerCase().includes(q)
+            );
+        }
+
+        // Project Type filter
+        if (convertedProjectType !== "All Types") {
+            list = list.filter(l => l.projectType === convertedProjectType);
+        }
+
+        // Date range filter presets
+        if (convertedDatePreset !== "All Time") {
+            const today = new Date();
+            list = list.filter(l => {
+                const leadDate = new Date(l.date);
+                const diffTime = Math.abs(today - leadDate);
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                
+                if (convertedDatePreset === "7-days") return diffDays <= 7;
+                if (convertedDatePreset === "30-days") return diffDays <= 30;
+                if (convertedDatePreset === "90-days") return diffDays <= 90;
+                return true;
+            });
+        }
+
+        // Sorting logic
+        list.sort((a, b) => {
+            if (convertedSortOption === "newest") {
+                return new Date(b.date) - new Date(a.date);
+            }
+            if (convertedSortOption === "oldest") {
+                return new Date(a.date) - new Date(b.date);
+            }
+            if (convertedSortOption === "alpha-asc") {
+                return a.name.localeCompare(b.name);
+            }
+            if (convertedSortOption === "alpha-desc") {
+                return b.name.localeCompare(a.name);
+            }
+            return 0;
+        });
+
+        return list;
+    };
+
     const handleCreateLead = (e) => {
         if (e) e.preventDefault();
         if (!leadForm.name || !leadForm.phone || !leadForm.email) {
@@ -344,6 +617,14 @@ export default function CRMView() {
     const lostCount = leads.filter(l => l.status === "Lost").length;
     const meetingsCount = leads.filter(l => l.status === "Meeting Scheduled").length;
 
+    // Advanced dashboard metrics
+    const activePipelineValue = leads
+        .filter(l => l.status !== "Converted" && l.status !== "Lost")
+        .reduce((acc, curr) => acc + curr.value, 0);
+    const inProgressCount = leads.filter(l => l.status === "Contacted").length;
+    const interestedCount = leads.filter(l => l.status === "Meeting Scheduled").length;
+    const followUpsCount = meetings.filter(m => m.status === "Scheduled").length;
+
     // View metadata builder
     const getViewMetadata = () => {
         switch (view) {
@@ -407,12 +688,12 @@ export default function CRMView() {
             <div className="bg-white border border-slate-200/80 rounded-2xl shadow-[0_1px_3px_rgba(15,23,42,0.01)] hover:shadow-md hover:border-slate-350 transition-all duration-200 flex flex-col relative overflow-hidden group">
                 {/* Thick accent status bar on left */}
                 <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${meeting.status === "Completed"
-                        ? "bg-emerald-500"
-                        : meeting.status === "Cancelled"
-                            ? "bg-rose-500"
-                            : meeting.status === "Rescheduled"
-                                ? "bg-amber-500"
-                                : "bg-indigo-500"
+                    ? "bg-emerald-500"
+                    : meeting.status === "Cancelled"
+                        ? "bg-rose-500"
+                        : meeting.status === "Rescheduled"
+                            ? "bg-amber-500"
+                            : "bg-indigo-500"
                     }`} />
 
                 <div className="p-5 pl-6 space-y-4">
@@ -546,94 +827,240 @@ export default function CRMView() {
         <div className="w-full max-w-none px-4 md:px-6 py-4 space-y-6">
 
             {/* Page Header */}
-            <div className="flex items-start justify-between flex-wrap gap-4">
-                <div>
-                    <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 font-sans">
-                        <span>CRM</span>
-                        <span>/</span>
-                        <span className="text-indigo-650">{meta.title}</span>
+            {view !== "converted" && view !== "lost" && view !== "leads" && (
+                <div className="flex items-start justify-between flex-wrap gap-4">
+                    <div>
+                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 font-sans">
+                            <span>CRM</span>
+                            <span>/</span>
+                            <span className="text-indigo-650">{meta.title}</span>
+                        </div>
+                        <h1 className="text-2xl font-bold font-display text-slate-900 tracking-tight">
+                            {meta.title}
+                        </h1>
+                        <p className="text-slate-500 text-xs mt-0.5 leading-relaxed font-sans">
+                            {meta.subtitle}
+                        </p>
                     </div>
-                    <h1 className="text-2xl font-bold font-display text-slate-900 tracking-tight">
-                        {meta.title}
-                    </h1>
-                    <p className="text-slate-500 text-xs mt-0.5 leading-relaxed font-sans">
-                        {meta.subtitle}
-                    </p>
-                </div>
-                {view === "meetings" && (
-                    <div className="flex items-center gap-3">
-                        {/* Calendar / List Toggle Group */}
-                        <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
+                    {view === "dashboard" && (
+                        <div className="flex flex-wrap items-center gap-3">
+                            {/* Time Range Selector */}
+                            <div className="relative">
+                                <select
+                                    className="appearance-none bg-white border border-slate-200 text-slate-700 text-xs font-semibold px-4 pr-9 py-2 rounded-xl focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 transition-all cursor-pointer shadow-sm h-10"
+                                    defaultValue="30-days"
+                                >
+                                    <option value="7-days">Last 7 Days</option>
+                                    <option value="30-days">Last 30 Days</option>
+                                    <option value="this-month">This Month</option>
+                                    <option value="last-quarter">Last Quarter</option>
+                                </select>
+                                <FiChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={14} />
+                            </div>
+
+                            {/* Custom Range Button */}
                             <button
                                 type="button"
-                                onClick={() => setLayoutMode("calendar")}
-                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${layoutMode === "calendar"
-                                        ? "bg-white text-indigo-600 shadow-sm"
-                                        : "text-slate-550 hover:text-slate-800"
-                                    }`}
+                                className="flex items-center gap-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-750 text-xs font-semibold px-4 py-2 rounded-xl shadow-sm transition h-10 cursor-pointer"
                             >
-                                <FiCalendar size={13} />
-                                <span>Calendar</span>
+                                <FiCalendar size={14} className="text-slate-400" />
+                                <span>Custom Range</span>
                             </button>
+
+                            {/* Refresh Button */}
                             <button
                                 type="button"
-                                onClick={() => setLayoutMode("list")}
-                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${layoutMode === "list"
-                                        ? "bg-white text-indigo-600 shadow-sm"
-                                        : "text-slate-550 hover:text-slate-800"
-                                    }`}
+                                onClick={() => {
+                                    showToast("CRM dashboard data refreshed.", "success");
+                                }}
+                                className="flex items-center justify-center border border-slate-200 bg-white hover:bg-slate-50 text-slate-750 p-2.5 rounded-xl shadow-sm transition h-10 w-10 cursor-pointer"
+                                title="Refresh Data"
                             >
-                                <FiList size={13} />
-                                <span>List</span>
+                                <FiRefreshCw size={14} className="text-slate-400 hover:text-slate-750 transition" />
+                            </button>
+
+                            {/* Ask AI Button */}
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    showToast("Analyzing pipeline with CRM AI Copilot...", "info");
+                                }}
+                                className="flex items-center gap-1.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-xl text-xs font-semibold px-4 py-2 shadow-md shadow-indigo-600/10 hover:shadow-lg transition-all h-10 border-0 cursor-pointer"
+                            >
+                                <FiZap size={14} />
+                                <span>Ask AI</span>
                             </button>
                         </div>
+                    )}
+                    {view === "meetings" && (
+                        <div className="flex items-center gap-3">
+                            {/* Calendar / List Toggle Group */}
+                            <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
+                                <button
+                                    type="button"
+                                    onClick={() => setLayoutMode("calendar")}
+                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${layoutMode === "calendar"
+                                        ? "bg-white text-indigo-600 shadow-sm"
+                                        : "text-slate-550 hover:text-slate-800"
+                                        }`}
+                                >
+                                    <FiCalendar size={13} />
+                                    <span>Calendar</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setLayoutMode("list")}
+                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${layoutMode === "list"
+                                        ? "bg-white text-indigo-600 shadow-sm"
+                                        : "text-slate-550 hover:text-slate-800"
+                                        }`}
+                                >
+                                    <FiList size={13} />
+                                    <span>List</span>
+                                </button>
+                            </div>
 
-                        {/* Schedule Meeting CTA */}
+                            {/* Schedule Meeting CTA */}
+                            <button
+                                type="button"
+                                onClick={() => setIsScheduleModalOpen(true)}
+                                className="flex items-center gap-1.5 h-10 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-md shadow-indigo-600/10 hover:shadow-lg transition-all border-0 cursor-pointer"
+                            >
+                                <FiPlus size={14} />
+                                <span>Schedule Meeting</span>
+                            </button>
+                        </div>
+                    )}
+                    {view === "create-lead" && (
                         <button
-                            type="button"
-                            onClick={() => setIsScheduleModalOpen(true)}
-                            className="flex items-center gap-1.5 h-10 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-md shadow-indigo-600/10 hover:shadow-lg transition-all border-0 cursor-pointer"
+                            onClick={handleReset}
+                            className="text-xs text-slate-400 hover:text-rose-500 font-medium transition-colors flex items-center gap-1.5 py-1.5 px-3 rounded-lg hover:bg-rose-50 border border-transparent hover:border-rose-100"
                         >
-                            <FiPlus size={14} />
-                            <span>Schedule Meeting</span>
+                            <FiX size={11} />
+                            Clear Form
                         </button>
-                    </div>
-                )}
-                {view === "create-lead" && (
-                    <button
-                        onClick={handleReset}
-                        className="text-xs text-slate-400 hover:text-rose-500 font-medium transition-colors flex items-center gap-1.5 py-1.5 px-3 rounded-lg hover:bg-rose-50 border border-transparent hover:border-rose-100"
-                    >
-                        <FiX size={11} />
-                        Clear Form
-                    </button>
-                )}
-            </div>
-
-            {/* Metrics Row (not shown in create form or meetings view to match full-width reference design) */}
-            {view !== "create-lead" && view !== "meetings" && (
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div className="bg-white border border-slate-200/80 p-4 rounded-2xl shadow-[0_1px_3px_rgba(15,23,42,0.01)] flex flex-col gap-1.5">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Value</span>
-                        <p className="text-2xl font-extrabold text-slate-800 tracking-tight font-display">
-                            ${totalValue.toLocaleString()}
-                        </p>
-                    </div>
-                    <div className="bg-white border border-slate-200/80 p-4 rounded-2xl shadow-[0_1px_3px_rgba(15,23,42,0.01)] flex flex-col gap-1.5">
-                        <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-wider">Converted Deals</span>
-                        <p className="text-2xl font-extrabold text-slate-800 tracking-tight font-display">{convertedCount}</p>
-                    </div>
-                    <div className="bg-white border border-slate-200/80 p-4 rounded-2xl shadow-[0_1px_3px_rgba(15,23,42,0.01)] flex flex-col gap-1.5">
-                        <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider">Meetings</span>
-                        <p className="text-2xl font-extrabold text-slate-800 tracking-tight font-display">{meetingsCount}</p>
-                    </div>
-                    <div className="bg-white border border-slate-200/80 p-4 rounded-2xl shadow-[0_1px_3px_rgba(15,23,42,0.01)] flex flex-col gap-1.5">
-                        <span className="text-[10px] font-bold text-rose-500 uppercase tracking-wider">Lost Ratio</span>
-                        <p className="text-2xl font-extrabold text-slate-800 tracking-tight font-display">
-                            {totalLeads > 0 ? Math.round((lostCount / totalLeads) * 100) : 0}%
-                        </p>
-                    </div>
+                    )}
                 </div>
+            )}
+
+            {/* Metrics Row (only shown on dashboard view) */}
+            {view === "dashboard" && (
+                /* Redesigned 5-Column Main KPI Grid */
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                        {/* 1. Total Leads */}
+                        <div className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between h-[120px] relative overflow-hidden group">
+                            <div className="flex justify-between items-start">
+                                <div className="space-y-0.5">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Leads</span>
+                                    <p className="text-2xl font-extrabold text-slate-800 tracking-tight font-display">{totalLeads}</p>
+                                </div>
+                                <div className="p-2.5 bg-indigo-50 border border-indigo-100/50 rounded-xl text-indigo-600">
+                                    <FiUser size={16} />
+                                </div>
+                            </div>
+                            <div className="flex items-center justify-between mt-2.5">
+                                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-lg flex items-center gap-0.5">
+                                    <FiTrendingUp size={11} />
+                                    <span>+8.4%</span>
+                                </span>
+                                <svg className="w-16 h-8 text-indigo-500 stroke-2 opacity-80 group-hover:opacity-100 transition-opacity" viewBox="0 0 100 30" fill="none">
+                                    <path d="M0,25 Q15,5 30,20 T60,10 T90,25 T100,5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                            </div>
+                        </div>
+
+                        {/* 2. Active Pipeline */}
+                        <div className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between h-[120px] relative overflow-hidden group">
+                            <div className="flex justify-between items-start">
+                                <div className="space-y-0.5">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Active Pipeline</span>
+                                    <p className="text-2xl font-extrabold text-slate-800 tracking-tight font-display">${activePipelineValue.toLocaleString()}</p>
+                                </div>
+                                <div className="p-2.5 bg-purple-50 border border-purple-100/50 rounded-xl text-purple-600">
+                                    <FiDollarSign size={16} />
+                                </div>
+                            </div>
+                            <div className="flex items-center justify-between mt-2.5">
+                                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-lg flex items-center gap-0.5">
+                                    <FiTrendingUp size={11} />
+                                    <span>+12.1%</span>
+                                </span>
+                                <svg className="w-16 h-8 text-purple-500 stroke-2 opacity-80 group-hover:opacity-100 transition-opacity" viewBox="0 0 100 30" fill="none">
+                                    <path d="M0,20 Q15,25 30,10 T60,25 T90,5 T100,15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                            </div>
+                        </div>
+
+                        {/* 3. Conversion Rate */}
+                        <div className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between h-[120px] relative overflow-hidden group">
+                            <div className="flex justify-between items-start">
+                                <div className="space-y-0.5">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Conversion Rate</span>
+                                    <p className="text-2xl font-extrabold text-slate-800 tracking-tight font-display">
+                                        {totalLeads > 0 ? ((convertedCount / totalLeads) * 100).toFixed(1) : 0}%
+                                    </p>
+                                </div>
+                                <div className="p-2.5 bg-emerald-50 border border-emerald-100/50 rounded-xl text-emerald-600">
+                                    <FiCheckCircle size={16} />
+                                </div>
+                            </div>
+                            <div className="flex items-center justify-between mt-2.5">
+                                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-lg flex items-center gap-0.5">
+                                    <FiTrendingUp size={11} />
+                                    <span>+2.1%</span>
+                                </span>
+                                <svg className="w-16 h-8 text-emerald-500 stroke-2 opacity-80 group-hover:opacity-100 transition-opacity" viewBox="0 0 100 30" fill="none">
+                                    <path d="M0,25 Q15,20 30,5 T60,15 T90,5 T100,2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                            </div>
+                        </div>
+
+                        {/* 4. Lost Rate */}
+                        <div className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between h-[120px] relative overflow-hidden group">
+                            <div className="flex justify-between items-start">
+                                <div className="space-y-0.5">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Lost Rate</span>
+                                    <p className="text-2xl font-extrabold text-slate-800 tracking-tight font-display">
+                                        {totalLeads > 0 ? ((lostCount / totalLeads) * 100).toFixed(1) : 0}%
+                                    </p>
+                                </div>
+                                <div className="p-2.5 bg-rose-50 border border-rose-100/50 rounded-xl text-rose-600">
+                                    <FiXCircle size={16} />
+                                </div>
+                            </div>
+                            <div className="flex items-center justify-between mt-2.5">
+                                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-lg flex items-center gap-0.5">
+                                    <FiTrendingDown size={11} className="rotate-180" />
+                                    <span>-0.5%</span>
+                                </span>
+                                <svg className="w-16 h-8 text-rose-500 stroke-2 opacity-80 group-hover:opacity-100 transition-opacity" viewBox="0 0 100 30" fill="none">
+                                    <path d="M0,5 Q15,10 30,25 T60,5 T90,20 T100,25" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                            </div>
+                        </div>
+
+                        {/* 5. Avg Deal Cycle */}
+                        <div className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between h-[120px] relative overflow-hidden group">
+                            <div className="flex justify-between items-start">
+                                <div className="space-y-0.5">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Avg Deal Cycle</span>
+                                    <p className="text-2xl font-extrabold text-slate-800 tracking-tight font-display">18.4 Days</p>
+                                </div>
+                                <div className="p-2.5 bg-sky-50 border border-sky-100/50 rounded-xl text-sky-600">
+                                    <FiClock size={16} />
+                                </div>
+                            </div>
+                            <div className="flex items-center justify-between mt-2.5">
+                                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-lg flex items-center gap-0.5">
+                                    <FiTrendingDown size={11} className="rotate-180" />
+                                    <span>-1.2%</span>
+                                </span>
+                                <svg className="w-16 h-8 text-sky-500 stroke-2 opacity-80 group-hover:opacity-100 transition-opacity" viewBox="0 0 100 30" fill="none">
+                                    <path d="M0,20 Q15,10 30,15 T60,25 T90,5 T100,10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                            </div>
+                        </div>
+                    </div>
             )}
 
             {/* Main Interactive Views */}
@@ -880,81 +1307,457 @@ export default function CRMView() {
                     </div>
                 </form>
             ) : view === "dashboard" ? (
-                /* Dashboard Analytics & Summary Lists */
-                <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
-                    {/* Pipeline Summary Column */}
-                    <div className="xl:col-span-2 space-y-5">
-                        <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm space-y-4">
-                            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
-                                <h3 className="text-sm font-bold text-slate-800 font-display">Sales Funnel Progress</h3>
-                                <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md">Live Status</span>
+                /* Redesigned Dashboard Analytics & Summary Lists */
+                <div className="space-y-6">
+                    {/* Second Analytics Row: CRM Stage Cards (Moved here to align with Row 1 Metrics) */}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+                        {/* 1. In Progress */}
+                        <div className="bg-white border border-slate-200/80 p-4 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between">
+                            <div>
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">In Progress</span>
+                                <h4 className="text-xl font-extrabold text-slate-800 tracking-tight font-display mt-1">{inProgressCount}</h4>
                             </div>
+                            <span className="text-[10px] text-blue-600 bg-blue-50 border border-blue-100/50 px-1.5 py-0.5 rounded-lg font-semibold mt-3 self-start">
+                                Contacted Stage
+                            </span>
+                        </div>
 
-                            <div className="space-y-4 pt-1 font-sans text-xs">
+                        {/* 2. Interested */}
+                        <div className="bg-white border border-slate-200/80 p-4 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between">
+                            <div>
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Interested</span>
+                                <h4 className="text-xl font-extrabold text-slate-800 tracking-tight font-display mt-1">{interestedCount}</h4>
+                            </div>
+                            <span className="text-[10px] text-indigo-600 bg-indigo-50 border border-indigo-100/50 px-1.5 py-0.5 rounded-lg font-semibold mt-3 self-start">
+                                Demos Slated
+                            </span>
+                        </div>
+
+                        {/* 3. Follow-Ups */}
+                        <div className="bg-white border border-slate-200/80 p-4 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between">
+                            <div>
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Follow-Ups</span>
+                                <h4 className="text-xl font-extrabold text-slate-800 tracking-tight font-display mt-1">{followUpsCount}</h4>
+                            </div>
+                            <span className="text-[10px] text-purple-600 bg-purple-50 border border-purple-100/50 px-1.5 py-0.5 rounded-lg font-semibold mt-3 self-start">
+                                Pending Action
+                            </span>
+                        </div>
+
+                        {/* 4. Converted */}
+                        <div className="bg-white border border-slate-200/80 p-4 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between">
+                            <div>
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Converted</span>
+                                <h4 className="text-xl font-extrabold text-slate-800 tracking-tight font-display mt-1">{convertedCount}</h4>
+                            </div>
+                            <span className="text-[10px] text-emerald-600 bg-emerald-50 border border-emerald-100/50 px-1.5 py-0.5 rounded-lg font-semibold mt-3 self-start">
+                                Won Contracts
+                            </span>
+                        </div>
+
+                        {/* 5. Lost Leads */}
+                        <div className="bg-white border border-slate-200/80 p-4 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between">
+                            <div>
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Lost Leads</span>
+                                <h4 className="text-xl font-extrabold text-slate-800 tracking-tight font-display mt-1">{lostCount}</h4>
+                            </div>
+                            <span className="text-[10px] text-rose-600 bg-rose-50 border border-rose-100/50 px-1.5 py-0.5 rounded-lg font-semibold mt-3 self-start">
+                                Archived Leads
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* New Analytics Trend & Lead Sources Section */}
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 animate-fade-in">
+                        {/* Lead Acquisition Trend (70% width) */}
+                        <div className="lg:col-span-2 bg-white border border-slate-200 p-5 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 flex flex-col gap-4">
+                            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
                                 <div>
-                                    <div className="flex justify-between text-slate-600 mb-1.5 font-semibold">
-                                        <span>Demos Scheduled</span>
-                                        <span>{meetingsCount} Leads</span>
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="text-sm font-bold text-slate-800 font-display">Lead Acquisition Trend</h3>
+                                        <span className="text-[10px] font-bold text-indigo-650 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-150">
+                                            131 Leads
+                                        </span>
                                     </div>
-                                    <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                                        <div className="bg-indigo-500 h-full rounded-full" style={{ width: `${(meetingsCount / totalLeads) * 100}%` }}></div>
-                                    </div>
+                                    <p className="text-[10px] text-slate-400 font-sans mt-0.5">Monthly registration rate over the last 6 months</p>
                                 </div>
-                                <div>
-                                    <div className="flex justify-between text-slate-600 mb-1.5 font-semibold">
-                                        <span>Won / Converted Contract value</span>
-                                        <span>{convertedCount} Won</span>
-                                    </div>
-                                    <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                                        <div className="bg-emerald-500 h-full rounded-full" style={{ width: `${(convertedCount / totalLeads) * 100}%` }}></div>
-                                    </div>
-                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => showToast("Navigating to all leads...", "info")}
+                                    className="text-[11px] font-bold text-indigo-600 hover:text-indigo-700 transition cursor-pointer border-0 bg-transparent"
+                                >
+                                    All Leads
+                                </button>
+                            </div>
+                            <div className="w-full">
+                                <svg className="w-full h-[200px]" viewBox="0 0 500 200">
+                                    <defs>
+                                        <linearGradient id="trend-gradient" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="0%" stopColor="#4f46e5" stopOpacity="0.2" />
+                                            <stop offset="100%" stopColor="#4f46e5" stopOpacity="0.0" />
+                                        </linearGradient>
+                                    </defs>
+                                    {/* Grid lines */}
+                                    <line x1="40" y1="170" x2="480" y2="170" stroke="#f1f5f9" strokeWidth="1" />
+                                    <line x1="40" y1="140" x2="480" y2="140" stroke="#f1f5f9" strokeWidth="1" strokeDasharray="3 3" />
+                                    <line x1="40" y1="110" x2="480" y2="110" stroke="#f1f5f9" strokeWidth="1" strokeDasharray="3 3" />
+                                    <line x1="40" y1="80" x2="480" y2="80" stroke="#f1f5f9" strokeWidth="1" strokeDasharray="3 3" />
+                                    <line x1="40" y1="50" x2="480" y2="50" stroke="#f1f5f9" strokeWidth="1" strokeDasharray="3 3" />
+                                    <line x1="40" y1="20" x2="480" y2="20" stroke="#f1f5f9" strokeWidth="1" strokeDasharray="3 3" />
+
+                                    {/* Area fill */}
+                                    <path
+                                        d="M40,134 L128,113 L216,125 L304,74 L392,95 L480,56 L480,170 L40,170 Z"
+                                        fill="url(#trend-gradient)"
+                                    />
+
+                                    {/* Line path */}
+                                    <path
+                                        d="M40,134 L128,113 L216,125 L304,74 L392,95 L480,56"
+                                        fill="none"
+                                        stroke="#4f46e5"
+                                        strokeWidth="2.5"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                    />
+
+                                    {/* Data point markers */}
+                                    <circle cx="40" cy="134" r="4" fill="#ffffff" stroke="#4f46e5" strokeWidth="2" />
+                                    <circle cx="128" cy="113" r="4" fill="#ffffff" stroke="#4f46e5" strokeWidth="2" />
+                                    <circle cx="216" cy="125" r="4" fill="#ffffff" stroke="#4f46e5" strokeWidth="2" />
+                                    <circle cx="304" cy="74" r="4" fill="#ffffff" stroke="#4f46e5" strokeWidth="2" />
+                                    <circle cx="392" cy="95" r="4" fill="#ffffff" stroke="#4f46e5" strokeWidth="2" />
+                                    <circle cx="480" cy="56" r="4" fill="#ffffff" stroke="#4f46e5" strokeWidth="2" />
+
+                                    {/* X-axis Month labels */}
+                                    <text x="40" y="190" textAnchor="middle" className="text-[10px] fill-slate-400 font-sans font-semibold">Jan</text>
+                                    <text x="128" y="190" textAnchor="middle" className="text-[10px] fill-slate-400 font-sans font-semibold">Feb</text>
+                                    <text x="216" y="190" textAnchor="middle" className="text-[10px] fill-slate-400 font-sans font-semibold">Mar</text>
+                                    <text x="304" y="190" textAnchor="middle" className="text-[10px] fill-slate-400 font-sans font-semibold">Apr</text>
+                                    <text x="392" y="190" textAnchor="middle" className="text-[10px] fill-slate-400 font-sans font-semibold">May</text>
+                                    <text x="480" y="190" textAnchor="middle" className="text-[10px] fill-slate-400 font-sans font-semibold">Jun</text>
+
+                                    {/* Y-axis labels */}
+                                    <text x="30" y="174" textAnchor="end" className="text-[10px] fill-slate-400 font-sans font-semibold">0</text>
+                                    <text x="30" y="144" textAnchor="end" className="text-[10px] fill-slate-400 font-sans font-semibold">10</text>
+                                    <text x="30" y="114" textAnchor="end" className="text-[10px] fill-slate-400 font-sans font-semibold">20</text>
+                                    <text x="30" y="84" textAnchor="end" className="text-[10px] fill-slate-400 font-sans font-semibold">30</text>
+                                    <text x="30" y="54" textAnchor="end" className="text-[10px] fill-slate-400 font-sans font-semibold">40</text>
+                                    <text x="30" y="24" textAnchor="end" className="text-[10px] fill-slate-400 font-sans font-semibold">50</text>
+                                </svg>
                             </div>
                         </div>
 
-                        {/* Recent Leads in Dashboard */}
-                        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5 space-y-4">
-                            <h3 className="text-sm font-bold text-slate-800 font-display">Active Pipeline Items</h3>
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-left border-collapse text-xs">
-                                    <thead>
-                                        <tr className="border-b border-slate-100 text-slate-400 font-bold uppercase tracking-wider">
-                                            <th className="pb-3 pr-4">Company</th>
-                                            <th className="pb-3 pr-4">Contact</th>
-                                            <th className="pb-3 pr-4">Deal Value</th>
-                                            <th className="pb-3">Status</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-100 text-slate-700 font-medium">
-                                        {leads.slice(0, 4).map((l) => (
-                                            <tr key={l.id} className="hover:bg-slate-50/50">
-                                                <td className="py-3 pr-4 font-bold text-slate-900">{l.name}</td>
-                                                <td className="py-3 pr-4">{l.contact}</td>
-                                                <td className="py-3 pr-4">${l.value.toLocaleString()}</td>
-                                                <td className="py-3">
-                                                    <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border uppercase ${l.status === "Converted"
-                                                            ? "bg-emerald-50 text-emerald-700 border-emerald-100"
-                                                            : l.status === "Lost"
-                                                                ? "bg-rose-50 text-rose-700 border-rose-100"
-                                                                : "bg-indigo-50 text-indigo-700 border-indigo-100"
-                                                        }`}>
-                                                        {l.status}
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
+                        {/* Lead Sources (30% width) */}
+                        <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 flex flex-col gap-4">
+                            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="text-sm font-bold text-slate-800 font-display">Lead Sources</h3>
+                                        <span className="text-[9px] font-bold text-emerald-650 bg-emerald-50 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                                            Active
+                                        </span>
+                                    </div>
+                                    <p className="text-[10px] text-slate-400 font-sans mt-0.5">Top performing customer acquisition paths</p>
+                                </div>
+                            </div>
+
+                            {/* Chart representation */}
+                            <div className="flex justify-center py-2 relative">
+                                <svg className="w-36 h-36 transform -rotate-90" viewBox="0 0 36 36">
+                                    {/* Base circle background */}
+                                    <circle cx="18" cy="18" r="15.9155" fill="none" stroke="#f1f5f9" strokeWidth="3" />
+                                    {/* Website (35%) */}
+                                    <circle cx="18" cy="18" r="15.9155" fill="none" stroke="#4f46e5" strokeWidth="3.2" strokeDasharray="35 100" strokeDashoffset="0" />
+                                    {/* LinkedIn (25%) */}
+                                    <circle cx="18" cy="18" r="15.9155" fill="none" stroke="#a855f7" strokeWidth="3.2" strokeDasharray="25 100" strokeDashoffset="-35" />
+                                    {/* Referral (15%) */}
+                                    <circle cx="18" cy="18" r="15.9155" fill="none" stroke="#0ea5e9" strokeWidth="3.2" strokeDasharray="15 100" strokeDashoffset="-60" />
+                                    {/* Instagram (12%) */}
+                                    <circle cx="18" cy="18" r="15.9155" fill="none" stroke="#10b981" strokeWidth="3.2" strokeDasharray="12 100" strokeDashoffset="-75" />
+                                    {/* WhatsApp (8%) */}
+                                    <circle cx="18" cy="18" r="15.9155" fill="none" stroke="#14b8a6" strokeWidth="3.2" strokeDasharray="8 100" strokeDashoffset="-87" />
+                                    {/* Cold Outreach (5%) */}
+                                    <circle cx="18" cy="18" r="15.9155" fill="none" stroke="#64748b" strokeWidth="3.2" strokeDasharray="5 100" strokeDashoffset="-95" />
+                                </svg>
+                                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                                    <span className="text-base font-extrabold text-slate-800 font-display">100 Leads</span>
+                                    <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">Total Channels</span>
+                                </div>
+                            </div>
+
+                            {/* Legend section */}
+                            <div className="grid grid-cols-2 gap-2 text-[10px] font-sans font-semibold text-slate-600 mt-2 border-t border-slate-50 pt-3">
+                                <div className="flex items-center gap-1.5">
+                                    <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 shrink-0"></span>
+                                    <span>Website: 35% (35)</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                    <span className="w-2.5 h-2.5 rounded-full bg-purple-500 shrink-0"></span>
+                                    <span>LinkedIn: 25% (25)</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                    <span className="w-2.5 h-2.5 rounded-full bg-sky-500 shrink-0"></span>
+                                    <span>Referral: 15% (15)</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0"></span>
+                                    <span>Instagram: 12% (12)</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                    <span className="w-2.5 h-2.5 rounded-full bg-teal-500 shrink-0"></span>
+                                    <span>WhatsApp: 8% (8)</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                    <span className="w-2.5 h-2.5 rounded-full bg-slate-500 shrink-0"></span>
+                                    <span>Outreach: 5% (5)</span>
+                                </div>
                             </div>
                         </div>
                     </div>
 
-                    {/* Sidebar widgets inside CRM dashboard */}
-                    <div className="space-y-5">
-                        <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm space-y-4">
-                            <h3 className="text-sm font-bold text-slate-800 font-display">Campaign Tips</h3>
-                            <div className="p-3 bg-amber-50 rounded-xl border border-amber-100 text-xs text-amber-800 font-medium leading-relaxed font-sans">
-                                Keep follow-up schedules under 48 hours for leads marked as 'Meeting Scheduled' to double conversion velocities.
+                    {/* Hot Leads & Follow-ups Section */}
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mt-6 animate-fade-in">
+                        {/* Hot Leads Panel */}
+                        <div className="rounded-3xl border border-slate-200 bg-white shadow-sm p-6 flex flex-col gap-5 hover:shadow-md transition-all duration-200">
+                            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <FiZap className="text-rose-500" size={16} />
+                                        <h3 className="text-sm font-bold text-slate-800 font-display">Hot Leads</h3>
+                                    </div>
+                                    <p className="text-[10px] text-slate-400 font-sans mt-0.5">High potential customers requiring attention</p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => showToast("Viewing all hot leads...", "info")}
+                                    className="text-[11px] font-bold text-indigo-655 hover:text-indigo-800 transition cursor-pointer border-0 bg-transparent"
+                                >
+                                    View All
+                                </button>
+                            </div>
+
+                            {/* Hot Leads list */}
+                            <div className="flex flex-col gap-3">
+                                {[
+                                    { name: "Aarav Mehta", initials: "AM", priority: "High", stage: "Proposal Review", industry: "Real Estate", location: "Mumbai", phone: "+91 98200 12345", active: "5m ago" },
+                                    { name: "Priya Sharma", initials: "PS", priority: "Medium", stage: "Meeting Scheduled", industry: "SaaS Tech", location: "Bangalore", phone: "+91 80456 78901", active: "1h ago" },
+                                    { name: "Rohan Verma", initials: "RV", priority: "High", stage: "Contract Draft", industry: "Finance", location: "Delhi NCR", phone: "+91 99100 98765", active: "12m ago" },
+                                    { name: "Kavya Nair", initials: "KN", priority: "Low", stage: "Initial Inquiry", industry: "Healthcare", location: "Chennai", phone: "+91 44234 56789", active: "2h ago" },
+                                    { name: "Aditya Joshi", initials: "AJ", priority: "Medium", stage: "Demo Completed", industry: "E-Commerce", location: "Pune", phone: "+91 20567 89012", active: "45m ago" }
+                                ].map((lead, idx) => {
+                                    const priorityColors = {
+                                        High: "bg-rose-50 text-rose-700 border-rose-100",
+                                        Medium: "bg-amber-50 text-amber-700 border-amber-100",
+                                        Low: "bg-emerald-50 text-emerald-700 border-emerald-100"
+                                    };
+                                    return (
+                                        <div key={idx} className="flex items-center justify-between p-3.5 rounded-2xl border border-slate-100 hover:border-slate-200 hover:bg-slate-50/30 transition-all duration-150 gap-4 group">
+                                            <div className="flex items-center gap-3 min-w-0">
+                                                <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-650 border border-indigo-100/50 flex items-center justify-center font-bold text-xs shrink-0 group-hover:scale-105 transition-transform">
+                                                    {lead.initials}
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <h4 className="text-xs font-bold text-slate-800 tracking-tight truncate">{lead.name}</h4>
+                                                    <div className="flex items-center gap-1.5 flex-wrap text-[10px] text-slate-450 mt-1 font-medium font-sans">
+                                                        <span>{lead.stage}</span>
+                                                        <span>•</span>
+                                                        <span>{lead.industry}</span>
+                                                        <span>•</span>
+                                                        <span>{lead.location}</span>
+                                                    </div>
+                                                    <div className="text-[9px] text-slate-400 font-sans mt-0.5 flex items-center gap-2">
+                                                        <span>{lead.phone}</span>
+                                                        <span>|</span>
+                                                        <span>{lead.active}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <span className={`px-2 py-0.5 rounded-lg text-[9px] font-bold border uppercase tracking-wider shrink-0 ${priorityColors[lead.priority]}`}>
+                                                {lead.priority}
+                                            </span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        {/* Follow-ups Panel */}
+                        <div className="rounded-3xl border border-slate-200 bg-white shadow-sm p-6 flex flex-col gap-5 hover:shadow-md transition-all duration-200">
+                            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <FiCalendar className="text-indigo-500" size={16} />
+                                        <h3 className="text-sm font-bold text-slate-800 font-display">Follow-ups</h3>
+                                    </div>
+                                    <p className="text-[10px] text-slate-400 font-sans mt-0.5">Upcoming and overdue customer follow-ups</p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => showToast("Viewing all follow-ups...", "info")}
+                                    className="text-[11px] font-bold text-indigo-655 hover:text-indigo-800 transition cursor-pointer border-0 bg-transparent"
+                                >
+                                    View All
+                                </button>
+                            </div>
+
+                            {/* Follow-ups list */}
+                            <div className="flex flex-col gap-3">
+                                {[
+                                    { customer: "Aarav Mehta", tag: "Overdue", note: "Follow up on demo feedback and answer custom API integration queries.", time: "Yesterday at 4:30 PM" },
+                                    { customer: "Rohan Verma", tag: "Today", note: "Send revised pricing table and SLAs before EOD.", time: "Today at 2:00 PM" },
+                                    { customer: "Priya Sharma", tag: "Tomorrow", note: "Brief meeting to review NDA revisions and legal sign-off timeline.", time: "Tomorrow at 11:30 AM" },
+                                    { customer: "Aditya Joshi", tag: "Scheduled", note: "Discuss volume discount options for enterprise tier subscription.", time: "Jul 2, 2026 at 3:00 PM" },
+                                    { customer: "Kavya Nair", tag: "Scheduled", note: "Initial kickoff session with customer success and dev leads.", time: "Jul 5, 2026 at 10:00 AM" }
+                                ].map((task, idx) => {
+                                    const tagColors = {
+                                        Today: "bg-blue-50 text-blue-700 border-blue-100",
+                                        Tomorrow: "bg-indigo-50 text-indigo-700 border-indigo-100",
+                                        Overdue: "bg-rose-50 text-rose-700 border-rose-100",
+                                        Scheduled: "bg-emerald-50 text-emerald-700 border-emerald-100"
+                                    };
+                                    return (
+                                        <div key={idx} className="flex flex-col p-3.5 rounded-2xl border border-slate-100 hover:border-slate-200 hover:bg-slate-50/30 transition-all duration-150 gap-2 font-sans">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <h4 className="text-xs font-bold text-slate-800 leading-snug truncate">{task.customer}</h4>
+                                                <span className={`px-2 py-0.5 rounded-lg text-[9px] font-bold border uppercase tracking-wider shrink-0 ${tagColors[task.tag]}`}>
+                                                    {task.tag}
+                                                </span>
+                                            </div>
+                                            <p className="text-[10px] text-slate-500 font-medium leading-relaxed font-sans mt-0.5">
+                                                {task.note}
+                                            </p>
+                                            <div className="flex items-center justify-between text-[9px] text-slate-400 font-medium border-t border-slate-100/50 pt-2 mt-1">
+                                                <span className="flex items-center gap-1.5">
+                                                    <FiClock size={11} className="text-slate-350" />
+                                                    <span>{task.time}</span>
+                                                </span>
+                                                <FiCalendar size={11} className="text-slate-350 hover:text-indigo-600 transition cursor-pointer" />
+                                            </div>
+                                    </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Sales Funnel & Project Type Mix Section */}
+                    <div className="grid grid-cols-1 xl:grid-cols-[2fr_1fr] gap-6 mt-6 animate-fade-in">
+                        {/* Sales Funnel Card */}
+                        <div className="rounded-[28px] border border-slate-200 bg-white shadow-sm p-6 flex flex-col gap-5 hover:shadow-md transition-all duration-200">
+                            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-100/50 flex items-center justify-center shrink-0">
+                                        <FiSliders size={15} />
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <h3 className="text-sm font-bold text-slate-800 font-display">Sales Funnel</h3>
+                                            <span className="text-[9px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                                                CURRENT
+                                            </span>
+                                        </div>
+                                        <p className="text-[10px] text-slate-400 font-sans mt-0.5">Lifecycle stage flow & drop-off</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => showToast("Viewing full pipeline...", "info")}
+                                        className="text-[11px] font-bold text-indigo-600 hover:text-indigo-850 transition cursor-pointer border-0 bg-transparent flex items-center gap-0.5"
+                                    >
+                                        Pipeline &gt;
+                                    </button>
+                                    <FiInfo size={14} className="text-slate-400 cursor-pointer hover:text-indigo-600 transition" />
+                                </div>
+                            </div>
+
+                            {/* Funnel bars visualization */}
+                            <div className="flex flex-col gap-2 pt-1 font-sans text-xs">
+                                {[
+                                    { key: "ENQUIRY", count: 60, pct: "100%", conv: "↘ 70.0% CONVERSION", width: "100%", color: "bg-blue-500" },
+                                    { key: "MEETING", count: 42, pct: "70%", conv: "↘ 66.7% CONVERSION", width: "70%", color: "bg-teal-500" },
+                                    { key: "INTERESTED", count: 28, pct: "47%", conv: "↘ 64.3% CONVERSION", width: "47%", color: "bg-amber-400" },
+                                    { key: "PROPOSAL", count: 18, pct: "30%", conv: "↘ 66.7% CONVERSION", width: "30%", color: "bg-orange-400" },
+                                    { key: "ADVANCE", count: 12, pct: "20%", conv: "↘ 75.0% CONVERSION", width: "20%", color: "bg-purple-500" },
+                                    { key: "CONVERTED", count: 9, pct: "15%", conv: null, width: "15%", color: "bg-emerald-500" }
+                                ].map((stage, idx) => (
+                                    <div key={idx} className="flex flex-col gap-1.5 w-full">
+                                        <div className="flex items-center justify-between gap-3 w-full">
+                                            <div className="flex-1">
+                                                <div 
+                                                    className={`${stage.color} text-white rounded-xl h-10 px-4 flex items-center justify-between shadow-sm hover:scale-[1.002] transition-transform min-w-[120px]`}
+                                                    style={{ width: stage.width }}
+                                                >
+                                                    <span className="font-bold tracking-wider uppercase text-[10px]">{stage.key}</span>
+                                                    <span className="font-extrabold text-[11px]">{stage.count}</span>
+                                                </div>
+                                            </div>
+                                            <span className="text-slate-400 text-[11px] font-bold w-10 text-right shrink-0">{stage.pct}</span>
+                                        </div>
+                                        {stage.conv && (
+                                            <div className="flex items-center pl-4 py-0.5 text-rose-500 font-bold uppercase tracking-wider text-[9px] font-sans">
+                                                {stage.conv}
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Project Type Mix Card */}
+                        <div className="rounded-[28px] border border-slate-200 bg-white shadow-sm p-6 flex flex-col gap-5 hover:shadow-md transition-all duration-200">
+                            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-100/50 flex items-center justify-center shrink-0">
+                                        <FiLayers size={15} />
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <h3 className="text-sm font-bold text-slate-800 font-display">Project Type Mix</h3>
+                                            <span className="text-[9px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                                                CURRENT
+                                            </span>
+                                        </div>
+                                        <p className="text-[10px] text-slate-400 font-sans mt-0.5">Residential vs Commercial</p>
+                                    </div>
+                                </div>
+                                <FiInfo size={14} className="text-slate-400 cursor-pointer hover:text-indigo-600 transition shrink-0" />
+                            </div>
+
+                            {/* Donut Chart representation */}
+                            <div className="flex justify-center py-4 relative">
+                                <svg className="w-36 h-36 transform -rotate-90" viewBox="0 0 36 36">
+                                    {/* Base circle background */}
+                                    <circle cx="18" cy="18" r="15.9155" fill="none" stroke="#f1f5f9" strokeWidth="3" />
+                                    {/* Residential (66.7%) */}
+                                    <circle cx="18" cy="18" r="15.9155" fill="none" stroke="#4f46e5" strokeWidth="3.2" strokeDasharray="66.7 100" strokeDashoffset="0" />
+                                    {/* Commercial (33.3%) */}
+                                    <circle cx="18" cy="18" r="15.9155" fill="none" stroke="#a855f7" strokeWidth="3.2" strokeDasharray="33.3 100" strokeDashoffset="-66.7" />
+                                </svg>
+                                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                                    <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">PROJECTS</span>
+                                    <span className="text-base font-extrabold text-slate-800 font-display mt-0.5">75</span>
+                                </div>
+                            </div>
+
+                            {/* Summary Rows */}
+                            <div className="flex flex-col gap-2.5 font-sans text-xs mt-3 pt-3 border-t border-slate-50">
+                                {[
+                                    { name: "Residential", count: 50, revenue: "₹16.2Cr", color: "bg-indigo-600", bg: "bg-slate-50 border-slate-100 text-slate-700" },
+                                    { name: "Commercial", count: 25, revenue: "₹9.4Cr", color: "bg-purple-500", bg: "bg-slate-50 border-slate-100 text-slate-700" }
+                                ].map((cat, idx) => (
+                                    <div key={idx} className={`flex items-center justify-between p-3 rounded-xl border ${cat.bg} font-semibold transition hover:scale-[1.005]`}>
+                                        <div className="flex items-center gap-2">
+                                            <span className={`w-2.5 h-2.5 rounded-full ${cat.color}`}></span>
+                                            <span>{cat.name}</span>
+                                        </div>
+                                        <div className="flex items-center gap-4 font-bold">
+                                            <span className="text-slate-400 font-medium">{cat.count}</span>
+                                            <span>{cat.revenue}</span>
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
                         </div>
                     </div>
@@ -1038,10 +1841,10 @@ export default function CRMView() {
                                                     type="button"
                                                     onClick={() => setSelectedDate(formattedDay)}
                                                     className={`relative p-2 h-9 rounded-xl font-bold flex flex-col items-center justify-center transition-all cursor-pointer group ${isSelected
-                                                            ? "bg-indigo-650 text-white shadow-sm font-extrabold scale-105"
-                                                            : isToday
-                                                                ? "border border-indigo-200 text-indigo-600 hover:bg-indigo-50/50"
-                                                                : "text-slate-600 hover:bg-slate-100"
+                                                        ? "bg-indigo-650 text-white shadow-sm font-extrabold scale-105"
+                                                        : isToday
+                                                            ? "border border-indigo-200 text-indigo-600 hover:bg-indigo-50/50"
+                                                            : "text-slate-600 hover:bg-slate-100"
                                                         }`}
                                                 >
                                                     <span>{dayNum}</span>
@@ -1452,71 +2255,742 @@ export default function CRMView() {
                         </div>
                     )}
                 </div>
-            ) : (
-                /* General Leads Table View (for converted, lost, meetings, all leads) */
-                <div className="space-y-4">
-                    {/* Filter controls */}
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                        {/* Search field */}
-                        <div className="relative flex-1 min-w-[280px]">
-                            <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                                <FiSearch size={14} />
-                            </span>
-                            <input
-                                type="text"
-                                placeholder="Search leads by company, contact, or email..."
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 transition-all font-sans h-10 shadow-sm"
-                            />
+            ) : view === "converted" ? (
+                /* Dedicated Converted Leads Page */
+                <div className="space-y-6 animate-fade-in font-sans">
+                    {/* Custom Header with Vertical Accent & Conversion Rate Card */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100/50">
+                        <div className="flex items-start gap-4">
+                            <div className="w-1.5 h-12 bg-indigo-600 rounded-full shrink-0"></div>
+                            <div>
+                                <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5 font-sans">
+                                    <span>CRM</span>
+                                    <span>/</span>
+                                    <span className="text-indigo-655">Converted</span>
+                                </div>
+                                <h1 className="text-2xl font-bold text-slate-900 tracking-tight font-display">Converted</h1>
+                                <p className="text-slate-500 text-xs mt-0.5 leading-relaxed font-sans">
+                                    {getFilteredConvertedLeads().length} leads found • Successfully converted leads
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Conversion Rate Percentage Card */}
+                        <div className="bg-white border border-slate-200/80 rounded-2xl p-3.5 flex items-center gap-3.5 shadow-sm max-w-sm transition hover:shadow-md duration-200 font-sans">
+                            {/* SVG Mini Donut Chart */}
+                            <div className="relative w-11 h-11 flex items-center justify-center shrink-0">
+                                <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                                    <circle cx="18" cy="18" r="16" fill="none" stroke="#f1f5f9" strokeWidth="3" />
+                                    <circle cx="18" cy="18" r="16" fill="none" stroke="#10b981" strokeWidth="3.2" strokeDasharray="78 100" />
+                                </svg>
+                                <span className="absolute text-[10px] font-extrabold text-slate-800">78%</span>
+                            </div>
+                            <div className="space-y-0.5">
+                                <span className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Conversion Success</span>
+                                <div className="flex items-baseline gap-1.5">
+                                    <span className="text-xs font-extrabold text-slate-800">78%</span>
+                                    <span className="text-[10px] text-slate-450 font-medium">of total client accounts converted</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
-                    {/* Data Table */}
-                    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-                        {filteredLeads.length > 0 ? (
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-left border-collapse text-xs">
-                                    <thead>
-                                        <tr className="bg-slate-50 border-b border-slate-200/80 text-slate-550 font-bold uppercase tracking-wider">
-                                            <th className="px-6 py-4">Company</th>
-                                            <th className="px-6 py-4">Contact</th>
-                                            <th className="px-6 py-4">Email</th>
-                                            <th className="px-6 py-4">Created Date</th>
-                                            <th className="px-6 py-4">Deal Value</th>
-                                            <th className="px-6 py-4">Status</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-100 text-slate-700 font-medium font-sans">
-                                        {filteredLeads.map((l) => (
-                                            <tr key={l.id} className="hover:bg-slate-50/50 transition-colors duration-150">
-                                                <td className="px-6 py-4 font-bold text-slate-900">{l.name}</td>
-                                                <td className="px-6 py-4">{l.contact}</td>
-                                                <td className="px-6 py-4 text-slate-500">{l.email}</td>
-                                                <td className="px-6 py-4 text-slate-450">{l.date}</td>
-                                                <td className="px-6 py-4 text-slate-800 font-semibold">${l.value.toLocaleString()}</td>
-                                                <td className="px-6 py-4">
-                                                    <span className={`px-2 py-0.5 rounded-lg text-[9px] font-bold border uppercase tracking-wide ${l.status === "Converted"
-                                                            ? "bg-emerald-50 text-emerald-700 border-emerald-100"
-                                                            : l.status === "Lost"
-                                                                ? "bg-rose-50 text-rose-700 border-rose-100"
-                                                                : "bg-indigo-50 text-indigo-700 border-indigo-100"
-                                                        }`}>
-                                                        {l.status}
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
+                    {/* Top Filter Section */}
+                    <div className="flex flex-col gap-4">
+                        {/* 1. Search Bar */}
+                        <div className="relative w-full">
+                            <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                                <FiSearch size={15} />
+                            </span>
+                            <input
+                                type="text"
+                                placeholder="Search by client name, phone, project…"
+                                value={convertedSearchQuery}
+                                onChange={(e) => setConvertedSearchQuery(e.target.value)}
+                                className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 text-xs text-slate-800 placeholder:text-slate-350 focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 transition-all font-sans h-11 shadow-sm"
+                            />
+                        </div>
+
+                        {/* 2. Filter Controls Row */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            {/* A. Sort Dropdown */}
+                            <div className="relative">
+                                <select
+                                    value={convertedSortOption}
+                                    onChange={(e) => setConvertedSortOption(e.target.value)}
+                                    className="w-full h-11 appearance-none bg-white border border-slate-200 text-slate-705 text-xs font-semibold px-4 pr-9 rounded-xl focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 transition-all cursor-pointer shadow-sm"
+                                >
+                                    <option value="newest">Sort by: Newest first</option>
+                                    <option value="oldest">Sort by: Oldest first</option>
+                                    <option value="alpha-asc">Sort by: Name (A-Z)</option>
+                                    <option value="alpha-desc">Sort by: Name (Z-A)</option>
+                                </select>
+                                <FiChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={14} />
                             </div>
+
+                            {/* B. Project Type Dropdown */}
+                            <div className="relative">
+                                <select
+                                    value={convertedProjectType}
+                                    onChange={(e) => setConvertedProjectType(e.target.value)}
+                                    className="w-full h-11 appearance-none bg-white border border-slate-200 text-slate-705 text-xs font-semibold px-4 pr-9 rounded-xl focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 transition-all cursor-pointer shadow-sm"
+                                >
+                                    <option value="All Types">Project Type: All Types</option>
+                                    <option value="Residential">Residential</option>
+                                    <option value="Commercial">Commercial</option>
+                                    <option value="Corporate">Corporate</option>
+                                    <option value="Retail">Retail</option>
+                                </select>
+                                <FiChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={14} />
+                            </div>
+
+                            {/* C. Date Range Picker / Presets */}
+                            <div className="relative">
+                                <select
+                                    value={convertedDatePreset}
+                                    onChange={(e) => setConvertedDatePreset(e.target.value)}
+                                    className="w-full h-11 appearance-none bg-white border border-slate-200 text-slate-705 text-xs font-semibold px-4 pr-9 rounded-xl focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 transition-all cursor-pointer shadow-sm"
+                                >
+                                    <option value="All Time">Date Range: All Time</option>
+                                    <option value="7-days">Last 7 Days</option>
+                                    <option value="30-days">Last 30 Days</option>
+                                    <option value="90-days">Last 90 Days</option>
+                                </select>
+                                <FiChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={14} />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Leads List Section */}
+                    <div className="space-y-3.5 mt-2">
+                        {getFilteredConvertedLeads().length > 0 ? (
+                            getFilteredConvertedLeads().map((lead) => {
+                                // Dynamic initials calculations
+                                const initials = lead.name.split(" ").map(n => n[0]).join("").toUpperCase();
+                                
+                                // Color helper for priority
+                                const priorityColors = {
+                                    High: "bg-rose-50 text-rose-700 border-rose-100/60",
+                                    Medium: "bg-amber-50 text-amber-700 border-amber-100/60",
+                                    Low: "bg-slate-50 text-slate-600 border-slate-200"
+                                };
+
+                                return (
+                                    <div
+                                        key={lead.id}
+                                        onClick={() => showToast(`Opening details for ${lead.name}...`, "info")}
+                                        className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 rounded-2xl border border-slate-200 bg-white shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer group"
+                                    >
+                                        {/* LEFT SECTION */}
+                                        <div className="flex items-center gap-4">
+                                            {/* Circular Initials Avatar */}
+                                            <div className="w-12 h-12 flex items-center justify-center rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700 font-bold text-sm shrink-0">
+                                                {initials}
+                                            </div>
+                                            <div className="space-y-1">
+                                                <div className="flex items-center gap-2.5 flex-wrap">
+                                                    <span className="font-extrabold text-slate-800 text-sm font-display">{lead.name}</span>
+                                                    <span className="text-[9px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                                                        {lead.id}
+                                                    </span>
+                                                </div>
+                                                <div className="text-[11px] text-slate-450 font-medium font-sans">
+                                                    {lead.phone}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* CENTER SECTION */}
+                                        <div className="flex flex-wrap items-center gap-2.5 md:justify-center">
+                                            {/* Location Badge */}
+                                            <span className="flex items-center gap-1.5 bg-slate-50 border border-slate-100/80 px-3 py-1 rounded-xl text-slate-600 text-xs font-semibold font-sans">
+                                                <FiMapPin size={11} className="text-slate-400" />
+                                                {lead.location}
+                                            </span>
+
+                                            {/* Project Type Badge */}
+                                            <span className="flex items-center gap-1.5 bg-indigo-50/40 border border-indigo-100/40 px-3 py-1 rounded-xl text-indigo-700 text-xs font-semibold font-sans">
+                                                <FiLayers size={11} className="text-indigo-400" />
+                                                {lead.projectType}
+                                            </span>
+                                        </div>
+
+                                        {/* RIGHT SECTION */}
+                                        <div className="flex items-center justify-between md:justify-end gap-3.5 flex-wrap md:flex-nowrap border-t border-slate-100 md:border-t-0 pt-3.5 md:pt-0">
+                                            <span className="text-[11px] text-slate-400 font-semibold font-sans">
+                                                {new Date(lead.date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                                            </span>
+                                            
+                                            <span className="bg-emerald-50 text-emerald-700 border border-emerald-100/60 px-3 py-1 rounded-full text-[10px] font-bold tracking-wider uppercase font-sans">
+                                                CONVERTED
+                                            </span>
+
+                                            <span className={`px-2.5 py-1 rounded-xl border text-[10px] font-bold tracking-wider uppercase font-sans ${priorityColors[lead.priority]}`}>
+                                                {lead.priority}
+                                            </span>
+
+                                            <FiChevronRight size={16} className="text-slate-350 group-hover:text-indigo-600 transition-colors hidden md:block" />
+                                        </div>
+                                    </div>
+                                );
+                            })
                         ) : (
-                            <div className="py-12 text-center flex flex-col items-center justify-center gap-2.5 font-sans">
+                            <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center flex flex-col items-center justify-center gap-2.5 shadow-sm font-sans">
                                 <FiAlertCircle size={28} className="text-slate-350 animate-pulse" />
-                                <span className="text-sm font-semibold text-slate-800">No CRM leads found</span>
+                                <span className="text-sm font-semibold text-slate-800">No converted leads found</span>
                                 <span className="text-xs text-slate-400">There are no leads in this category matching your search.</span>
                             </div>
                         )}
+                    </div>
+                </div>
+            ) : view === "lost" ? (
+                /* Dedicated Lost Leads Page */
+                <div className="space-y-6 animate-fade-in font-sans">
+                    {/* Custom Header with Vertical Accent & Lost Ratio Card */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100/50">
+                        <div className="flex items-start gap-4">
+                            <div className="w-1.5 h-12 bg-slate-500 rounded-full shrink-0"></div>
+                            <div>
+                                <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5 font-sans">
+                                    <span>CRM</span>
+                                    <span>/</span>
+                                    <span className="text-indigo-650">Lost</span>
+                                </div>
+                                <h1 className="text-2xl font-bold text-slate-900 tracking-tight font-display">Lost</h1>
+                                <p className="text-slate-500 text-xs mt-0.5 leading-relaxed font-sans">
+                                    {getFilteredLostLeads().length} leads lost • Successfully archived lost opportunities
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Lost Ratio Percentage Card */}
+                        <div className="bg-white border border-slate-200/80 rounded-2xl p-3.5 flex items-center gap-3.5 shadow-sm max-w-sm transition hover:shadow-md duration-200 font-sans">
+                            {/* SVG Mini Donut Chart */}
+                            <div className="relative w-11 h-11 flex items-center justify-center shrink-0">
+                                <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                                    <circle cx="18" cy="18" r="16" fill="none" stroke="#f1f5f9" strokeWidth="3" />
+                                    <circle cx="18" cy="18" r="16" fill="none" stroke="#f43f5e" strokeWidth="3.2" strokeDasharray="22 100" />
+                                </svg>
+                                <span className="absolute text-[10px] font-extrabold text-slate-800">22%</span>
+                            </div>
+                            <div className="space-y-0.5">
+                                <span className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Lost Ratio</span>
+                                <div className="flex items-baseline gap-1.5">
+                                    <span className="text-xs font-extrabold text-slate-800">22%</span>
+                                    <span className="text-[10px] text-slate-450 font-medium">of total opportunities archived</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Top Filter Section */}
+                    <div className="flex flex-col gap-4">
+                        {/* 1. Search Bar */}
+                        <div className="relative w-full">
+                            <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                                <FiSearch size={15} />
+                            </span>
+                            <input
+                                type="text"
+                                placeholder="Search by client name, phone, project…"
+                                value={lostSearchQuery}
+                                onChange={(e) => setLostSearchQuery(e.target.value)}
+                                className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 text-xs text-slate-800 placeholder:text-slate-350 focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 transition-all font-sans h-11 shadow-sm"
+                            />
+                        </div>
+
+                        {/* 2. Filter Controls Row */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            {/* A. Sort Dropdown */}
+                            <div className="relative">
+                                <select
+                                    value={lostSortOption}
+                                    onChange={(e) => setLostSortOption(e.target.value)}
+                                    className="w-full h-11 appearance-none bg-white border border-slate-200 text-slate-705 text-xs font-semibold px-4 pr-9 rounded-xl focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 transition-all cursor-pointer shadow-sm"
+                                >
+                                    <option value="newest">Sort by: Newest first</option>
+                                    <option value="oldest">Sort by: Oldest first</option>
+                                    <option value="alpha-asc">Sort by: Name (A-Z)</option>
+                                    <option value="alpha-desc">Sort by: Name (Z-A)</option>
+                                </select>
+                                <FiChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={14} />
+                            </div>
+
+                            {/* B. Project Type Dropdown */}
+                            <div className="relative">
+                                <select
+                                    value={lostProjectType}
+                                    onChange={(e) => setLostProjectType(e.target.value)}
+                                    className="w-full h-11 appearance-none bg-white border border-slate-200 text-slate-705 text-xs font-semibold px-4 pr-9 rounded-xl focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 transition-all cursor-pointer shadow-sm"
+                                >
+                                    <option value="All Types">Project Type: All Types</option>
+                                    <option value="Residential">Residential</option>
+                                    <option value="Commercial">Commercial</option>
+                                    <option value="Corporate">Corporate</option>
+                                    <option value="Retail">Retail</option>
+                                </select>
+                                <FiChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={14} />
+                            </div>
+
+                            {/* C. Date Range Picker / Presets */}
+                            <div className="relative">
+                                <select
+                                    value={lostDatePreset}
+                                    onChange={(e) => setLostDatePreset(e.target.value)}
+                                    className="w-full h-11 appearance-none bg-white border border-slate-200 text-slate-705 text-xs font-semibold px-4 pr-9 rounded-xl focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 transition-all cursor-pointer shadow-sm"
+                                >
+                                    <option value="All Time">Date Range: All Time</option>
+                                    <option value="7-days">Last 7 Days</option>
+                                    <option value="30-days">Last 30 Days</option>
+                                    <option value="90-days">Last 90 Days</option>
+                                </select>
+                                <FiChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={14} />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Leads List Section */}
+                    <div className="space-y-3.5 mt-2">
+                        {getFilteredLostLeads().length > 0 ? (
+                            getFilteredLostLeads().map((lead) => {
+                                // Dynamic initials calculations
+                                const initials = lead.name.split(" ").map(n => n[0]).join("").toUpperCase();
+                                
+                                // Color helper for priority
+                                const priorityColors = {
+                                    High: "bg-rose-50 text-rose-700 border-rose-100/60",
+                                    Medium: "bg-amber-50 text-amber-700 border-amber-100/60",
+                                    Low: "bg-slate-50 text-slate-600 border-slate-200"
+                                };
+
+                                return (
+                                    <div
+                                        key={lead.id}
+                                        onClick={() => showToast(`Opening details for ${lead.name}...`, "info")}
+                                        className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 rounded-2xl border border-slate-200 bg-white shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer group"
+                                    >
+                                        {/* LEFT SECTION */}
+                                        <div className="flex items-center gap-4">
+                                            {/* Circular Initials Avatar */}
+                                            <div className="w-12 h-12 flex items-center justify-center rounded-full bg-slate-100 border border-slate-200 text-slate-705 font-bold text-sm shrink-0">
+                                                {initials}
+                                            </div>
+                                            <div className="space-y-1">
+                                                <div className="flex items-center gap-2.5 flex-wrap">
+                                                    <span className="font-extrabold text-slate-800 text-sm font-display">{lead.name}</span>
+                                                    <span className="text-[9px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                                                        {lead.id}
+                                                    </span>
+                                                </div>
+                                                <div className="text-[11px] text-slate-450 font-medium font-sans">
+                                                    {lead.phone}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* CENTER SECTION */}
+                                        <div className="flex flex-wrap items-center gap-2.5 md:justify-center">
+                                            {/* Location Badge */}
+                                            <span className="flex items-center gap-1.5 bg-slate-50 border border-slate-100/80 px-3 py-1 rounded-xl text-slate-600 text-xs font-semibold font-sans">
+                                                <FiMapPin size={11} className="text-slate-400" />
+                                                {lead.location}
+                                            </span>
+
+                                            {/* Project Type Badge */}
+                                            <span className="flex items-center gap-1.5 bg-indigo-50/40 border border-indigo-100/40 px-3 py-1 rounded-xl text-indigo-700 text-xs font-semibold font-sans">
+                                                <FiLayers size={11} className="text-indigo-400" />
+                                                {lead.projectType}
+                                            </span>
+                                        </div>
+
+                                        {/* RIGHT SECTION */}
+                                        <div className="flex items-center justify-between md:justify-end gap-3.5 flex-wrap md:flex-nowrap border-t border-slate-100 md:border-t-0 pt-3.5 md:pt-0">
+                                            <span className="text-[11px] text-slate-400 font-semibold font-sans">
+                                                {new Date(lead.date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                                            </span>
+                                            
+                                            <span className="bg-rose-50 text-rose-700 border border-rose-100/60 px-3 py-1 rounded-full text-[10px] font-bold tracking-wider uppercase font-sans">
+                                                LOST
+                                            </span>
+
+                                            <span className={`px-2.5 py-1 rounded-xl border text-[10px] font-bold tracking-wider uppercase font-sans ${priorityColors[lead.priority]}`}>
+                                                {lead.priority}
+                                            </span>
+
+                                            <FiChevronRight size={16} className="text-slate-350 group-hover:text-indigo-650 transition-colors hidden md:block" />
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        ) : (
+                            <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center flex flex-col items-center justify-center gap-2.5 shadow-sm font-sans">
+                                <FiAlertCircle size={28} className="text-slate-350 animate-pulse" />
+                                <span className="text-sm font-semibold text-slate-800">No lost leads found</span>
+                                <span className="text-xs text-slate-400">There are no leads in this category matching your search.</span>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            ) : (
+                /* Dedicated All Leads Registry View */
+                <div className="space-y-6 animate-fade-in font-sans">
+                    {/* Header Block with Actions */}
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-5 pb-4 border-b border-slate-100/50">
+                        <div className="flex items-start gap-4">
+                            {/* Registry Icon Box */}
+                            <div className="w-12 h-12 flex items-center justify-center rounded-2xl bg-indigo-50 border border-indigo-100/50 text-indigo-650 shrink-0">
+                                <FiSliders size={20} />
+                            </div>
+                            <div>
+                                <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5 font-sans">
+                                    <span>CRM</span>
+                                    <span>/</span>
+                                    <span className="text-indigo-655 font-bold">All Leads</span>
+                                </div>
+                                <h1 className="text-2xl font-bold text-slate-900 tracking-tight font-display">ALL LEADS</h1>
+                                <p className="text-slate-500 text-xs mt-0.5 leading-relaxed font-sans">
+                                    Complete client registry across all pipeline stages.
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Action buttons */}
+                        <div className="flex items-center gap-2.5 flex-wrap">
+                            <button
+                                onClick={() => {
+                                    showToast("Refreshed leads registry successfully.", "success");
+                                    setLeadsPage(1);
+                                }}
+                                className="w-10 h-10 flex items-center justify-center bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl shadow-sm transition duration-200 cursor-pointer border-0"
+                                title="Refresh Registry"
+                            >
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.28 15H18" />
+                                </svg>
+                            </button>
+
+                            <button
+                                onClick={() => showToast("Export / Import feature is not configured in this demo.", "info")}
+                                className="h-10 px-4 flex items-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-xl shadow-sm transition duration-200 cursor-pointer border-0"
+                            >
+                                <svg className="w-4 h-4 text-slate-450" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                                </svg>
+                                <span>Import</span>
+                            </button>
+
+                            <Link
+                                to="/crm/create-lead"
+                                className="h-10 px-4 flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl shadow-md shadow-indigo-600/10 transition duration-200 border-0 no-underline cursor-pointer flex items-center justify-center decoration-0"
+                            >
+                                <FiPlus size={15} />
+                                <span>New Enquiry</span>
+                            </Link>
+                        </div>
+                    </div>
+
+                    {/* Search & Filters */}
+                    <div className="space-y-4">
+                        {/* 1. Large Search Bar */}
+                        <div className="relative w-full">
+                            <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                                <FiSearch size={15} />
+                            </span>
+                            <input
+                                type="text"
+                                placeholder="Search by name, phone, email, city, tracking ID..."
+                                value={leadsSearchQuery}
+                                onChange={(e) => {
+                                    setLeadsSearchQuery(e.target.value);
+                                    setLeadsPage(1);
+                                }}
+                                className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 text-xs text-slate-800 placeholder:text-slate-350 focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 transition-all font-sans h-11 shadow-sm"
+                            />
+                        </div>
+
+                        {/* 2. Responsive Filters Row */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+                            {/* Sort */}
+                            <div className="relative">
+                                <select
+                                    value={leadsSortOption}
+                                    onChange={(e) => {
+                                        setLeadsSortOption(e.target.value);
+                                        setLeadsPage(1);
+                                    }}
+                                    className="w-full h-10 appearance-none bg-white border border-slate-200 text-slate-705 text-[11px] font-semibold px-3 pr-8 rounded-xl focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 transition-all cursor-pointer shadow-sm"
+                                >
+                                    <option value="newest">Sort: Newest</option>
+                                    <option value="oldest">Sort: Oldest</option>
+                                    <option value="alpha-asc">Name (A-Z)</option>
+                                    <option value="alpha-desc">Name (Z-A)</option>
+                                </select>
+                                <FiChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={13} />
+                            </div>
+
+                            {/* Status */}
+                            <div className="relative">
+                                <select
+                                    value={leadsStatusFilter}
+                                    onChange={(e) => {
+                                        setLeadsStatusFilter(e.target.value);
+                                        setLeadsPage(1);
+                                    }}
+                                    className="w-full h-10 appearance-none bg-white border border-slate-200 text-slate-705 text-[11px] font-semibold px-3 pr-8 rounded-xl focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 transition-all cursor-pointer shadow-sm"
+                                >
+                                    <option value="All Statuses">Status: All</option>
+                                    <option value="Converted">Converted</option>
+                                    <option value="Meeting Done">Meeting Done</option>
+                                    <option value="Contacted">Contacted</option>
+                                    <option value="Lost">Lost</option>
+                                </select>
+                                <FiChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={13} />
+                            </div>
+
+                            {/* Project Type */}
+                            <div className="relative">
+                                <select
+                                    value={leadsProjectTypeFilter}
+                                    onChange={(e) => {
+                                        setLeadsProjectTypeFilter(e.target.value);
+                                        setLeadsPage(1);
+                                    }}
+                                    className="w-full h-10 appearance-none bg-white border border-slate-200 text-slate-705 text-[11px] font-semibold px-3 pr-8 rounded-xl focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 transition-all cursor-pointer shadow-sm"
+                                >
+                                    <option value="All Types">Project: All</option>
+                                    <option value="Residential">Residential</option>
+                                    <option value="Commercial">Commercial</option>
+                                    <option value="Corporate">Corporate</option>
+                                    <option value="Retail">Retail</option>
+                                </select>
+                                <FiChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={13} />
+                            </div>
+
+                            {/* Lifecycle Stage */}
+                            <div className="relative">
+                                <select
+                                    value={leadsLifecycleStageFilter}
+                                    onChange={(e) => {
+                                        setLeadsLifecycleStageFilter(e.target.value);
+                                        setLeadsPage(1);
+                                    }}
+                                    className="w-full h-10 appearance-none bg-white border border-slate-200 text-slate-705 text-[11px] font-semibold px-3 pr-8 rounded-xl focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 transition-all cursor-pointer shadow-sm"
+                                >
+                                    <option value="All Stages">Stage: All</option>
+                                    <option value="Project Started">Project Started</option>
+                                    <option value="Follow-up Due">Follow-up Due</option>
+                                    <option value="Interested">Interested</option>
+                                    <option value="Discovery">Discovery</option>
+                                    <option value="Proposal Sent">Proposal Sent</option>
+                                    <option value="Negotiation">Negotiation</option>
+                                    <option value="Enquiry">Enquiry</option>
+                                    <option value="Archived">Archived</option>
+                                </select>
+                                <FiChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={13} />
+                            </div>
+
+                            {/* Source */}
+                            <div className="relative">
+                                <select
+                                    value={leadsSourceFilter}
+                                    onChange={(e) => {
+                                        setLeadsSourceFilter(e.target.value);
+                                        setLeadsPage(1);
+                                    }}
+                                    className="w-full h-10 appearance-none bg-white border border-slate-200 text-slate-705 text-[11px] font-semibold px-3 pr-8 rounded-xl focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 transition-all cursor-pointer shadow-sm"
+                                >
+                                    <option value="All Sources">Source: All</option>
+                                    <option value="Referral">Referral</option>
+                                    <option value="Website">Website</option>
+                                    <option value="Walk-In">Walk-In</option>
+                                    <option value="Cold Call">Cold Call</option>
+                                    <option value="Instagram">Instagram</option>
+                                    <option value="Google Search">Google Search</option>
+                                    <option value="Facebook Ad">Facebook Ad</option>
+                                </select>
+                                <FiChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={13} />
+                            </div>
+
+                            {/* Priority */}
+                            <div className="relative">
+                                <select
+                                    value={leadsPriorityFilter}
+                                    onChange={(e) => {
+                                        setLeadsPriorityFilter(e.target.value);
+                                        setLeadsPage(1);
+                                    }}
+                                    className="w-full h-10 appearance-none bg-white border border-slate-200 text-slate-705 text-[11px] font-semibold px-3 pr-8 rounded-xl focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 transition-all cursor-pointer shadow-sm"
+                                >
+                                    <option value="All Priorities">Priority: All</option>
+                                    <option value="High">High</option>
+                                    <option value="Medium">Medium</option>
+                                    <option value="Low">Low</option>
+                                </select>
+                                <FiChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={13} />
+                            </div>
+
+                            {/* Date range */}
+                            <div className="relative">
+                                <select
+                                    value={leadsDatePresetFilter}
+                                    onChange={(e) => {
+                                        setLeadsDatePresetFilter(e.target.value);
+                                        setLeadsPage(1);
+                                    }}
+                                    className="w-full h-10 appearance-none bg-white border border-slate-200 text-slate-705 text-[11px] font-semibold px-3 pr-8 rounded-xl focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 transition-all cursor-pointer shadow-sm"
+                                >
+                                    <option value="All Time">Date: All Time</option>
+                                    <option value="7-days">Last 7 Days</option>
+                                    <option value="30-days">Last 30 Days</option>
+                                    <option value="90-days">Last 90 Days</option>
+                                </select>
+                                <FiChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={13} />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Leads Table Card */}
+                    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden font-sans">
+                        {(() => {
+                            const filteredList = getFilteredAllRegistryLeads();
+                            const itemsPerPage = 10;
+                            const totalPages = Math.ceil(filteredList.length / itemsPerPage) || 1;
+                            const activePage = Math.min(leadsPage, totalPages);
+                            const paginatedLeads = filteredList.slice((activePage - 1) * itemsPerPage, activePage * itemsPerPage);
+
+                            return (
+                                <>
+                                    {paginatedLeads.length > 0 ? (
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-left border-collapse text-xs">
+                                                <thead>
+                                                    <tr className="bg-slate-50 border-b border-slate-200/80 text-slate-450 font-bold uppercase tracking-wider">
+                                                        <th className="px-6 py-4">Client</th>
+                                                        <th className="px-6 py-4">Contact</th>
+                                                        <th className="px-6 py-4">Location</th>
+                                                        <th className="px-6 py-4">Project</th>
+                                                        <th className="px-6 py-4">Status</th>
+                                                        <th className="px-6 py-4">Stage</th>
+                                                        <th className="px-6 py-4">Added</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100 text-slate-707 font-medium font-sans">
+                                                    {paginatedLeads.map((lead) => {
+                                                        const initials = lead.name.split(" ").map(n => n[0]).join("").toUpperCase();
+                                                        
+                                                        // Status styling helpers
+                                                        const statusStyles = {
+                                                            Converted: "bg-emerald-50 text-emerald-700 border-emerald-100/60",
+                                                            "Meeting Done": "bg-amber-50 text-amber-700 border-amber-100/60",
+                                                            Contacted: "bg-indigo-50 text-indigo-700 border-indigo-100/60",
+                                                            Lost: "bg-rose-50 text-rose-700 border-rose-100/60"
+                                                        };
+
+                                                        return (
+                                                            <tr key={lead.id} className="hover:bg-slate-50/40 transition-colors duration-150 cursor-pointer" onClick={() => showToast(`Opening registry record for ${lead.name}...`, "info")}>
+                                                                {/* CLIENT COLUMN */}
+                                                                <td className="px-6 py-4">
+                                                                    <div className="flex items-center gap-3">
+                                                                        <div className="w-9 h-9 flex items-center justify-center rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700 font-bold text-xs shrink-0">
+                                                                            {initials}
+                                                                        </div>
+                                                                        <div>
+                                                                            <span className="font-bold text-slate-800 text-xs block">{lead.name}</span>
+                                                                            <span className="text-[9px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-1 py-0.5 rounded uppercase tracking-wider block w-max mt-0.5 font-sans">
+                                                                                {lead.id}
+                                                                            </span>
+                                                                        </div>
+                                                                    </div>
+                                                                </td>
+
+                                                                {/* CONTACT COLUMN */}
+                                                                <td className="px-6 py-4 space-y-0.5">
+                                                                    <span className="font-bold text-slate-850 block">{lead.phone}</span>
+                                                                    <span className="text-[10px] text-slate-400 font-medium block truncate max-w-[170px]">{lead.email}</span>
+                                                                </td>
+
+                                                                {/* LOCATION COLUMN */}
+                                                                <td className="px-6 py-4 font-semibold text-slate-600">{lead.location}</td>
+
+                                                                {/* PROJECT COLUMN */}
+                                                                <td className="px-6 py-4 font-semibold text-slate-700">{lead.projectType}</td>
+
+                                                                {/* STATUS COLUMN */}
+                                                                <td className="px-6 py-4">
+                                                                    <span className={`px-2.5 py-1 rounded-lg border text-[9px] font-bold tracking-wider uppercase ${statusStyles[lead.status]}`}>
+                                                                        {lead.status}
+                                                                    </span>
+                                                                </td>
+
+                                                                {/* STAGE COLUMN */}
+                                                                <td className="px-6 py-4">
+                                                                    <span className="font-semibold text-slate-505">{lead.stage}</span>
+                                                                </td>
+
+                                                                {/* ADDED COLUMN */}
+                                                                <td className="px-6 py-4 font-semibold text-slate-450">
+                                                                    {new Date(lead.date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    ) : (
+                                        <div className="py-16 text-center flex flex-col items-center justify-center gap-2.5 font-sans">
+                                            <FiAlertCircle size={28} className="text-slate-350 animate-pulse" />
+                                            <span className="text-sm font-semibold text-slate-800">No matching leads found</span>
+                                            <span className="text-xs text-slate-400">There are no leads in the registry matching your filters or query.</span>
+                                        </div>
+                                    )}
+
+                                    {/* Pagination Row */}
+                                    {filteredList.length > 0 && (
+                                        <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-slate-500 text-xs font-semibold">
+                                            <div>
+                                                Showing {(activePage - 1) * itemsPerPage + 1} - {Math.min(activePage * itemsPerPage, filteredList.length)} of {filteredList.length} leads
+                                            </div>
+
+                                            <div className="flex items-center gap-1.5">
+                                                {/* Prev Button */}
+                                                <button
+                                                    onClick={() => setLeadsPage(prev => Math.max(prev - 1, 1))}
+                                                    disabled={activePage === 1}
+                                                    className="h-8 px-2.5 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg text-slate-600 font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition duration-150 flex items-center justify-center cursor-pointer border-0"
+                                                >
+                                                    <FiChevronLeft size={14} />
+                                                </button>
+
+                                                {/* Page Number Buttons */}
+                                                {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNumber) => (
+                                                    <button
+                                                        key={pageNumber}
+                                                        onClick={() => setLeadsPage(pageNumber)}
+                                                        className={`h-8 w-8 rounded-lg font-bold text-xs transition duration-150 flex items-center justify-center cursor-pointer border-0 ${
+                                                            activePage === pageNumber
+                                                                ? "bg-indigo-600 text-white shadow-sm"
+                                                                : "bg-white border border-slate-200 hover:bg-slate-50 text-slate-600"
+                                                        }`}
+                                                    >
+                                                        {pageNumber}
+                                                    </button>
+                                                ))}
+
+                                                {/* Next Button */}
+                                                <button
+                                                    onClick={() => setLeadsPage(prev => Math.min(prev + 1, totalPages))}
+                                                    disabled={activePage === totalPages}
+                                                    className="h-8 px-2.5 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg text-slate-600 font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition duration-150 flex items-center justify-center cursor-pointer border-0"
+                                                >
+                                                    <FiChevronRight size={14} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </>
+                            );
+                        })()}
                     </div>
                 </div>
             )}
