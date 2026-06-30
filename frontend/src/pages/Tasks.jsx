@@ -175,9 +175,10 @@ function Tasks() {
                             className="bg-white border border-slate-200 text-slate-700 text-xs px-3 rounded-xl outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 transition cursor-pointer font-sans h-10 shadow-sm"
                         >
                             <option value="All">All Priorities</option>
-                            <option value="High">High</option>
-                            <option value="Medium">Medium</option>
                             <option value="Low">Low</option>
+                            <option value="Medium">Medium</option>
+                            <option value="High">High</option>
+                            <option value="Urgent">Urgent</option>
                         </select>
                     </div>
 
