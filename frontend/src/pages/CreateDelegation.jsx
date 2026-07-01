@@ -33,6 +33,82 @@ const PRIORITY_CONFIG = {
     },
 };
 
+const PRIORITY_TIME_SUGGESTIONS = {
+    Low: {
+        text: "Recommended completion time: 30 days",
+        style: "bg-emerald-50 text-emerald-700 border-emerald-100",
+        icon: "text-emerald-500",
+    },
+    Medium: {
+        text: "Recommended completion time: 20 days",
+        style: "bg-amber-50 text-amber-700 border-amber-100",
+        icon: "text-amber-500",
+    },
+    High: {
+        text: "Recommended completion time: 10 days",
+        style: "bg-rose-50 text-rose-700 border-rose-100",
+        icon: "text-rose-500",
+    },
+    Urgent: {
+        text: "Recommended completion time: 5 days",
+        style: "bg-red-50 text-red-700 border-red-100",
+        icon: "text-red-500",
+    },
+};
+
+const PRIORITY_DEADLINE_LIMITS = {
+    Low: 30,
+    Medium: 20,
+    High: 10,
+    Urgent: 5,
+};
+
+const getTodayDateValue = () => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, "0");
+    const day = String(today.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+};
+
+const normalizeDateValue = (value) => {
+    if (!value) return "";
+    const trimmed = value.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+
+    const dateParts = trimmed.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+    if (dateParts) {
+        const [, day, month, year] = dateParts;
+        return `${year}-${month}-${day}`;
+    }
+
+    return "";
+};
+
+const isPastDate = (value, todayValue) => {
+    const normalizedValue = normalizeDateValue(value);
+    return Boolean(normalizedValue) && normalizedValue < todayValue;
+};
+
+const addDaysToDateValue = (dateValue, days) => {
+    const normalizedValue = normalizeDateValue(dateValue);
+    if (!normalizedValue) return "";
+
+    const [year, month, day] = normalizedValue.split("-").map(Number);
+    const date = new Date(year, month - 1, day);
+    date.setDate(date.getDate() + days);
+
+    const nextYear = date.getFullYear();
+    const nextMonth = String(date.getMonth() + 1).padStart(2, "0");
+    const nextDay = String(date.getDate()).padStart(2, "0");
+    return `${nextYear}-${nextMonth}-${nextDay}`;
+};
+
+const getPriorityDeadlineMessage = (priority) => {
+    const limit = PRIORITY_DEADLINE_LIMITS[priority] || PRIORITY_DEADLINE_LIMITS.Medium;
+    return `${priority} priority allows maximum ${limit} days deadline.`;
+};
+
 /* ─── Demo employees shown when API returns nothing ──────────────────── */
 const DEMO_EMPLOYEES = [
     { id: "emp-001", name: "Nisha Patel",  role: "Frontend Engineer",  avatar: "NP" },
@@ -92,18 +168,17 @@ function CreateDelegation() {
         title: "",
         description: "",
         priority: "Medium",
-        employee: "",
-        employee_id: null,
-        employee_name: "",
         project: "",
         deadline: "",
         startDate: "",
         status: "Pending",
     });
+    const [selectedEmployees, setSelectedEmployees] = useState([]);
     const [checklist, setChecklist] = useState([]);
     const [newCheckItem, setNewCheckItem] = useState("");
     const [notes, setNotes] = useState("");
     const [attachments, setAttachments] = useState([]);
+    const [dateValidationMessage, setDateValidationMessage] = useState("");
     const [employees, setEmployees] = useState([]);
     const [loadingEmployees, setLoadingEmployees] = useState(false);
     const [employeeSearch, setEmployeeSearch] = useState("");
@@ -139,6 +214,7 @@ function CreateDelegation() {
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
+    // Derive active employees match list
     const filteredEmployees = employees.filter((emp) => {
         const q = employeeSearch.toLowerCase();
         const name = (emp.name || emp.employee_name || "").toLowerCase();
@@ -146,40 +222,118 @@ function CreateDelegation() {
         return name.includes(q) || role.includes(q);
     });
 
-    // Derive selected employee object for avatar + role display in the chip
-    const selectedEmployeeData = employees.find(
-        (e) => (e.name || e.employee_name) === form.employee_name
-    );
-
     const completedChecklist = checklist.filter((c) => c.done).length;
     const checklistProgress = checklist.length > 0
         ? Math.round((completedChecklist / checklist.length) * 100)
         : 0;
 
+    const todayDateValue = getTodayDateValue();
+    const deadlineLimitDays = PRIORITY_DEADLINE_LIMITS[form.priority] || PRIORITY_DEADLINE_LIMITS.Medium;
+    const deadlineMinDateValue = form.startDate || todayDateValue;
+    const deadlineMaxDateValue = addDaysToDateValue(deadlineMinDateValue, deadlineLimitDays);
+    const hasPastDate = isPastDate(form.startDate, todayDateValue) || isPastDate(form.deadline, todayDateValue);
+    const isDeadlineBeyondPriorityLimit = Boolean(form.deadline) && form.deadline > deadlineMaxDateValue;
+    const isDeadlineBeforeAllowedStart = Boolean(form.deadline) && form.deadline < deadlineMinDateValue;
+
     const validationErrors = [];
     if (!form.title.trim()) validationErrors.push("Delegation title is required");
-    if (!form.employee_name) validationErrors.push("Assignee must be selected");
+    if (selectedEmployees.length === 0) validationErrors.push("Assignee must be selected");
     if (!form.deadline) validationErrors.push("Deadline is required");
+    if (hasPastDate) validationErrors.push("Past dates are not allowed.");
+    if (isDeadlineBeforeAllowedStart) validationErrors.push("Deadline cannot be before start date.");
+    if (isDeadlineBeyondPriorityLimit) validationErrors.push(getPriorityDeadlineMessage(form.priority));
     const isValid = validationErrors.length === 0;
 
     const handleFieldChange = (field, value) =>
         setForm((prev) => ({ ...prev, [field]: value }));
 
-    const selectEmployee = (emp) => {
-        const name = emp.name || emp.employee_name || "";
-        setForm((prev) => ({
-            ...prev,
-            employee: name,
-            employee_id: emp._id || emp.id || null,
-            employee_name: name,
-        }));
-        setEmployeeSearch(name);
-        setShowEmployeeDropdown(false);
+    const handleDateChange = (field, value) => {
+        const normalizedValue = normalizeDateValue(value);
+
+        if (isPastDate(normalizedValue, todayDateValue)) {
+            setDateValidationMessage("Past dates are not allowed.");
+            setForm((prev) => ({ ...prev, [field]: todayDateValue }));
+            return;
+        }
+
+        if (field === "deadline" && normalizedValue) {
+            if (normalizedValue < deadlineMinDateValue) {
+                setDateValidationMessage("");
+                setForm((prev) => ({ ...prev, deadline: deadlineMinDateValue }));
+                return;
+            }
+
+            if (normalizedValue > deadlineMaxDateValue) {
+                setDateValidationMessage(getPriorityDeadlineMessage(form.priority));
+                setForm((prev) => ({ ...prev, deadline: deadlineMaxDateValue }));
+                return;
+            }
+        }
+
+        setDateValidationMessage("");
+        handleFieldChange(field, normalizedValue || value);
     };
 
-    const clearEmployee = () => {
-        setForm((prev) => ({ ...prev, employee: "", employee_id: null, employee_name: "" }));
-        setEmployeeSearch("");
+    const handleDatePaste = (field, e) => {
+        const pastedValue = e.clipboardData.getData("text").trim();
+        const normalizedValue = normalizeDateValue(pastedValue);
+
+        if (isPastDate(normalizedValue, todayDateValue)) {
+            e.preventDefault();
+            setDateValidationMessage("Past dates are not allowed.");
+            setForm((prev) => ({ ...prev, [field]: todayDateValue }));
+            return;
+        }
+
+        if (field === "deadline" && normalizedValue) {
+            if (normalizedValue < deadlineMinDateValue) {
+                e.preventDefault();
+                setDateValidationMessage("");
+                setForm((prev) => ({ ...prev, deadline: deadlineMinDateValue }));
+                return;
+            }
+
+            if (normalizedValue > deadlineMaxDateValue) {
+                e.preventDefault();
+                setDateValidationMessage(getPriorityDeadlineMessage(form.priority));
+                setForm((prev) => ({ ...prev, deadline: deadlineMaxDateValue }));
+            }
+        }
+    };
+
+    useEffect(() => {
+        if (!form.deadline) return;
+
+        if (isPastDate(form.deadline, todayDateValue)) {
+            setDateValidationMessage("Past dates are not allowed.");
+            setForm((prev) => ({ ...prev, deadline: todayDateValue }));
+            return;
+        }
+
+        if (form.deadline < deadlineMinDateValue) {
+            setDateValidationMessage("");
+            setForm((prev) => ({ ...prev, deadline: deadlineMinDateValue }));
+            return;
+        }
+
+        if (form.deadline > deadlineMaxDateValue) {
+            setDateValidationMessage(getPriorityDeadlineMessage(form.priority));
+            setForm((prev) => ({ ...prev, deadline: deadlineMaxDateValue }));
+        }
+    }, [form.priority, form.startDate, form.deadline, todayDateValue, deadlineMinDateValue, deadlineMaxDateValue]);
+
+    const toggleEmployee = (emp) => {
+        const empId = emp._id || emp.id;
+        const exists = selectedEmployees.some((e) => (e._id || e.id) === empId);
+        if (exists) {
+            setSelectedEmployees(prev => prev.filter((e) => (e._id || e.id) !== empId));
+        } else {
+            setSelectedEmployees(prev => [...prev, emp]);
+        }
+    };
+
+    const clearEmployee = (empId) => {
+        setSelectedEmployees(prev => prev.filter((e) => (e._id || e.id) !== empId));
     };
 
     const addCheckItem = () => {
@@ -209,16 +363,20 @@ function CreateDelegation() {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        if (hasPastDate) setDateValidationMessage("Past dates are not allowed.");
+        if (isDeadlineBeyondPriorityLimit) setDateValidationMessage(getPriorityDeadlineMessage(form.priority));
         if (!isValid) { showToast(validationErrors[0], "error"); return; }
         setSubmitting(true);
         try {
+            const joinedNames = selectedEmployees.map(e => e.name || e.employee_name).join(", ");
+            const joinedIds = selectedEmployees.map(e => e._id || e.id).join(",");
             const payload = {
                 title: form.title.trim(),
                 description: [form.description, notes].filter(Boolean).join("\n\n"),
                 priority: form.priority,
-                employee: form.employee,
-                employee_id: form.employee_id,
-                employee_name: form.employee_name,
+                employee: joinedNames,
+                employee_id: joinedIds,
+                employee_name: joinedNames,
                 project: form.project,
                 deadline: form.deadline,
                 status: "Pending",
@@ -235,12 +393,13 @@ function CreateDelegation() {
     };
 
     const handleReset = () => {
-        setForm({ title: "", description: "", priority: "Medium", employee: "",
-            employee_id: null, employee_name: "", project: "", deadline: "",
+        setForm({ title: "", description: "", priority: "Medium", project: "", deadline: "",
             startDate: "", status: "Pending" });
+        setSelectedEmployees([]);
         setChecklist([]);
         setNotes("");
         setAttachments([]);
+        setDateValidationMessage("");
         setEmployeeSearch("");
         showToast("Form cleared.");
     };
@@ -260,6 +419,7 @@ function CreateDelegation() {
     };
 
     const priorityCfg = PRIORITY_CONFIG[form.priority] || PRIORITY_CONFIG.Medium;
+    const priorityTimeSuggestion = PRIORITY_TIME_SUGGESTIONS[form.priority] || PRIORITY_TIME_SUGGESTIONS.Medium;
 
     return (
         <div className="w-full">
@@ -351,12 +511,20 @@ function CreateDelegation() {
                                             );
                                         })}
                                     </div>
+                                    <div
+                                        key={form.priority}
+                                        className={`mt-3 w-full rounded-xl border px-3.5 py-2.5 flex items-center gap-2.5 transition-all duration-300 animate-in fade-in slide-in-from-top-1 ${priorityTimeSuggestion.style}`}
+                                    >
+                                        <FiClock size={13} className={`${priorityTimeSuggestion.icon} flex-shrink-0`} />
+                                        <span className="text-xs font-semibold font-sans leading-relaxed">
+                                            {priorityTimeSuggestion.text}
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
                         </SectionCard>
-
-                        {/* Section 2: Assignment */}
-                        <SectionCard icon={FiUser} title="Assignment" subtitle="Select the team member to delegate this task to." accentColor="violet">
+                                            {/* Section 2: Assignment */}
+                        <SectionCard icon={FiUser} title="Assignment" subtitle="Select the team member(s) to delegate this task to." accentColor="violet">
                             <div className="space-y-5">
                                 <div>
                                     <InputLabel required>Assign To</InputLabel>
@@ -368,15 +536,16 @@ function CreateDelegation() {
                                                 setEmployeeSearch("");
                                                 setShowEmployeeDropdown(true);
                                             }}
-                                            className="w-full h-12 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition-all font-sans px-4 text-xs font-semibold text-slate-500 flex items-center justify-between cursor-pointer focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50"
+                                            className="w-full h-12 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition-all font-sans px-4 text-xs font-semibold text-slate-550 flex items-center justify-between cursor-pointer focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50"
                                         >
-                                            <span className="flex items-center gap-2">
-                                                <FiUser className="text-slate-400" size={14} />
-                                                {form.employee_name || "Select team member..."}
+                                            <span>
+                                                {selectedEmployees.length > 0 
+                                                    ? `${selectedEmployees.length} team member(s) selected...` 
+                                                    : "Select team member(s)..."}
                                             </span>
                                             <FiChevronDown className="text-slate-400" size={14} />
                                         </button>
-
+ 
                                         {/* Popup selection card modal */}
                                         {showEmployeeDropdown && (
                                             <div className="fixed inset-0 z-50 overflow-y-auto">
@@ -385,7 +554,7 @@ function CreateDelegation() {
                                                     className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity"
                                                     onClick={() => setShowEmployeeDropdown(false)}
                                                 ></div>
-
+ 
                                                 {/* Modal Box Wrapper */}
                                                 <div className="flex min-h-full items-center justify-center p-3 sm:p-4">
                                                     {/* Modal Container */}
@@ -397,13 +566,26 @@ function CreateDelegation() {
                                                         >
                                                             <FiX size={16} />
                                                         </button>
-
+ 
                                                         <div className="mb-1">
                                                             <h3 className="text-base font-bold text-slate-900 font-display">Select Assignee</h3>
-                                                            <p className="text-xs text-slate-500 mt-1 font-sans">Choose the employee to delegate this task to.</p>
+                                                            <p className="text-xs text-slate-500 mt-1 font-sans">Choose the employee(s) to delegate this task to.</p>
                                                         </div>
-
-
+ 
+                                                        {/* Search bar inside popup */}
+                                                        <div className="relative w-full">
+                                                            <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                                                                    <FiSearch size={13} />
+                                                            </span>
+                                                            <input
+                                                                type="text"
+                                                                placeholder="Search by name or role..."
+                                                                value={employeeSearch}
+                                                                onChange={(e) => setEmployeeSearch(e.target.value)}
+                                                                className="w-full h-9 pl-9 pr-3 text-xs text-slate-800 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition font-sans"
+                                                            />
+                                                        </div>
+ 
                                                         {/* Employee list */}
                                                         <div className="border border-slate-100 rounded-xl overflow-hidden bg-white">
                                                             {loadingEmployees ? (
@@ -417,68 +599,88 @@ function CreateDelegation() {
                                                                     <p className="text-xs text-slate-400">No employees found</p>
                                                                 </div>
                                                             ) : (
-                                                                <div className="max-h-[240px] overflow-y-auto divide-y divide-slate-100">
+                                                                <div className="max-h-[200px] overflow-y-auto divide-y divide-slate-100">
                                                                     {filteredEmployees.map((emp) => {
                                                                         const name = emp.name || emp.employee_name || "Unknown";
                                                                         const role = emp.role || emp.position || emp.department || "";
-                                                                        const isSelected = form.employee_name === name;
+                                                                        const isSelected = selectedEmployees.some((e) => (e._id || e.id) === (emp._id || emp.id));
                                                                         return (
                                                                             <button
                                                                                 key={emp._id || emp.id}
                                                                                 type="button"
-                                                                                onClick={() => selectEmployee(emp)}
-                                                                                className={`w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-slate-50 transition-all duration-150 cursor-pointer ${
-                                                                                    isSelected ? "bg-indigo-50/70" : ""
+                                                                                onClick={() => toggleEmployee(emp)}
+                                                                                className={`w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-slate-50 transition-all duration-155 cursor-pointer ${
+                                                                                    isSelected ? "bg-indigo-50/40" : ""
                                                                                 }`}
                                                                             >
-                                                                                <div className={`h-10 w-10 rounded-xl flex items-center justify-center text-sm font-semibold flex-shrink-0 font-display ${
+                                                                                <div className={`h-8 w-8 rounded-lg flex items-center justify-center text-xs font-semibold flex-shrink-0 font-display ${
                                                                                     isSelected
                                                                                         ? "bg-indigo-600 text-white shadow-sm"
-                                                                                        : "bg-indigo-100 text-indigo-700"
+                                                                                        : "bg-indigo-100 text-indigo-755"
                                                                                 }`}>
                                                                                     {emp.avatar || getInitials(name)}
                                                                                 </div>
                                                                                 <div className="flex-1 min-w-0">
-                                                                                    <p className="text-sm font-semibold text-slate-800 truncate font-sans">{name}</p>
-                                                                                    {role && <p className="text-xs text-slate-500 truncate font-sans">{role}</p>}
+                                                                                    <p className="text-xs font-semibold text-slate-800 truncate font-sans">{name}</p>
+                                                                                    {role && <p className="text-[10px] text-slate-500 truncate font-sans">{role}</p>}
                                                                                 </div>
-                                                                                {isSelected && (
-                                                                                    <div className="w-5 h-5 rounded-full bg-indigo-600 flex items-center justify-center flex-shrink-0">
-                                                                                        <FiCheck size={11} className="text-white" />
-                                                                                    </div>
-                                                                                )}
+                                                                                <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-colors ${
+                                                                                    isSelected ? "bg-indigo-600 border-indigo-600" : "border-slate-300 bg-white"
+                                                                                }`}>
+                                                                                    {isSelected && <FiCheck size={10} className="text-white" />}
+                                                                                </div>
                                                                             </button>
                                                                         );
                                                                     })}
                                                                 </div>
                                                             )}
                                                         </div>
+ 
+                                                        {/* Confirm button */}
+                                                        <div className="flex justify-end pt-2 border-t border-slate-100">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setShowEmployeeDropdown(false)}
+                                                                className="h-9 px-5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-md shadow-indigo-600/10 transition cursor-pointer border-0"
+                                                            >
+                                                                Confirm Selection
+                                                            </button>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>
                                         )}
                                     </div>
-
-                                    {/* Selected employee chip */}
-                                    {form.employee_name && (
-                                        <div className="mt-3 flex items-center gap-3 p-3 bg-indigo-50 rounded-xl border border-indigo-100">
-                                            <div className="h-10 w-10 rounded-xl bg-indigo-600 text-white font-bold text-sm flex items-center justify-center font-display shadow-sm flex-shrink-0">
-                                                {selectedEmployeeData?.avatar || getInitials(form.employee_name)}
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <p className="text-sm font-semibold text-slate-800 font-sans truncate">{form.employee_name}</p>
-                                                <p className="text-[11px] text-indigo-500 font-medium font-sans">
-                                                    {selectedEmployeeData?.role || "Assigned Delegate"}
-                                                </p>
-                                            </div>
-                                            <button
-                                                type="button"
-                                                onClick={clearEmployee}
-                                                className="p-1.5 text-slate-400 hover:text-rose-500 transition-all hover:bg-rose-50 rounded-lg cursor-pointer"
-                                                title="Remove selection"
-                                            >
-                                                <FiX size={15} />
-                                            </button>
+ 
+                                    {/* Selected employee chips */}
+                                    {selectedEmployees.length > 0 && (
+                                        <div className="mt-3 flex flex-col gap-2.5">
+                                            {selectedEmployees.map((emp) => {
+                                                const empId = emp._id || emp.id;
+                                                const name = emp.name || emp.employee_name || "";
+                                                const role = emp.role || emp.position || emp.department || "Assigned Delegate";
+                                                return (
+                                                    <div key={empId} className="flex items-center gap-3 p-2.5 bg-indigo-50/50 rounded-xl border border-indigo-100/50 animate-fade-in">
+                                                        <div className="h-8 w-8 rounded-lg bg-indigo-650 text-white font-bold text-xs flex items-center justify-center font-display shadow-sm flex-shrink-0">
+                                                            {emp.avatar || getInitials(name)}
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="text-xs font-semibold text-slate-800 font-sans truncate">{name}</p>
+                                                            <p className="text-[10px] text-indigo-500 font-medium font-sans">
+                                                                {role}
+                                                            </p>
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => clearEmployee(empId)}
+                                                            className="p-1 text-slate-400 hover:text-rose-500 transition-all hover:bg-rose-50 rounded-lg cursor-pointer border-0 bg-transparent"
+                                                            title="Remove selection"
+                                                        >
+                                                            <FiX size={13} />
+                                                        </button>
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
                                     )}
                                 </div>
@@ -493,8 +695,11 @@ function CreateDelegation() {
                                     <input
                                         id="start-date"
                                         type="date"
+                                        min={todayDateValue}
                                         value={form.startDate}
-                                        onChange={(e) => handleFieldChange("startDate", e.target.value)}
+                                        onChange={(e) => handleDateChange("startDate", e.target.value)}
+                                        onInput={(e) => handleDateChange("startDate", e.target.value)}
+                                        onPaste={(e) => handleDatePaste("startDate", e)}
                                         className="w-full h-12 px-4 text-sm text-slate-700 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition font-sans"
                                     />
                                 </div>
@@ -503,12 +708,24 @@ function CreateDelegation() {
                                     <input
                                         id="deadline"
                                         type="date"
+                                        min={deadlineMinDateValue}
+                                        max={deadlineMaxDateValue}
                                         value={form.deadline}
-                                        onChange={(e) => handleFieldChange("deadline", e.target.value)}
+                                        onChange={(e) => handleDateChange("deadline", e.target.value)}
+                                        onInput={(e) => handleDateChange("deadline", e.target.value)}
+                                        onPaste={(e) => handleDatePaste("deadline", e)}
                                         className="w-full h-12 px-4 text-sm text-slate-700 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition font-sans"
                                     />
                                 </div>
                             </div>
+                            {dateValidationMessage && (
+                                <div className="mt-3 flex items-center gap-2 p-3 bg-rose-50 rounded-xl border border-rose-100">
+                                    <FiAlertCircle size={13} className="text-rose-500" />
+                                    <span className="text-xs text-rose-700 font-medium font-sans">
+                                        {dateValidationMessage}
+                                    </span>
+                                </div>
+                            )}
                             {form.startDate && form.deadline && (
                                 <div className="mt-4 flex items-center gap-2 p-3 bg-sky-50 rounded-xl border border-sky-100">
                                     <FiClock size={13} className="text-sky-500" />

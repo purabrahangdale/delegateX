@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useParams, Link, useNavigate, useLocation } from "react-router-dom";
 import {
     FiUser, FiMail, FiPhone, FiLayers, FiCheckCircle, FiXCircle,
     FiCalendar, FiDollarSign, FiSearch, FiSliders, FiPlus, FiAlertCircle,
@@ -50,6 +50,7 @@ function InputLabel({ children, required }) {
 export default function CRMView() {
     const { view } = useParams();
     const { showToast } = useToast();
+    const navigate = useNavigate();
 
     // In-memory mock leads state to allow basic interactive search & creation
     const [leads, setLeads] = useState([
@@ -108,6 +109,8 @@ export default function CRMView() {
         }
     ]);
 
+    const location = useLocation();
+
     const [selectedDate, setSelectedDate] = useState("2026-06-26");
     const [layoutMode, setLayoutMode] = useState("calendar"); // "calendar" | "list"
     const [filterPendingOnly, setFilterPendingOnly] = useState(false);
@@ -116,6 +119,17 @@ export default function CRMView() {
     const [isMomModalOpen, setIsMomModalOpen] = useState(false);
     const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
     const [momText, setMomText] = useState("");
+
+    // Follow-up date picker modal state
+    const [followupDateModal, setFollowupDateModal] = useState(null); // { idx, task }
+    const [followupTasks, setFollowupTasks] = useState([
+        { customer: "Aarav Mehta", tag: "Overdue", note: "Follow up on demo feedback and answer custom API integration queries.", time: "Yesterday at 4:30 PM", date: "", id: "CLI-FU-001", email: "aarav.mehta@enterprise.com", phone: "+91 98200 12345", location: "Mumbai", status: "Meeting Done", stage: "Follow-up Due", priority: "High", source: "Referral", projectType: "Commercial", industry: "Real Estate", assignedTo: "Sarah Jenkins", budget: "₹1.2Cr – ₹1.8Cr", notes: "Client is overdue on demo feedback. Needs urgent follow-up on API integration queries and custom workflow setup." },
+        { customer: "Rohan Verma", tag: "Today", note: "Send revised pricing table and SLAs before EOD.", time: "Today at 2:00 PM", date: new Date().toISOString().split("T")[0], id: "CLI-FU-002", email: "rohan.verma@fingroup.in", phone: "+91 99100 98765", location: "Delhi NCR", status: "Contacted", stage: "Follow-up Due", priority: "High", source: "Cold Call", projectType: "Residential", industry: "Finance", assignedTo: "Priya Sen", budget: "₹80L – ₹1.2Cr", notes: "Pricing table revision pending. Client requested updated SLAs including enterprise tier details before EOD today." },
+        { customer: "Priya Sharma", tag: "Tomorrow", note: "Brief meeting to review NDA revisions and legal sign-off timeline.", time: "Tomorrow at 11:30 AM", date: "", id: "CLI-FU-003", email: "priya.sharma@saastech.io", phone: "+91 80456 78901", location: "Bangalore", status: "Contacted", stage: "Follow-up Due", priority: "Medium", source: "Website", projectType: "Corporate", industry: "SaaS Tech", assignedTo: "Rohan Nair", budget: "₹40L – ₹60L", notes: "NDA revisions scheduled for tomorrow. Legal team review required. Sign-off timeline to be confirmed by EOD." },
+        { customer: "Aditya Joshi", tag: "Scheduled", note: "Discuss volume discount options for enterprise tier subscription.", time: "Jul 2, 2026 at 3:00 PM", date: "2026-07-02", id: "CLI-FU-004", email: "aditya.joshi@ecomhub.com", phone: "+91 20567 89012", location: "Pune", status: "Meeting Done", stage: "Follow-up Due", priority: "Medium", source: "Google Search", projectType: "Commercial", industry: "E-Commerce", assignedTo: "Sarah Jenkins", budget: "₹50L – ₹75L", notes: "Scheduled call to discuss volume discounts for enterprise tier. Client comparing with 2 competitors." },
+        { customer: "Kavya Nair", tag: "Scheduled", note: "Initial kickoff session with customer success and dev leads.", time: "Jul 5, 2026 at 10:00 AM", date: "2026-07-05", id: "CLI-FU-005", email: "kavya.nair@healthcare.co", phone: "+91 44234 56789", location: "Chennai", status: "Contacted", stage: "Follow-up Due", priority: "Low", source: "Instagram", projectType: "Retail", industry: "Healthcare", assignedTo: "Amir Khan", budget: "₹20L – ₹35L", notes: "Kickoff session planned. Customer success team and dev leads to attend. Initial retail expansion discussion." }
+    ]);
+    const [selectedFollowupDate, setSelectedFollowupDate] = useState("");
 
     const [meetingForm, setMeetingForm] = useState({
         leadId: "",
@@ -414,6 +428,23 @@ export default function CRMView() {
     const [leadsPriorityFilter, setLeadsPriorityFilter] = useState("All Priorities");
     const [leadsDatePresetFilter, setLeadsDatePresetFilter] = useState("All Time");
     const [leadsPage, setLeadsPage] = useState(1);
+    const [selectedClient, setSelectedClient] = useState(null);
+
+    // Apply pre-selected filters when navigating from dashboard sections
+    useEffect(() => {
+        if (view === "leads") {
+            if (location.state?.preStageFilter) {
+                setLeadsLifecycleStageFilter(location.state.preStageFilter);
+                setLeadsPage(1);
+                window.history.replaceState({}, "");
+            }
+            if (location.state?.preHotLeadsFilter) {
+                setLeadsPriorityFilter("High");
+                setLeadsPage(1);
+                window.history.replaceState({}, "");
+            }
+        }
+    }, [view, location.state]);
 
     const getFilteredAllRegistryLeads = () => {
         let list = [...allLeadsRegistry];
@@ -830,11 +861,6 @@ export default function CRMView() {
             {view !== "converted" && view !== "lost" && view !== "leads" && (
                 <div className="flex items-start justify-between flex-wrap gap-4">
                     <div>
-                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 font-sans">
-                            <span>CRM</span>
-                            <span>/</span>
-                            <span className="text-indigo-650">{meta.title}</span>
-                        </div>
                         <h1 className="text-2xl font-bold font-display text-slate-900 tracking-tight">
                             {meta.title}
                         </h1>
@@ -948,7 +974,10 @@ export default function CRMView() {
                 /* Redesigned 5-Column Main KPI Grid */
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
                         {/* 1. Total Leads */}
-                        <div className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between h-[120px] relative overflow-hidden group">
+                        <div 
+                            className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-sm hover:shadow-md hover:scale-[1.02] cursor-pointer transition-all duration-200 flex flex-col justify-between h-[120px] relative overflow-hidden group"
+                            onClick={() => navigate('/crm/leads')}
+                        >
                             <div className="flex justify-between items-start">
                                 <div className="space-y-0.5">
                                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Leads</span>
@@ -970,7 +999,10 @@ export default function CRMView() {
                         </div>
 
                         {/* 2. Active Pipeline */}
-                        <div className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between h-[120px] relative overflow-hidden group">
+                        <div 
+                            className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-sm hover:shadow-md hover:scale-[1.02] cursor-pointer transition-all duration-200 flex flex-col justify-between h-[120px] relative overflow-hidden group"
+                            onClick={() => navigate('/crm/create-lead')}
+                        >
                             <div className="flex justify-between items-start">
                                 <div className="space-y-0.5">
                                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Active Pipeline</span>
@@ -992,7 +1024,10 @@ export default function CRMView() {
                         </div>
 
                         {/* 3. Conversion Rate */}
-                        <div className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between h-[120px] relative overflow-hidden group">
+                        <div 
+                            className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-sm hover:shadow-md hover:scale-[1.02] cursor-pointer transition-all duration-200 flex flex-col justify-between h-[120px] relative overflow-hidden group"
+                            onClick={() => navigate('/crm/converted')}
+                        >
                             <div className="flex justify-between items-start">
                                 <div className="space-y-0.5">
                                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Conversion Rate</span>
@@ -1016,7 +1051,10 @@ export default function CRMView() {
                         </div>
 
                         {/* 4. Lost Rate */}
-                        <div className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between h-[120px] relative overflow-hidden group">
+                        <div 
+                            className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-sm hover:shadow-md hover:scale-[1.02] cursor-pointer transition-all duration-200 flex flex-col justify-between h-[120px] relative overflow-hidden group"
+                            onClick={() => navigate('/crm/lost')}
+                        >
                             <div className="flex justify-between items-start">
                                 <div className="space-y-0.5">
                                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Lost Rate</span>
@@ -1312,7 +1350,10 @@ export default function CRMView() {
                     {/* Second Analytics Row: CRM Stage Cards (Moved here to align with Row 1 Metrics) */}
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
                         {/* 1. In Progress */}
-                        <div className="bg-white border border-slate-200/80 p-4 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between">
+                        <div 
+                            className="bg-white border border-slate-200/80 p-4 rounded-2xl shadow-sm hover:shadow-md hover:scale-[1.02] cursor-pointer transition-all duration-200 flex flex-col justify-between"
+                            onClick={() => navigate('/crm/leads')}
+                        >
                             <div>
                                 <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">In Progress</span>
                                 <h4 className="text-xl font-extrabold text-slate-800 tracking-tight font-display mt-1">{inProgressCount}</h4>
@@ -1323,7 +1364,10 @@ export default function CRMView() {
                         </div>
 
                         {/* 2. Interested */}
-                        <div className="bg-white border border-slate-200/80 p-4 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between">
+                        <div 
+                            className="bg-white border border-slate-200/80 p-4 rounded-2xl shadow-sm hover:shadow-md hover:scale-[1.02] cursor-pointer transition-all duration-200 flex flex-col justify-between"
+                            onClick={() => navigate('/crm/leads')}
+                        >
                             <div>
                                 <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Interested</span>
                                 <h4 className="text-xl font-extrabold text-slate-800 tracking-tight font-display mt-1">{interestedCount}</h4>
@@ -1334,7 +1378,10 @@ export default function CRMView() {
                         </div>
 
                         {/* 3. Follow-Ups */}
-                        <div className="bg-white border border-slate-200/80 p-4 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between">
+                        <div 
+                            className="bg-white border border-slate-200/80 p-4 rounded-2xl shadow-sm hover:shadow-md hover:scale-[1.02] cursor-pointer transition-all duration-200 flex flex-col justify-between"
+                            onClick={() => navigate('/crm/leads')}
+                        >
                             <div>
                                 <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Follow-Ups</span>
                                 <h4 className="text-xl font-extrabold text-slate-800 tracking-tight font-display mt-1">{followUpsCount}</h4>
@@ -1345,7 +1392,10 @@ export default function CRMView() {
                         </div>
 
                         {/* 4. Converted */}
-                        <div className="bg-white border border-slate-200/80 p-4 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between">
+                        <div 
+                            className="bg-white border border-slate-200/80 p-4 rounded-2xl shadow-sm hover:shadow-md hover:scale-[1.02] cursor-pointer transition-all duration-200 flex flex-col justify-between"
+                            onClick={() => navigate('/crm/converted')}
+                        >
                             <div>
                                 <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Converted</span>
                                 <h4 className="text-xl font-extrabold text-slate-800 tracking-tight font-display mt-1">{convertedCount}</h4>
@@ -1356,7 +1406,10 @@ export default function CRMView() {
                         </div>
 
                         {/* 5. Lost Leads */}
-                        <div className="bg-white border border-slate-200/80 p-4 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between">
+                        <div 
+                            className="bg-white border border-slate-200/80 p-4 rounded-2xl shadow-sm hover:shadow-md hover:scale-[1.02] cursor-pointer transition-all duration-200 flex flex-col justify-between"
+                            onClick={() => navigate('/crm/lost')}
+                        >
                             <div>
                                 <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Lost Leads</span>
                                 <h4 className="text-xl font-extrabold text-slate-800 tracking-tight font-display mt-1">{lostCount}</h4>
@@ -1528,9 +1581,9 @@ export default function CRMView() {
                                     </div>
                                     <p className="text-[10px] text-slate-400 font-sans mt-0.5">High potential customers requiring attention</p>
                                 </div>
-                                <button
+                            <button
                                     type="button"
-                                    onClick={() => showToast("Viewing all hot leads...", "info")}
+                                    onClick={() => navigate('/crm/leads', { state: { preHotLeadsFilter: true } })}
                                     className="text-[11px] font-bold text-indigo-655 hover:text-indigo-800 transition cursor-pointer border-0 bg-transparent"
                                 >
                                     View All
@@ -1540,11 +1593,11 @@ export default function CRMView() {
                             {/* Hot Leads list */}
                             <div className="flex flex-col gap-3">
                                 {[
-                                    { name: "Aarav Mehta", initials: "AM", priority: "High", stage: "Proposal Review", industry: "Real Estate", location: "Mumbai", phone: "+91 98200 12345", active: "5m ago" },
-                                    { name: "Priya Sharma", initials: "PS", priority: "Medium", stage: "Meeting Scheduled", industry: "SaaS Tech", location: "Bangalore", phone: "+91 80456 78901", active: "1h ago" },
-                                    { name: "Rohan Verma", initials: "RV", priority: "High", stage: "Contract Draft", industry: "Finance", location: "Delhi NCR", phone: "+91 99100 98765", active: "12m ago" },
-                                    { name: "Kavya Nair", initials: "KN", priority: "Low", stage: "Initial Inquiry", industry: "Healthcare", location: "Chennai", phone: "+91 44234 56789", active: "2h ago" },
-                                    { name: "Aditya Joshi", initials: "AJ", priority: "Medium", stage: "Demo Completed", industry: "E-Commerce", location: "Pune", phone: "+91 20567 89012", active: "45m ago" }
+                                    { name: "Aarav Mehta", initials: "AM", priority: "High", stage: "Proposal Review", industry: "Real Estate", location: "Mumbai", phone: "+91 98200 12345", active: "5m ago", id: "CLI-HOT-001", email: "aarav.mehta@enterprise.com", status: "Meeting Done", projectType: "Commercial", date: "2026-06-29", source: "Referral", assignedTo: "Sarah Jenkins", budget: "₹1.2Cr – ₹1.8Cr", notes: "Client is extremely keen on finalizing the commercial layout by Q3. Budget confirmed. Needs proposal by this week." },
+                                    { name: "Priya Sharma", initials: "PS", priority: "Medium", stage: "Meeting Scheduled", industry: "SaaS Tech", location: "Bangalore", phone: "+91 80456 78901", active: "1h ago", id: "CLI-HOT-002", email: "priya.sharma@saastech.io", status: "Contacted", projectType: "Corporate", date: "2026-06-28", source: "Website", assignedTo: "Rohan Nair", budget: "₹40L – ₹60L", notes: "Interested in SaaS integration and CRM customization. Scheduled follow-up demo for next week." },
+                                    { name: "Rohan Verma", initials: "RV", priority: "High", stage: "Contract Draft", industry: "Finance", location: "Delhi NCR", phone: "+91 99100 98765", active: "12m ago", id: "CLI-HOT-003", email: "rohan.verma@fingroup.in", status: "Meeting Done", projectType: "Residential", date: "2026-06-27", source: "Cold Call", assignedTo: "Priya Sen", budget: "₹80L – ₹1.2Cr", notes: "Contract draft stage. Legal review pending. Client requested a revised NDA before signing off." },
+                                    { name: "Kavya Nair", initials: "KN", priority: "Low", stage: "Initial Inquiry", industry: "Healthcare", location: "Chennai", phone: "+91 44234 56789", active: "2h ago", id: "CLI-HOT-004", email: "kavya.nair@healthcare.co", status: "Contacted", projectType: "Retail", date: "2026-06-26", source: "Instagram", assignedTo: "Amir Khan", budget: "₹20L – ₹35L", notes: "Early stage inquiry. Exploring options for retail expansion. Initial discovery call completed." },
+                                    { name: "Aditya Joshi", initials: "AJ", priority: "Medium", stage: "Demo Completed", industry: "E-Commerce", location: "Pune", phone: "+91 20567 89012", active: "45m ago", id: "CLI-HOT-005", email: "aditya.joshi@ecomhub.com", status: "Meeting Done", projectType: "Commercial", date: "2026-06-25", source: "Google Search", assignedTo: "Sarah Jenkins", budget: "₹50L – ₹75L", notes: "Demo completed successfully. Client is evaluating 2 other vendors. Need to send competitive pricing by EOD." }
                                 ].map((lead, idx) => {
                                     const priorityColors = {
                                         High: "bg-rose-50 text-rose-700 border-rose-100",
@@ -1552,13 +1605,17 @@ export default function CRMView() {
                                         Low: "bg-emerald-50 text-emerald-700 border-emerald-100"
                                     };
                                     return (
-                                        <div key={idx} className="flex items-center justify-between p-3.5 rounded-2xl border border-slate-100 hover:border-slate-200 hover:bg-slate-50/30 transition-all duration-150 gap-4 group">
+                                        <div
+                                            key={idx}
+                                            onClick={() => setSelectedClient(lead)}
+                                            className="flex items-center justify-between p-3.5 rounded-2xl border border-slate-100 hover:border-indigo-200 hover:bg-slate-50/30 transition-all duration-150 gap-4 group cursor-pointer"
+                                        >
                                             <div className="flex items-center gap-3 min-w-0">
                                                 <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-650 border border-indigo-100/50 flex items-center justify-center font-bold text-xs shrink-0 group-hover:scale-105 transition-transform">
                                                     {lead.initials}
                                                 </div>
                                                 <div className="min-w-0">
-                                                    <h4 className="text-xs font-bold text-slate-800 tracking-tight truncate">{lead.name}</h4>
+                                                    <h4 className="text-xs font-bold text-slate-800 tracking-tight truncate group-hover:text-indigo-700 transition-colors">{lead.name}</h4>
                                                     <div className="flex items-center gap-1.5 flex-wrap text-[10px] text-slate-450 mt-1 font-medium font-sans">
                                                         <span>{lead.stage}</span>
                                                         <span>•</span>
@@ -1594,7 +1651,9 @@ export default function CRMView() {
                                 </div>
                                 <button
                                     type="button"
-                                    onClick={() => showToast("Viewing all follow-ups...", "info")}
+                                    onClick={() => {
+                                        navigate('/crm/leads', { state: { preStageFilter: 'Follow-up Due' } });
+                                    }}
                                     className="text-[11px] font-bold text-indigo-655 hover:text-indigo-800 transition cursor-pointer border-0 bg-transparent"
                                 >
                                     View All
@@ -1603,23 +1662,39 @@ export default function CRMView() {
 
                             {/* Follow-ups list */}
                             <div className="flex flex-col gap-3">
-                                {[
-                                    { customer: "Aarav Mehta", tag: "Overdue", note: "Follow up on demo feedback and answer custom API integration queries.", time: "Yesterday at 4:30 PM" },
-                                    { customer: "Rohan Verma", tag: "Today", note: "Send revised pricing table and SLAs before EOD.", time: "Today at 2:00 PM" },
-                                    { customer: "Priya Sharma", tag: "Tomorrow", note: "Brief meeting to review NDA revisions and legal sign-off timeline.", time: "Tomorrow at 11:30 AM" },
-                                    { customer: "Aditya Joshi", tag: "Scheduled", note: "Discuss volume discount options for enterprise tier subscription.", time: "Jul 2, 2026 at 3:00 PM" },
-                                    { customer: "Kavya Nair", tag: "Scheduled", note: "Initial kickoff session with customer success and dev leads.", time: "Jul 5, 2026 at 10:00 AM" }
-                                ].map((task, idx) => {
+                                {followupTasks.map((task, idx) => {
                                     const tagColors = {
                                         Today: "bg-blue-50 text-blue-700 border-blue-100",
                                         Tomorrow: "bg-indigo-50 text-indigo-700 border-indigo-100",
                                         Overdue: "bg-rose-50 text-rose-700 border-rose-100",
                                         Scheduled: "bg-emerald-50 text-emerald-700 border-emerald-100"
                                     };
+                                    // Build a selectedClient-compatible object from this task
+                                    const clientPayload = {
+                                        name: task.customer,
+                                        id: task.id || `CLI-FU-${idx + 1}`,
+                                        email: task.email || "",
+                                        phone: task.phone || "",
+                                        location: task.location || "",
+                                        status: task.status || "Contacted",
+                                        stage: task.stage || "Follow-up Due",
+                                        priority: task.priority || "Medium",
+                                        source: task.source || "Referral",
+                                        projectType: task.projectType || "Commercial",
+                                        industry: task.industry || "",
+                                        assignedTo: task.assignedTo || "Sarah Jenkins",
+                                        budget: task.budget || "",
+                                        notes: task.notes || task.note || "",
+                                        date: task.date || new Date().toISOString().split("T")[0]
+                                    };
                                     return (
-                                        <div key={idx} className="flex flex-col p-3.5 rounded-2xl border border-slate-100 hover:border-slate-200 hover:bg-slate-50/30 transition-all duration-150 gap-2 font-sans">
+                                        <div
+                                            key={idx}
+                                            onClick={() => setSelectedClient(clientPayload)}
+                                            className="flex flex-col p-3.5 rounded-2xl border border-slate-100 hover:border-indigo-200 hover:bg-slate-50/30 transition-all duration-150 gap-2 font-sans cursor-pointer group"
+                                        >
                                             <div className="flex items-center justify-between gap-3">
-                                                <h4 className="text-xs font-bold text-slate-800 leading-snug truncate">{task.customer}</h4>
+                                                <h4 className="text-xs font-bold text-slate-800 leading-snug truncate group-hover:text-indigo-700 transition-colors">{task.customer}</h4>
                                                 <span className={`px-2 py-0.5 rounded-lg text-[9px] font-bold border uppercase tracking-wider shrink-0 ${tagColors[task.tag]}`}>
                                                     {task.tag}
                                                 </span>
@@ -1632,12 +1707,115 @@ export default function CRMView() {
                                                     <FiClock size={11} className="text-slate-350" />
                                                     <span>{task.time}</span>
                                                 </span>
-                                                <FiCalendar size={11} className="text-slate-350 hover:text-indigo-600 transition cursor-pointer" />
+                                                <button
+                                                    type="button"
+                                                    title="Schedule / Reschedule follow-up date"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setSelectedFollowupDate(task.date || "");
+                                                        setFollowupDateModal({ idx, task });
+                                                    }}
+                                                    className="group/cal flex items-center gap-1 text-slate-350 hover:text-indigo-600 transition-all duration-200 cursor-pointer border-0 bg-transparent p-0.5 rounded-md hover:bg-indigo-50"
+                                                >
+                                                    <FiCalendar size={11} className="transition-transform duration-200 group-hover/cal:scale-110" />
+                                                    {task.date && <span className="text-[9px] font-semibold">{task.date}</span>}
+                                                </button>
                                             </div>
                                     </div>
                                     );
                                 })}
                             </div>
+
+                            {/* Follow-up Date Picker Modal */}
+                            {followupDateModal !== null && (
+                                <div
+                                    className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in"
+                                    onClick={(e) => { if (e.target === e.currentTarget) setFollowupDateModal(null); }}
+                                >
+                                    <div
+                                        className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-sm overflow-hidden animate-slide-up"
+                                    >
+                                        {/* Modal Header */}
+                                        <div className="flex justify-between items-center px-5 py-4 border-b border-slate-100">
+                                            <div>
+                                                <h3 className="text-sm font-bold text-slate-800 font-display">Schedule Follow-up</h3>
+                                                <p className="text-[10px] text-slate-400 font-sans mt-0.5">
+                                                    {followupDateModal.task.customer}
+                                                </p>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => setFollowupDateModal(null)}
+                                                className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition cursor-pointer border-0 bg-transparent"
+                                            >
+                                                <FiX size={15} />
+                                            </button>
+                                        </div>
+
+                                        {/* Modal Body */}
+                                        <div className="px-5 py-5 space-y-4">
+                                            {/* Current info */}
+                                            <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-100 font-sans">
+                                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Current Schedule</p>
+                                                <p className="text-xs font-semibold text-slate-700">{followupDateModal.task.time}</p>
+                                            </div>
+
+                                            {/* Date Picker */}
+                                            <div>
+                                                <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2 font-sans">
+                                                    New Follow-up Date <span className="text-rose-500">*</span>
+                                                </label>
+                                                <input
+                                                    type="date"
+                                                    value={selectedFollowupDate}
+                                                    min={new Date().toISOString().split("T")[0]}
+                                                    onChange={(e) => setSelectedFollowupDate(e.target.value)}
+                                                    className="w-full h-11 rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-800 focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 transition-all font-sans cursor-pointer"
+                                                />
+                                                <p className="text-[10px] text-slate-400 mt-1.5 font-sans">
+                                                    ✓ Today and future dates are selectable. Past dates are disabled.
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        {/* Modal Footer */}
+                                        <div className="flex justify-end gap-2.5 px-5 py-4 border-t border-slate-100">
+                                            <button
+                                                type="button"
+                                                onClick={() => setFollowupDateModal(null)}
+                                                className="h-9 px-4 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition cursor-pointer"
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                type="button"
+                                                disabled={!selectedFollowupDate}
+                                                onClick={() => {
+                                                    if (!selectedFollowupDate) return;
+                                                    const dateObj = new Date(selectedFollowupDate);
+                                                    const formattedDisplay = dateObj.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+                                                    const today = new Date().toISOString().split("T")[0];
+                                                    const tomorrow = new Date(Date.now() + 86400000).toISOString().split("T")[0];
+                                                    let newTag = "Scheduled";
+                                                    if (selectedFollowupDate === today) newTag = "Today";
+                                                    else if (selectedFollowupDate === tomorrow) newTag = "Tomorrow";
+
+                                                    setFollowupTasks(prev => prev.map((t, i) =>
+                                                        i === followupDateModal.idx
+                                                            ? { ...t, date: selectedFollowupDate, time: `${formattedDisplay}`, tag: newTag }
+                                                            : t
+                                                    ));
+                                                    showToast(`Follow-up for ${followupDateModal.task.customer} rescheduled to ${formattedDisplay}`, "success");
+                                                    setFollowupDateModal(null);
+                                                }}
+                                                className="h-9 px-5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-semibold shadow-md shadow-indigo-600/10 transition cursor-pointer border-0"
+                                            >
+                                                Save Date
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -1841,7 +2019,7 @@ export default function CRMView() {
                                                     type="button"
                                                     onClick={() => setSelectedDate(formattedDay)}
                                                     className={`relative p-2 h-9 rounded-xl font-bold flex flex-col items-center justify-center transition-all cursor-pointer group ${isSelected
-                                                        ? "bg-indigo-650 text-white shadow-sm font-extrabold scale-105"
+                                                        ? "bg-indigo-600 text-white shadow-sm font-extrabold scale-105"
                                                         : isToday
                                                             ? "border border-indigo-200 text-indigo-600 hover:bg-indigo-50/50"
                                                             : "text-slate-600 hover:bg-slate-100"
@@ -2263,11 +2441,6 @@ export default function CRMView() {
                         <div className="flex items-start gap-4">
                             <div className="w-1.5 h-12 bg-indigo-600 rounded-full shrink-0"></div>
                             <div>
-                                <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5 font-sans">
-                                    <span>CRM</span>
-                                    <span>/</span>
-                                    <span className="text-indigo-655">Converted</span>
-                                </div>
                                 <h1 className="text-2xl font-bold text-slate-900 tracking-tight font-display">Converted</h1>
                                 <p className="text-slate-500 text-xs mt-0.5 leading-relaxed font-sans">
                                     {getFilteredConvertedLeads().length} leads found • Successfully converted leads
@@ -2451,11 +2624,6 @@ export default function CRMView() {
                         <div className="flex items-start gap-4">
                             <div className="w-1.5 h-12 bg-slate-500 rounded-full shrink-0"></div>
                             <div>
-                                <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5 font-sans">
-                                    <span>CRM</span>
-                                    <span>/</span>
-                                    <span className="text-indigo-650">Lost</span>
-                                </div>
                                 <h1 className="text-2xl font-bold text-slate-900 tracking-tight font-display">Lost</h1>
                                 <p className="text-slate-500 text-xs mt-0.5 leading-relaxed font-sans">
                                     {getFilteredLostLeads().length} leads lost • Successfully archived lost opportunities
@@ -2642,11 +2810,6 @@ export default function CRMView() {
                                 <FiSliders size={20} />
                             </div>
                             <div>
-                                <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5 font-sans">
-                                    <span>CRM</span>
-                                    <span>/</span>
-                                    <span className="text-indigo-655 font-bold">All Leads</span>
-                                </div>
                                 <h1 className="text-2xl font-bold text-slate-900 tracking-tight font-display">ALL LEADS</h1>
                                 <p className="text-slate-500 text-xs mt-0.5 leading-relaxed font-sans">
                                     Complete client registry across all pipeline stages.
@@ -2887,7 +3050,7 @@ export default function CRMView() {
                                                         };
 
                                                         return (
-                                                            <tr key={lead.id} className="hover:bg-slate-50/40 transition-colors duration-150 cursor-pointer" onClick={() => showToast(`Opening registry record for ${lead.name}...`, "info")}>
+                                                            <tr key={lead.id} className="hover:bg-slate-50/40 transition-colors duration-150 cursor-pointer" onClick={() => setSelectedClient(lead)}>
                                                                 {/* CLIENT COLUMN */}
                                                                 <td className="px-6 py-4">
                                                                     <div className="flex items-center gap-3">
@@ -2991,6 +3154,218 @@ export default function CRMView() {
                                 </>
                             );
                         })()}
+                    </div>
+                </div>
+            )}
+
+            {/* Client Details Side Panel */}
+            {selectedClient && (
+                <div className="fixed inset-0 z-50 flex justify-end font-sans">
+                    {/* Backdrop */}
+                    <div 
+                        className="absolute inset-0 bg-slate-900/30 backdrop-blur-sm transition-opacity animate-fade-in"
+                        onClick={() => setSelectedClient(null)}
+                    ></div>
+                    
+                    {/* Drawer */}
+                    <div className="relative w-full max-w-md md:max-w-xl h-full bg-slate-50 shadow-2xl flex flex-col animate-fade-in overflow-hidden border-l border-slate-200">
+                        {/* Header */}
+                        <div className="flex items-center justify-between px-6 py-5 bg-white border-b border-slate-200 shrink-0">
+                            <div className="flex items-center gap-3">
+                                <div className="w-12 h-12 flex items-center justify-center rounded-2xl bg-cyan-50 border border-cyan-100 text-cyan-600 font-bold text-lg shrink-0">
+                                    {selectedClient.name.split(" ").map(n => n[0]).join("").toUpperCase()}
+                                </div>
+                                <div>
+                                    <h2 className="text-lg font-bold text-slate-800 font-display leading-tight">{selectedClient.name}</h2>
+                                    <span className="text-xs font-semibold text-slate-400">{selectedClient.id}</span>
+                                </div>
+                            </div>
+                            <button 
+                                onClick={() => setSelectedClient(null)}
+                                className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer border-0 bg-transparent"
+                            >
+                                <FiX size={20} />
+                            </button>
+                        </div>
+
+                        {/* Scrollable Content */}
+                        <div className="flex-1 overflow-y-auto p-6 space-y-5">
+                            
+                            {/* 1. Basic Info */}
+                            <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
+                                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 font-sans flex items-center gap-2">
+                                    <FiUser className="text-cyan-500" /> Basic Information
+                                </h3>
+                                <div className="grid grid-cols-2 gap-y-4 gap-x-2 text-sm">
+                                    <div>
+                                        <span className="block text-[10px] text-slate-400 font-semibold uppercase mb-0.5">Phone Number</span>
+                                        <span className="font-semibold text-slate-700">{selectedClient.phone || "+1 555-0198"}</span>
+                                    </div>
+                                    <div>
+                                        <span className="block text-[10px] text-slate-400 font-semibold uppercase mb-0.5">Email Address</span>
+                                        <span className="font-semibold text-slate-700 block truncate pr-2">{selectedClient.email || "contact@client.com"}</span>
+                                    </div>
+                                    <div>
+                                        <span className="block text-[10px] text-slate-400 font-semibold uppercase mb-0.5">Location</span>
+                                        <span className="font-semibold text-slate-700">{selectedClient.location || "—"}</span>
+                                    </div>
+                                    <div>
+                                        <span className="block text-[10px] text-slate-400 font-semibold uppercase mb-0.5">Industry / Sector</span>
+                                        <span className="font-semibold text-slate-700">{selectedClient.industry || selectedClient.projectType || "Enterprise"}</span>
+                                    </div>
+                                    <div className="col-span-2">
+                                        <span className="block text-[10px] text-slate-400 font-semibold uppercase mb-0.5">Client / Company</span>
+                                        <span className="font-semibold text-slate-700">{selectedClient.name}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* 2. Lead Details */}
+                            <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
+                                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 font-sans flex items-center gap-2">
+                                    <FiLayers className="text-cyan-500" /> Lead Details
+                                </h3>
+                                <div className="grid grid-cols-2 gap-4 text-sm">
+                                    <div>
+                                        <span className="block text-[10px] text-slate-400 font-semibold uppercase mb-0.5">Project Type</span>
+                                        <span className="font-semibold text-slate-700">{selectedClient.projectType || "Commercial"}</span>
+                                    </div>
+                                    <div>
+                                        <span className="block text-[10px] text-slate-400 font-semibold uppercase mb-0.5">Budget Range</span>
+                                        <span className="font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100 text-xs">{selectedClient.budget || "$150,000 – $250,000"}</span>
+                                    </div>
+                                    <div>
+                                        <span className="block text-[10px] text-slate-400 font-semibold uppercase mb-0.5">Lead Source</span>
+                                        <span className="font-semibold text-slate-700">{selectedClient.source || "Google Search Ads"}</span>
+                                    </div>
+                                    <div>
+                                        <span className="block text-[10px] text-slate-400 font-semibold uppercase mb-0.5">Priority Level</span>
+                                        {(() => {
+                                            const p = selectedClient.priority;
+                                            const cls = p === "High" ? "text-rose-700 bg-rose-50 border-rose-100" : p === "Medium" ? "text-amber-700 bg-amber-50 border-amber-100" : "text-emerald-700 bg-emerald-50 border-emerald-100";
+                                            return <span className={`font-bold px-2.5 py-0.5 rounded-md text-[10px] tracking-wider uppercase border ${cls}`}>{p || "Medium"}</span>;
+                                        })()}
+                                    </div>
+                                    <div className="col-span-2">
+                                        <span className="block text-[10px] text-slate-400 font-semibold uppercase mb-0.5">Assigned Employee</span>
+                                        <span className="font-semibold text-slate-700">{selectedClient.assignedTo || "Sarah Jenkins"}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* 3. CRM Status */}
+                            <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
+                                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 font-sans flex items-center gap-2">
+                                    <FiActivity className="text-cyan-500" /> CRM Status
+                                </h3>
+                                <div className="grid grid-cols-2 gap-4 text-sm">
+                                    <div>
+                                        <span className="block text-[10px] text-slate-400 font-semibold uppercase mb-0.5">Current Status</span>
+                                        <span className="font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md text-[10px] tracking-wider uppercase border border-indigo-100">{selectedClient.status || "Contacted"}</span>
+                                    </div>
+                                    <div>
+                                        <span className="block text-[10px] text-slate-400 font-semibold uppercase mb-0.5">Pipeline Stage</span>
+                                        <span className="font-semibold text-slate-700">{selectedClient.stage || "Discovery"}</span>
+                                    </div>
+                                    <div>
+                                        <span className="block text-[10px] text-slate-400 font-semibold uppercase mb-0.5">Lead Source</span>
+                                        <span className="font-semibold text-slate-700">{selectedClient.source || "Referral"}</span>
+                                    </div>
+                                    <div>
+                                        <span className="block text-[10px] text-slate-400 font-semibold uppercase mb-0.5">Assigned To</span>
+                                        <span className="font-semibold text-slate-700">{selectedClient.assignedTo || "Sarah Jenkins"}</span>
+                                    </div>
+                                    <div>
+                                        <span className="block text-[10px] text-slate-400 font-semibold uppercase mb-0.5">Added Date</span>
+                                        <span className="font-semibold text-slate-700">{selectedClient.date ? new Date(selectedClient.date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—"}</span>
+                                    </div>
+                                    <div>
+                                        <span className="block text-[10px] text-slate-400 font-semibold uppercase mb-0.5">Last Updated</span>
+                                        <span className="font-semibold text-slate-700">Just now</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* 4. Activity / Timeline */}
+                            <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
+                                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 font-sans flex items-center gap-2">
+                                    <FiClock className="text-cyan-500" /> Activity Timeline
+                                </h3>
+                                <div className="relative pl-3 space-y-5">
+                                    <div className="absolute left-[11px] top-2 bottom-2 w-[2px] bg-slate-100"></div>
+                                    <div className="relative flex gap-4">
+                                        <div className="w-2.5 h-2.5 mt-1 rounded-full bg-cyan-500 ring-4 ring-white z-10 shrink-0"></div>
+                                        <div>
+                                            <p className="text-sm font-semibold text-slate-800">{selectedClient.stage || "Meeting Scheduled"}</p>
+                                            <p className="text-[11px] text-slate-400 mt-0.5">Today at 10:30 AM — by {selectedClient.assignedTo || "Sarah Jenkins"}</p>
+                                        </div>
+                                    </div>
+                                    <div className="relative flex gap-4">
+                                        <div className="w-2.5 h-2.5 mt-1 rounded-full bg-indigo-400 ring-4 ring-white z-10 shrink-0"></div>
+                                        <div>
+                                            <p className="text-sm font-semibold text-slate-800">Proposal Shared</p>
+                                            <p className="text-[11px] text-slate-400 mt-0.5">2 days ago — Sent via email to {selectedClient.email || "client@company.com"}</p>
+                                        </div>
+                                    </div>
+                                    <div className="relative flex gap-4">
+                                        <div className="w-2.5 h-2.5 mt-1 rounded-full bg-amber-400 ring-4 ring-white z-10 shrink-0"></div>
+                                        <div>
+                                            <p className="text-sm font-semibold text-slate-800">Status changed to {selectedClient.status || "Contacted"}</p>
+                                            <p className="text-[11px] text-slate-400 mt-0.5">Yesterday at 4:15 PM by {selectedClient.assignedTo || "Sarah Jenkins"}</p>
+                                        </div>
+                                    </div>
+                                    <div className="relative flex gap-4">
+                                        <div className="w-2.5 h-2.5 mt-1 rounded-full bg-slate-300 ring-4 ring-white z-10 shrink-0"></div>
+                                        <div>
+                                            <p className="text-sm font-semibold text-slate-800">Follow-up Added</p>
+                                            <p className="text-[11px] text-slate-400 mt-0.5">3 days ago — Reminder set for upcoming review</p>
+                                        </div>
+                                    </div>
+                                    <div className="relative flex gap-4">
+                                        <div className="w-2.5 h-2.5 mt-1 rounded-full bg-slate-200 ring-4 ring-white z-10 shrink-0"></div>
+                                        <div>
+                                            <p className="text-sm font-semibold text-slate-800">Enquiry Created</p>
+                                            <p className="text-[11px] text-slate-400 mt-0.5">{selectedClient.date ? new Date(selectedClient.date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—"} at 9:00 AM via {selectedClient.source || "Referral"}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* 5. Internal Notes */}
+                            <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
+                                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 font-sans flex items-center gap-2">
+                                    <FiFileText className="text-cyan-500" /> Internal Notes
+                                </h3>
+                                <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-100 text-[13px] text-slate-600 leading-relaxed font-sans shadow-sm">
+                                    <span className="font-bold text-slate-800 block mb-1">Sales Remarks ({selectedClient.assignedTo || "Sarah Jenkins"}):</span>
+                                    {selectedClient.notes || "Client is highly interested in finalizing the commercial layout. Budget is confirmed and aligns with our enterprise tier. Key stakeholders need a demo by next Thursday. Mentioned timeframe as their #1 priority for this quarter. Follow up actively."}
+                                </div>
+                            </div>
+
+                            {/* 6. Follow Up */}
+                            <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center justify-between">
+                                <div>
+                                    <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 font-sans flex items-center gap-1.5">
+                                        <FiCalendar className="text-cyan-500" /> Next Follow-up Date
+                                    </h3>
+                                    <p className="text-[15px] font-bold text-slate-800">Thursday, July 5th at 2:00 PM</p>
+                                </div>
+                                <div className="px-3 py-1.5 bg-amber-50 text-amber-600 text-xs font-bold rounded-lg border border-amber-100 shadow-sm">
+                                    Reminder Active
+                                </div>
+                            </div>
+
+                        </div>
+                        
+                        {/* Footer Actions */}
+                        <div className="p-5 border-t border-slate-200 bg-white grid grid-cols-2 gap-3 shrink-0">
+                            <button className="h-11 flex items-center justify-center gap-2 bg-white border border-slate-200 text-slate-700 font-semibold rounded-xl hover:bg-slate-50 transition cursor-pointer text-sm shadow-sm">
+                                <FiMail /> Email Client
+                            </button>
+                            <button className="h-11 flex items-center justify-center gap-2 bg-cyan-600 border border-cyan-600 text-white font-semibold rounded-xl hover:bg-cyan-700 shadow-md shadow-cyan-600/20 transition cursor-pointer text-sm">
+                                Edit Profile
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
