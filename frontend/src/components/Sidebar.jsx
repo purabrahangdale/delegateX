@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { FiPieChart, FiUsers, FiBriefcase, FiCheckSquare, FiChevronLeft, FiChevronRight, FiGrid, FiPlusSquare, FiLayers, FiChevronDown, FiCalendar, FiX, FiBarChart2, FiFileText } from "react-icons/fi";
+import { FiPieChart, FiUsers, FiBriefcase, FiCheckSquare, FiChevronLeft, FiChevronRight, FiGrid, FiPlusSquare, FiLayers, FiChevronDown, FiCalendar, FiX, FiBarChart2, FiFileText, FiSettings } from "react-icons/fi";
 
 function Sidebar({ isCollapsed, setIsCollapsed, onClose }) {
     const location = useLocation();
@@ -11,12 +11,12 @@ function Sidebar({ isCollapsed, setIsCollapsed, onClose }) {
 
     const isCrmActive = location.pathname.startsWith("/crm");
     const isEmployeesActive = location.pathname.startsWith("/employees");
-    const isProposalsActive = location.pathname.startsWith("/proposals");
+    const isSettingsActive = location.pathname.startsWith("/settings");
 
     const [isDelegationOpen, setIsDelegationOpen] = useState(isDelegationActive);
     const [isCrmOpen, setIsCrmOpen] = useState(isCrmActive);
     const [isEmployeesOpen, setIsEmployeesOpen] = useState(isEmployeesActive);
-    const [isProposalsOpen, setIsProposalsOpen] = useState(isProposalsActive);
+    const [isSettingsOpen, setIsSettingsOpen] = useState(isSettingsActive);
 
     // Keep submenu open if a child route becomes active
     useEffect(() => {
@@ -38,10 +38,10 @@ function Sidebar({ isCollapsed, setIsCollapsed, onClose }) {
     }, [location.pathname, isEmployeesActive]);
 
     useEffect(() => {
-        if (isProposalsActive) {
-            setIsProposalsOpen(true);
+        if (isSettingsActive) {
+            setIsSettingsOpen(true);
         }
-    }, [location.pathname, isProposalsActive]);
+    }, [location.pathname, isSettingsActive]);
 
     const menuItems = [
         {
@@ -131,39 +131,14 @@ function Sidebar({ isCollapsed, setIsCollapsed, onClose }) {
             ]
         },
         {
-            title: "Proposal & Quotation System",
-            icon: FiFileText,
+            title: "Settings",
+            icon: FiSettings,
             isDropdown: true,
             children: [
                 {
-                    title: "Proposal Dashboard",
-                    path: "/proposals/dashboard",
-                    icon: FiGrid,
-                },
-                {
-                    title: "Create Proposal",
-                    path: "/proposals/create",
-                    icon: FiPlusSquare,
-                },
-                {
-                    title: "Draft Proposals",
-                    path: "/proposals/drafts",
-                    icon: FiFileText,
-                },
-                {
-                    title: "Manager Approval",
-                    path: "/proposals/approval",
-                    icon: FiLayers,
-                },
-                {
-                    title: "Sent & eSign Track",
-                    path: "/proposals/track",
-                    icon: FiCheckSquare,
-                },
-                {
-                    title: "Approved",
-                    path: "/proposals/approved",
-                    icon: FiCheckSquare,
+                    title: "User Management",
+                    path: "/settings/users",
+                    icon: FiUsers,
                 },
             ]
         }
@@ -179,7 +154,7 @@ function Sidebar({ isCollapsed, setIsCollapsed, onClose }) {
         if (title === "Delegation") return isDelegationOpen;
         if (title === "CRM") return isCrmOpen;
         if (title === "Employees") return isEmployeesOpen;
-        if (title === "Proposal & Quotation System") return isProposalsOpen;
+        if (title === "Settings") return isSettingsOpen;
         return false;
     };
 
@@ -187,7 +162,7 @@ function Sidebar({ isCollapsed, setIsCollapsed, onClose }) {
         if (title === "Delegation") setIsDelegationOpen(v => !v);
         else if (title === "CRM") setIsCrmOpen(v => !v);
         else if (title === "Employees") setIsEmployeesOpen(v => !v);
-        else if (title === "Proposal & Quotation System") setIsProposalsOpen(v => !v);
+        else if (title === "Settings") setIsSettingsOpen(v => !v);
     };
 
     return (

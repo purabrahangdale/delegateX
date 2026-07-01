@@ -28,6 +28,7 @@ function Navbar({ onToggleMobileMenu }) {
     // Dynamic breadcrumbs clickable links
     const getBreadcrumbs = () => {
         const path = location.pathname;
+        if (path.startsWith("/crm") || path.startsWith("/settings")) return [];
         if (path === "/") return [{ label: "Workspace", path: "/" }, { label: "Dashboard", path: "/" }];
         const segments = path.split("/").filter(Boolean);
         return [

@@ -11,6 +11,7 @@ import CreateDelegation from "../pages/CreateDelegation";
 import DelegationDashboard from "../pages/DelegationDashboard";
 import CRMView from "../pages/CRMView";
 import EmployeeWorkInsights from "../pages/EmployeeWorkInsights";
+import UserManagement from "../pages/UserManagement";
 
 function AppRoutes() {
     return (
@@ -29,6 +30,7 @@ function AppRoutes() {
                     <Route path="/create-delegation" element={<CreateDelegation />} />
 
                     <Route path="/crm/:view" element={<CRMView />} />
+                    <Route path="/settings/users" element={<UserManagement />} />
                 </Route>
             </Routes>
         </BrowserRouter>
