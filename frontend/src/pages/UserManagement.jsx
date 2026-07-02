@@ -34,6 +34,17 @@ export default function UserManagement() {
         status: "Active"
     });
 
+    const [emailError, setEmailError] = useState("");
+
+    const validateEmail = (email) => {
+        if (!email) return "Email is required.";
+        const re = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+        if (!re.test(email)) {
+            return "Please enter a valid email address.";
+        }
+        return "";
+    };
+
     // Filters and controls state
     const [searchQuery, setSearchQuery] = useState("");
     const [roleFilter, setRoleFilter] = useState("All Roles");
@@ -54,6 +65,12 @@ export default function UserManagement() {
         e.preventDefault();
         if (!formData.name.trim() || !formData.email.trim()) {
             showToast("Please fill in all required fields.", "error");
+            return;
+        }
+        const error = validateEmail(formData.email);
+        if (error) {
+            setEmailError(error);
+            showToast(error, "error");
             return;
         }
 
@@ -154,9 +171,20 @@ export default function UserManagement() {
                                     required
                                     placeholder="name@company.com"
                                     value={formData.email}
-                                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                                    className="w-full h-10 rounded-xl border border-slate-200 bg-white px-3.5 text-xs text-slate-800 focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 transition-all font-sans"
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        setFormData({ ...formData, email: val });
+                                        setEmailError(validateEmail(val));
+                                    }}
+                                    className={`w-full h-10 rounded-xl border bg-white px-3.5 text-xs text-slate-800 focus:outline-none focus:ring-4 transition-all font-sans ${
+                                        emailError
+                                            ? "border-rose-500 focus:border-rose-500 focus:ring-rose-100/50"
+                                            : "border-slate-200 focus:border-indigo-400 focus:ring-indigo-100/50"
+                                    }`}
                                 />
+                                {emailError && (
+                                    <p className="text-[10px] text-rose-500 font-semibold mt-1 pl-1">{emailError}</p>
+                                )}
                             </div>
 
                             <div>

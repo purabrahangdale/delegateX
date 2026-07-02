@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, Link, useNavigate, useLocation } from "react-router-dom";
+import axios from "axios";
 import {
     FiUser, FiMail, FiPhone, FiLayers, FiCheckCircle, FiXCircle,
     FiCalendar, FiDollarSign, FiSearch, FiSliders, FiPlus, FiAlertCircle,
@@ -8,6 +9,8 @@ import {
     FiTrendingUp, FiTrendingDown, FiRefreshCw, FiActivity
 } from "react-icons/fi";
 import { useToast } from "../context/ToastContext";
+import { useWebSockets } from "../context/WebSocketContext";
+
 
 /* ─── Local UI Helpers to match Delegation styling ─── */
 function SectionCard({ icon: Icon, title, subtitle, children, accentColor = "indigo" }) {
@@ -51,6 +54,62 @@ export default function CRMView() {
     const { view } = useParams();
     const { showToast } = useToast();
     const navigate = useNavigate();
+    const { crmSocket } = useWebSockets();
+    const API = import.meta.env.VITE_API_BASE_URL || "https://delegatex.onrender.com";
+    const [isLoading, setIsLoading] = useState(true);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [emailError, setEmailError] = useState("");
+    const [phoneError, setPhoneError] = useState("");
+    const [spouseMobileError, setSpouseMobileError] = useState("");
+
+    const validateEmail = (email) => {
+        if (!email) return "Email is required.";
+        const re = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+        if (!re.test(email)) {
+            return "Please enter a valid email address.";
+        }
+        return "";
+    };
+
+    const validatePhone = (phone) => {
+        if (!phone) return "Contact number is required.";
+        const digits = phone.replace(/\D/g, "");
+        if (digits.length !== 10) {
+            return "Contact number must be exactly 10 digits.";
+        }
+        return "";
+    };
+
+    const handlePhoneKeyPress = (e) => {
+        if (!/[0-9]/.test(e.key)) {
+            e.preventDefault();
+        }
+    };
+
+    const handlePhonePaste = (e) => {
+        e.preventDefault();
+        const pastedData = e.clipboardData.getData("text");
+        const cleanData = pastedData.replace(/\D/g, "").slice(0, 10);
+        setLeadForm({ ...leadForm, phone: cleanData });
+        setPhoneError(validatePhone(cleanData));
+    };
+
+    const validateSpousePhone = (phone) => {
+        if (!phone) return "";
+        const digits = phone.replace(/\D/g, "");
+        if (digits.length !== 10) {
+            return "Spouse contact number must be exactly 10 digits.";
+        }
+        return "";
+    };
+
+    const handleSpousePhonePaste = (e) => {
+        e.preventDefault();
+        const pastedData = e.clipboardData.getData("text");
+        const cleanData = pastedData.replace(/\D/g, "").slice(0, 10);
+        setLeadForm({ ...leadForm, spouseMobile: cleanData });
+        setSpouseMobileError(validateSpousePhone(cleanData));
+    };
 
     // In-memory mock leads state to allow basic interactive search & creation
     const [leads, setLeads] = useState([
@@ -130,6 +189,95 @@ export default function CRMView() {
         { customer: "Kavya Nair", tag: "Scheduled", note: "Initial kickoff session with customer success and dev leads.", time: "Jul 5, 2026 at 10:00 AM", date: "2026-07-05", id: "CLI-FU-005", email: "kavya.nair@healthcare.co", phone: "+91 44234 56789", location: "Chennai", status: "Contacted", stage: "Follow-up Due", priority: "Low", source: "Instagram", projectType: "Retail", industry: "Healthcare", assignedTo: "Amir Khan", budget: "₹20L – ₹35L", notes: "Kickoff session planned. Customer success team and dev leads to attend. Initial retail expansion discussion." }
     ]);
     const [selectedFollowupDate, setSelectedFollowupDate] = useState("");
+
+    useEffect(() => {
+        if (!crmSocket) return;
+
+        const handleCrmMessage = (eventData) => {
+            console.log("CRM event received:", eventData);
+            const { event, data } = eventData;
+
+            if (event === "lead_created") {
+                setLeads(prev => {
+                    if (prev.some(l => l.id === data.id)) return prev;
+                    return [data, ...prev];
+                });
+                setAllLeadsRegistry(prev => {
+                    if (prev.some(l => l.id === data.id)) return prev;
+                    const regLead = {
+                        id: `CLI-2026-${data.id.toString().slice(-4)}`,
+                        name: data.name,
+                        phone: data.phone || "+91 99999 99999",
+                        email: data.email,
+                        location: data.location || "Bhopal, Madhya Pradesh",
+                        projectType: data.projectType || "Residential",
+                        status: data.status,
+                        stage: "Enquiry",
+                        date: data.date,
+                        priority: data.priority || "Medium",
+                        source: data.source || "Website"
+                    };
+                    return [regLead, ...prev];
+                });
+            } else if (event === "followup_scheduled") {
+                setMeetings(prev => {
+                    if (prev.some(m => m.id === data.id)) return prev;
+                    return [data, ...prev];
+                });
+                // Sync status of the lead locally if it changed
+                setLeads(prev => prev.map(l => l.id === data.leadId ? { ...l, status: "Meeting Scheduled" } : l));
+            } else if (event === "meeting_status_updated") {
+                setMeetings(prev => prev.map(m => m.id === data.id ? { ...m, ...data } : m));
+            } else if (event === "followup_rescheduled") {
+                setFollowupTasks(prev => prev.map(t => t.id === data.id ? { ...t, ...data } : t));
+            }
+        };
+
+        crmSocket.on("message", handleCrmMessage);
+        return () => {
+            crmSocket.off("message", handleCrmMessage);
+        };
+    }, [crmSocket]);
+
+    useEffect(() => {
+        const fetchCrmData = async () => {
+            setIsLoading(true);
+            try {
+                const [leadsRes, meetingsRes] = await Promise.all([
+                    axios.get(`${API}/crm/leads`),
+                    axios.get(`${API}/crm/meetings`)
+                ]);
+                if (leadsRes.data && leadsRes.data.length > 0) {
+                    setLeads(leadsRes.data);
+                    
+                    // Map to allLeadsRegistry format
+                    const formattedRegistry = leadsRes.data.map(l => ({
+                        id: l.id ? (typeof l.id === "string" && l.id.startsWith("CLI-") ? l.id : `CLI-2026-${l.id.toString().slice(-4)}`) : `CLI-2026-${Math.floor(Math.random() * 9000 + 1000)}`,
+                        name: l.name,
+                        phone: l.phone,
+                        email: l.email,
+                        location: l.location || "Bhopal, Madhya Pradesh",
+                        projectType: l.projectType,
+                        status: l.status,
+                        stage: l.stage || "Enquiry",
+                        date: l.date,
+                        priority: l.priority || "Medium",
+                        source: l.leadSource || "Website"
+                    }));
+                    setAllLeadsRegistry(formattedRegistry);
+                }
+                if (meetingsRes.data && meetingsRes.data.length > 0) {
+                    setMeetings(meetingsRes.data);
+                }
+            } catch (err) {
+                console.error("Failed to fetch CRM data", err);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        fetchCrmData();
+    }, []);
+
 
     const [meetingForm, setMeetingForm] = useState({
         leadId: "",
@@ -240,6 +388,16 @@ export default function CRMView() {
             setLeads(updatedLeads);
         }
 
+        if (crmSocket) {
+            crmSocket.send({ event: "followup_scheduled", data: newMtg });
+        }
+
+        axios.post(`${API}/notifications`, {
+            type: "meeting_scheduled",
+            title: "Meeting Scheduled",
+            message: `A meeting (${newMtg.category}) with client '${newMtg.clientName}' has been scheduled for ${newMtg.date} at ${newMtg.time}.`
+        }).catch(err => console.error(err));
+
         showToast(`Meeting with '${selectedLead.name}' scheduled successfully!`, "success");
         setIsScheduleModalOpen(false);
         setMeetingForm({
@@ -262,6 +420,14 @@ export default function CRMView() {
             m.id === selectedMeetingForMom.id ? { ...m, notes: momText, status: "Completed" } : m
         );
         setMeetings(updated);
+
+        if (crmSocket) {
+            crmSocket.send({
+                event: "meeting_status_updated",
+                data: { id: selectedMeetingForMom.id, notes: momText, status: "Completed" }
+            });
+        }
+
         showToast(`MOM updated and meeting marked as 'Completed'`, "success");
         setIsMomModalOpen(false);
         setSelectedMeetingForMom(null);
@@ -582,19 +748,60 @@ export default function CRMView() {
             showToast("Please fill in all required fields.", "error");
             return;
         }
+        const error = validateEmail(leadForm.email);
+        if (error) {
+            setEmailError(error);
+            showToast(error, "error");
+            return;
+        }
+        const phoneErr = validatePhone(leadForm.phone);
+        if (phoneErr) {
+            setPhoneError(phoneErr);
+            showToast(phoneErr, "error");
+            return;
+        }
+        const spousePhoneErr = validateSpousePhone(leadForm.spouseMobile);
+        if (spousePhoneErr) {
+            setSpouseMobileError(spousePhoneErr);
+            showToast(spousePhoneErr, "error");
+            return;
+        }
+        setIsSubmitting(true);
         const newLead = {
             id: Date.now(),
             name: leadForm.name,
             contact: leadForm.name,
             email: leadForm.email,
             phone: leadForm.phone,
+            spouseName: leadForm.spouseName,
+            spouseMobile: leadForm.spouseMobile,
+            leadSource: leadForm.leadSource,
+            referredBy: leadForm.referredBy,
+            referrerPhone: leadForm.referrerPhone,
+            referralEmail: leadForm.referralEmail,
+            projectType: leadForm.projectType,
             value: parseFloat(leadForm.value) || 0,
             status: leadForm.status,
+            requirements: leadForm.requirements,
+            stage: "Enquiry",
+            priority: "Medium",
+            assignedTo: "Sarah Jenkins",
             date: new Date().toISOString().split("T")[0]
         };
-        setLeads([newLead, ...leads]);
-        showToast(`Enquiry for '${leadForm.name}' registered successfully!`, "success");
-        handleReset();
+
+        axios.post(`${API}/crm/leads`, newLead)
+            .then(() => {
+                showToast(`Enquiry for '${leadForm.name}' registered successfully!`, "success");
+                handleReset();
+                navigate("/crm/leads");
+            })
+            .catch((err) => {
+                console.error("Failed to register lead", err);
+                showToast("Failed to register lead in database", "error");
+            })
+            .finally(() => {
+                setIsSubmitting(false);
+            });
     };
 
     const handleReset = () => {
@@ -613,6 +820,9 @@ export default function CRMView() {
             status: "Contacted",
             requirements: ""
         });
+        setEmailError("");
+        setPhoneError("");
+        setSpouseMobileError("");
     };
 
     // Filter logic based on the active view
@@ -712,6 +922,14 @@ export default function CRMView() {
                 m.id === meeting.id ? { ...m, status: newStatus } : m
             );
             setMeetings(updated);
+
+            if (crmSocket) {
+                crmSocket.send({
+                    event: "meeting_status_updated",
+                    data: { id: meeting.id, status: newStatus }
+                });
+            }
+
             showToast(`Meeting status updated to '${newStatus}'`, "success");
         };
 
@@ -853,6 +1071,72 @@ export default function CRMView() {
     };
 
     const meta = getViewMetadata();
+
+    if (isLoading) {
+        return (
+            <div className="w-full max-w-none px-4 md:px-6 py-4 space-y-6 animate-pulse">
+                {/* Header Skeleton */}
+                <div className="flex justify-between items-center">
+                    <div className="space-y-2">
+                        <div className="h-6 w-48 bg-slate-200 rounded"></div>
+                        <div className="h-3 w-64 bg-slate-150 rounded"></div>
+                    </div>
+                </div>
+
+                {/* 5-Column Dashboard Card Skeletons */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                    {Array.from({ length: 5 }).map((_, i) => (
+                        <div key={i} className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-sm flex flex-col justify-between h-[120px]">
+                            <div className="flex justify-between items-start">
+                                <div className="space-y-2">
+                                    <div className="h-3.5 w-20 bg-slate-200 rounded"></div>
+                                    <div className="h-6 w-16 bg-slate-200 rounded"></div>
+                                </div>
+                                <div className="h-9 w-9 bg-slate-100 rounded-xl"></div>
+                            </div>
+                            <div className="h-3 w-12 bg-slate-100 rounded"></div>
+                        </div>
+                    ))}
+                </div>
+
+                {/* Content Grid Skeleton */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    {/* Table / List Skeleton */}
+                    <div className="lg:col-span-2 bg-white rounded-2xl p-6 border border-slate-200/80 space-y-4">
+                        <div className="h-4 w-32 bg-slate-200 rounded"></div>
+                        <div className="space-y-3">
+                            {Array.from({ length: 5 }).map((_, i) => (
+                                <div key={i} className="flex items-center justify-between border-t border-slate-100 pt-3">
+                                    <div className="flex items-center gap-3">
+                                        <div className="h-8 w-8 rounded-full bg-slate-200"></div>
+                                        <div className="space-y-2">
+                                            <div className="h-3 w-32 bg-slate-200 rounded"></div>
+                                            <div className="h-2.5 w-24 bg-slate-150 rounded"></div>
+                                        </div>
+                                    </div>
+                                    <div className="h-4 w-16 bg-slate-200 rounded"></div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Sidebar Card Skeleton */}
+                    <div className="bg-white rounded-2xl p-6 border border-slate-200/80 space-y-4">
+                        <div className="h-4 w-28 bg-slate-200 rounded"></div>
+                        {Array.from({ length: 3 }).map((_, i) => (
+                            <div key={i} className="flex gap-3 border-t border-slate-100 pt-3">
+                                <div className="h-10 w-10 bg-slate-200 rounded-lg"></div>
+                                <div className="space-y-2 flex-1">
+                                    <div className="h-3 w-2/3 bg-slate-200 rounded"></div>
+                                    <div className="h-2.5 w-1/3 bg-slate-150 rounded"></div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="w-full max-w-none px-4 md:px-6 py-4 space-y-6">
@@ -1133,13 +1417,26 @@ export default function CRMView() {
                                         <span className="text-xs font-semibold border-r border-slate-200 pr-2">+91</span>
                                     </div>
                                     <input
-                                        type="text"
+                                        type="tel"
                                         placeholder="10-digit mobile"
                                         value={leadForm.phone}
-                                        onChange={(e) => setLeadForm({ ...leadForm, phone: e.target.value })}
-                                        className="w-full h-12 rounded-xl border border-slate-200 bg-white pl-20 pr-4 text-xs text-slate-800 placeholder:text-slate-350 focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 transition-all font-sans"
+                                        onKeyPress={handlePhoneKeyPress}
+                                        onPaste={handlePhonePaste}
+                                        onChange={(e) => {
+                                            const val = e.target.value.replace(/\D/g, "").slice(0, 10);
+                                            setLeadForm({ ...leadForm, phone: val });
+                                            setPhoneError(validatePhone(val));
+                                        }}
+                                        className={`w-full h-12 rounded-xl border bg-white pl-20 pr-4 text-xs text-slate-800 placeholder:text-slate-350 focus:outline-none focus:ring-4 transition-all font-sans ${
+                                            phoneError 
+                                                ? "border-rose-500 focus:border-rose-500 focus:ring-rose-100/50" 
+                                                : "border-slate-200 focus:border-indigo-400 focus:ring-indigo-100/50"
+                                        }`}
                                     />
                                 </div>
+                                {phoneError && (
+                                    <p className="text-[10px] text-rose-500 font-semibold mt-1 pl-1">{phoneError}</p>
+                                )}
                             </div>
 
                             {/* Email Address */}
@@ -1151,10 +1448,21 @@ export default function CRMView() {
                                         type="email"
                                         placeholder="client@example.com"
                                         value={leadForm.email}
-                                        onChange={(e) => setLeadForm({ ...leadForm, email: e.target.value })}
-                                        className="w-full h-12 rounded-xl border border-slate-200 bg-white pl-11 pr-4 text-xs text-slate-800 placeholder:text-slate-350 focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 transition-all font-sans"
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            setLeadForm({ ...leadForm, email: val });
+                                            setEmailError(validateEmail(val));
+                                        }}
+                                        className={`w-full h-12 rounded-xl border bg-white pl-11 pr-4 text-xs text-slate-800 placeholder:text-slate-350 focus:outline-none focus:ring-4 transition-all font-sans ${
+                                            emailError 
+                                                ? "border-rose-500 focus:border-rose-500 focus:ring-rose-100/50" 
+                                                : "border-slate-200 focus:border-indigo-400 focus:ring-indigo-100/50"
+                                        }`}
                                     />
                                 </div>
+                                {emailError && (
+                                    <p className="text-[10px] text-rose-500 font-semibold mt-1 pl-1">{emailError}</p>
+                                )}
                             </div>
 
                             {/* Spouse Name */}
@@ -1181,13 +1489,26 @@ export default function CRMView() {
                                         <span className="text-xs font-semibold border-r border-slate-200 pr-2">+91</span>
                                     </div>
                                     <input
-                                        type="text"
+                                        type="tel"
                                         placeholder="Optional"
                                         value={leadForm.spouseMobile}
-                                        onChange={(e) => setLeadForm({ ...leadForm, spouseMobile: e.target.value })}
-                                        className="w-full h-12 rounded-xl border border-slate-200 bg-white pl-20 pr-4 text-xs text-slate-800 placeholder:text-slate-350 focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 transition-all font-sans"
+                                        onKeyPress={handlePhoneKeyPress}
+                                        onPaste={handleSpousePhonePaste}
+                                        onChange={(e) => {
+                                            const val = e.target.value.replace(/\D/g, "").slice(0, 10);
+                                            setLeadForm({ ...leadForm, spouseMobile: val });
+                                            setSpouseMobileError(validateSpousePhone(val));
+                                        }}
+                                        className={`w-full h-12 rounded-xl border bg-white pl-20 pr-4 text-xs text-slate-800 placeholder:text-slate-350 focus:outline-none focus:ring-4 transition-all font-sans ${
+                                            spouseMobileError 
+                                                ? "border-rose-500 focus:border-rose-500 focus:ring-rose-100/50" 
+                                                : "border-slate-200 focus:border-indigo-400 focus:ring-indigo-100/50"
+                                        }`}
                                     />
                                 </div>
+                                {spouseMobileError && (
+                                    <p className="text-[10px] text-rose-500 font-semibold mt-1 pl-1">{spouseMobileError}</p>
+                                )}
                             </div>
                         </div>
                     </SectionCard>
@@ -1337,10 +1658,18 @@ export default function CRMView() {
                         </button>
                         <button
                             type="submit"
-                            className="h-12 px-8 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-lg shadow-indigo-600/15 transition cursor-pointer flex items-center gap-1.5 border-0"
+                            disabled={isSubmitting}
+                            className="h-12 px-8 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-xl text-xs font-semibold shadow-lg shadow-indigo-600/15 transition cursor-pointer flex items-center justify-center gap-1.5 border-0"
                         >
-                            <FiCheck size={14} />
-                            Register Enquiry
+                            {isSubmitting ? (
+                                <svg className="animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                </svg>
+                            ) : (
+                                <FiCheck size={14} />
+                            )}
+                            <span>{isSubmitting ? "Registering..." : "Register Enquiry"}</span>
                         </button>
                     </div>
                 </form>
@@ -1800,11 +2129,32 @@ export default function CRMView() {
                                                     if (selectedFollowupDate === today) newTag = "Today";
                                                     else if (selectedFollowupDate === tomorrow) newTag = "Tomorrow";
 
+                                                    const rescheduledTask = {
+                                                        id: followupDateModal.task.id,
+                                                        date: selectedFollowupDate,
+                                                        time: formattedDisplay,
+                                                        tag: newTag
+                                                    };
+
                                                     setFollowupTasks(prev => prev.map((t, i) =>
                                                         i === followupDateModal.idx
                                                             ? { ...t, date: selectedFollowupDate, time: `${formattedDisplay}`, tag: newTag }
                                                             : t
                                                     ));
+
+                                                    if (crmSocket) {
+                                                        crmSocket.send({
+                                                            event: "followup_rescheduled",
+                                                            data: rescheduledTask
+                                                        });
+                                                    }
+
+                                                    axios.post(`${API}/notifications`, {
+                                                        type: "followup_reminder",
+                                                        title: "Follow-up Rescheduled",
+                                                        message: `Follow-up for customer '${followupDateModal.task.customer}' rescheduled to ${formattedDisplay}.`
+                                                    }).catch(err => console.error(err));
+
                                                     showToast(`Follow-up for ${followupDateModal.task.customer} rescheduled to ${formattedDisplay}`, "success");
                                                     setFollowupDateModal(null);
                                                 }}

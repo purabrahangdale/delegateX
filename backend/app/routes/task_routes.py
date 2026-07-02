@@ -88,9 +88,21 @@ async def add_task(task: Task):
         }
     )
     
+    # WebSocket Event and Notification trigger
+    task_dict["_id"] = str(task_dict.get("_id") or "")
+    from app.websocket.events import broadcast_delegation_event, trigger_and_broadcast_notification
+    import asyncio
+    asyncio.create_task(broadcast_delegation_event("delegation_created", task_dict))
+    asyncio.create_task(trigger_and_broadcast_notification(
+        "task_assigned",
+        "Task Assigned",
+        f"Task '{task.title}' has been assigned to {task.employee} under project {task.project}."
+    ))
+    
     return {
         "message": "Task Delegated Successfully"
     }
+
 
 # UPDATE Task (for updating status e.g., in Kanban)
 @router.put("/tasks/{task_id}")
@@ -175,9 +187,36 @@ async def update_task(task_id: str, task: Task):
         }
     )
     
+    # WebSocket Event and Notification trigger
+    task_dict["_id"] = task_id
+    from app.websocket.events import broadcast_delegation_event, trigger_and_broadcast_notification
+    import asyncio
+    asyncio.create_task(broadcast_delegation_event("task_updated", task_dict))
+    asyncio.create_task(broadcast_delegation_event("employee_activity_updated", {
+        "employee": task.employee,
+        "activity": f"Updated task status to {task.status}",
+        "timestamp": current_date_str
+    }))
+    
+    if prev_status != task.status:
+        if task.status.lower() == "completed":
+            asyncio.create_task(broadcast_delegation_event("task_completed", task_dict))
+            asyncio.create_task(trigger_and_broadcast_notification(
+                "task_completed",
+                "Task Completed",
+                f"Task '{task.title}' has been marked as Completed by {task.employee}."
+            ))
+        else:
+            asyncio.create_task(trigger_and_broadcast_notification(
+                "task_status_updated",
+                "Task Status Updated",
+                f"Task '{task.title}' status changed from '{prev_status}' to '{task.status}'."
+            ))
+            
     return {
         "message": "Task Updated Successfully"
     }
+
 
 # DELETE Task
 @router.delete("/tasks/{task_id}")
@@ -187,7 +226,13 @@ async def delete_task(task_id: str):
     )
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Task not found")
+        
+    from app.websocket.events import broadcast_delegation_event
+    import asyncio
+    asyncio.create_task(broadcast_delegation_event("task_deleted", {"_id": task_id}))
+    
     return {
         "message": "Task Deleted Successfully"
     }
+
 
