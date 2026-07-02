@@ -4,6 +4,8 @@ import { FiBell, FiSearch, FiChevronDown, FiUser, FiSettings, FiLogOut, FiMenu, 
 import { getEmployees } from "../services/employeeApi";
 import { getProjects } from "../services/projectApi";
 import { getTasks } from "../services/taskApi";
+import { useWebSockets } from "../context/WebSocketContext";
+
 
 function Navbar({ onToggleMobileMenu }) {
     const location = useLocation();
@@ -15,12 +17,15 @@ function Navbar({ onToggleMobileMenu }) {
     const [showNotifications, setShowNotifications] = useState(false);
     const [showProfileMenu, setShowProfileMenu] = useState(false);
 
-    // Notifications state
-    const [notifications, setNotifications] = useState([
-        { id: 1, text: "Aman Verma completed task 'Develop APIs'", time: "5 mins ago", read: false },
-        { id: 2, text: "New project 'E-commerce Redesign' created", time: "1 hour ago", read: false },
-        { id: 3, text: "Task 'Fix auth issue' is past deadline", time: "2 hours ago", read: true },
-    ]);
+    const {
+        notifications,
+        isLoadingNotifications,
+        unreadCount,
+        markNotificationAsRead,
+        markAllNotificationsAsRead,
+        deleteNotification
+    } = useWebSockets();
+
 
     const notifRef = useRef(null);
     const profileRef = useRef(null);
@@ -112,11 +117,11 @@ function Navbar({ onToggleMobileMenu }) {
     }, []);
 
     const markAllRead = () => {
-        setNotifications(notifications.map(n => ({ ...n, read: true })));
+        markAllNotificationsAsRead();
     };
 
     const clearNotification = (id) => {
-        setNotifications(notifications.filter(n => n.id !== id));
+        deleteNotification(id);
     };
 
     const handleSearchItemClick = (path) => {
@@ -124,8 +129,6 @@ function Navbar({ onToggleMobileMenu }) {
         setSearchQuery("");
         navigate(path);
     };
-
-    const unreadCount = notifications.filter(n => !n.read).length;
 
     return (
         <>
@@ -200,20 +203,31 @@ function Navbar({ onToggleMobileMenu }) {
                                     )}
                                 </div>
                                 <div className="max-h-64 overflow-y-auto py-1 divide-y divide-slate-50">
-                                    {notifications.length > 0 ? (
+                                    {isLoadingNotifications ? (
+                                        Array.from({ length: 3 }).map((_, i) => (
+                                            <div key={i} className="px-4 py-3 flex flex-col gap-2 animate-pulse">
+                                                <div className="h-3 w-24 bg-slate-200 rounded"></div>
+                                                <div className="h-3 w-48 bg-slate-200 rounded"></div>
+                                                <div className="h-2.5 w-16 bg-slate-100 rounded"></div>
+                                            </div>
+                                        ))
+                                    ) : notifications.length > 0 ? (
                                         notifications.map((n) => (
                                             <div
-                                                key={n.id}
+                                                key={n._id}
                                                 className={`px-4 py-2.5 hover:bg-slate-50 flex items-start justify-between gap-2 transition ${
                                                     !n.read ? "bg-indigo-50/10" : ""
                                                 }`}
                                             >
-                                                <div className="flex flex-col gap-0.5 max-w-[90%]">
-                                                    <p className="text-xs text-slate-700 leading-snug">{n.text}</p>
-                                                    <span className="text-[9px] text-slate-400 font-medium">{n.time}</span>
+                                                <div className="flex flex-col gap-0.5 max-w-[90%] font-sans">
+                                                    <p className="text-xs font-bold text-slate-800 leading-snug">{n.title}</p>
+                                                    <p className="text-xs text-slate-600 leading-snug">{n.message}</p>
+                                                    <span className="text-[9px] text-slate-400 font-medium">
+                                                        {n.timestamp ? new Date(n.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Just now"}
+                                                    </span>
                                                 </div>
                                                 <button
-                                                    onClick={() => clearNotification(n.id)}
+                                                    onClick={() => clearNotification(n._id)}
                                                     className="p-0.5 rounded hover:bg-slate-100 text-slate-300 hover:text-slate-500 transition cursor-pointer"
                                                 >
                                                     <FiX size={12} />

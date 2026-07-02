@@ -7,6 +7,7 @@ import {
 import { getTasks } from "../services/taskApi";
 import { getEmployees } from "../services/employeeApi";
 import { getOverallProductivity, calculateDaysWorked } from "../utils/productivityUtils";
+import { useWebSockets } from "../context/WebSocketContext";
 
 /* ─── Primary KPI Card ──────────────────────────────────────────── */
 function KPICard({ label, value, labelColor }) {
@@ -34,8 +35,11 @@ export default function DelegationDashboard() {
     const [tasks, setTasks] = useState([]);
     const [employees, setEmployees] = useState([]);
     const [refreshing, setRefreshing] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
+    const { delegationSocket } = useWebSockets();
 
     const fetchData = async () => {
+        setIsLoading(true);
         try {
             const [tasksRes, employeesRes] = await Promise.all([
                 getTasks(),
@@ -45,12 +49,44 @@ export default function DelegationDashboard() {
             setEmployees(employeesRes || []);
         } catch (error) {
             console.error("Failed to fetch dashboard data", error);
+        } finally {
+            setIsLoading(false);
         }
     };
 
     useEffect(() => {
         fetchData();
     }, []);
+
+    useEffect(() => {
+        if (!delegationSocket) return;
+
+        const handleDelegationMessage = (eventData) => {
+            console.log("Delegation event received:", eventData);
+            const { event, data } = eventData;
+            
+            if (event === "delegation_created") {
+                setTasks(prev => {
+                    if (prev.some(t => t._id === data._id)) return prev;
+                    return [data, ...prev];
+                });
+            } else if (event === "task_updated") {
+                setTasks(prev => prev.map(t => t._id === data._id ? { ...t, ...data } : t));
+            } else if (event === "task_completed") {
+                setTasks(prev => prev.map(t => t._id === data._id ? { ...t, ...data, status: "Completed" } : t));
+            } else if (event === "task_deleted") {
+                setTasks(prev => prev.filter(t => t._id !== data._id));
+            } else if (event === "employee_activity_updated") {
+                fetchData();
+            }
+        };
+
+        delegationSocket.on("message", handleDelegationMessage);
+        return () => {
+            delegationSocket.off("message", handleDelegationMessage);
+        };
+    }, [delegationSocket]);
+
 
     const handleRefresh = async () => {
         setRefreshing(true);
@@ -417,6 +453,73 @@ export default function DelegationDashboard() {
     const quickSnapshot = recentUpdates
         .sort((a, b) => new Date(b.date) - new Date(a.date))
         .slice(0, 3);
+
+    if (isLoading) {
+        return (
+            <div className="w-full max-w-none px-4 md:px-6 py-4 space-y-6 animate-pulse">
+                {/* Header */}
+                <div className="flex justify-between items-center">
+                    <div className="space-y-2">
+                        <div className="h-6 w-48 bg-slate-200 rounded"></div>
+                        <div className="h-3 w-64 bg-slate-150 rounded"></div>
+                    </div>
+                </div>
+
+                {/* Primary KPI Skeletons */}
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mt-2">
+                    {Array.from({ length: 6 }).map((_, i) => (
+                        <div key={i} className="bg-white border border-slate-200/80 p-4 rounded-2xl shadow-sm flex flex-col gap-2">
+                            <div className="h-3 w-16 bg-slate-200 rounded"></div>
+                            <div className="h-6 w-24 bg-slate-200 rounded"></div>
+                        </div>
+                    ))}
+                </div>
+
+                {/* Secondary KPI Skeletons */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                    {Array.from({ length: 4 }).map((_, i) => (
+                        <div key={i} className="bg-white border border-slate-200/80 p-4 rounded-2xl shadow-sm flex flex-col gap-2">
+                            <div className="h-3 w-20 bg-slate-200 rounded"></div>
+                            <div className="h-6 w-24 bg-slate-200 rounded"></div>
+                        </div>
+                    ))}
+                </div>
+
+                {/* Main Content Grid Skeleton */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div className="lg:col-span-2 bg-white rounded-2xl p-6 border border-slate-200/80 space-y-4">
+                        <div className="h-4 w-40 bg-slate-200 rounded"></div>
+                        {Array.from({ length: 4 }).map((_, i) => (
+                            <div key={i} className="flex gap-4 items-center justify-between border-t border-slate-100 pt-3">
+                                <div className="space-y-2 flex-1">
+                                    <div className="h-3 w-1/3 bg-slate-200 rounded"></div>
+                                    <div className="h-2 w-1/2 bg-slate-150 rounded"></div>
+                                </div>
+                                <div className="h-5 w-16 bg-slate-200 rounded-full"></div>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="bg-white rounded-2xl p-6 border border-slate-200/80 space-y-4">
+                        <div className="h-4 w-32 bg-slate-200 rounded"></div>
+                        <div className="flex justify-center py-4">
+                            <div className="w-28 h-28 rounded-full border-8 border-slate-200 flex items-center justify-center">
+                                <div className="h-6 w-12 bg-slate-150 rounded"></div>
+                            </div>
+                        </div>
+                        <div className="space-y-2">
+                            {Array.from({ length: 3 }).map((_, i) => (
+                                <div key={i} className="flex justify-between items-center">
+                                    <div className="h-3 w-16 bg-slate-150 rounded"></div>
+                                    <div className="h-3 w-8 bg-slate-200 rounded"></div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="w-full max-w-none px-4 md:px-6 py-4 space-y-5">
