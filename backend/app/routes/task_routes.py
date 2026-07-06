@@ -1,8 +1,9 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, BackgroundTasks
 from bson import ObjectId
 from datetime import datetime, date
 from app.config.database import task_collection, project_collection, employee_collection
 from app.models.task_model import Task
+from app.services.email_service import send_task_assignment_notification, send_task_assigned_client_notification
 
 router = APIRouter()
 
@@ -47,8 +48,9 @@ async def get_tasks():
 
 # ADD Task
 @router.post("/tasks")
-async def add_task(task: Task):
+async def add_task(task: Task, background_tasks: BackgroundTasks):
     task_dict = task.dict()
+
     current_date_str = date.today().isoformat()
     
     # Initialize auto tracking fields
@@ -98,6 +100,11 @@ async def add_task(task: Task):
         "Task Assigned",
         f"Task '{task.title}' has been assigned to {task.employee} under project {task.project}."
     ))
+    
+    # Trigger background email notification
+    background_tasks.add_task(send_task_assignment_notification, task_dict)
+    # Trigger background email notification to customer
+    background_tasks.add_task(send_task_assigned_client_notification, task_dict)
     
     return {
         "message": "Task Delegated Successfully"

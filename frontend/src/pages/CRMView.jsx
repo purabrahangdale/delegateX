@@ -789,6 +789,9 @@ export default function CRMView() {
             date: new Date().toISOString().split("T")[0]
         };
 
+        const formData = newLead;
+        console.log(formData);
+
         axios.post(`${API}/crm/leads`, newLead)
             .then(() => {
                 showToast(`Enquiry for '${leadForm.name}' registered successfully!`, "success");
