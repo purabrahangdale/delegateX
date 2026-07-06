@@ -82,16 +82,16 @@ export default function DelegationFormsPage() {
                         { label: "Total Fields", value: forms.reduce((s, f) => s + (f.fields?.length || 0), 0), icon: FiGrid, color: "violet" },
                         { label: "Active Links", value: forms.length, icon: FiZap, color: "emerald" },
                     ].map(stat => (
-                        <div key={stat.label} className="bg-slate-950 border border-slate-900 rounded-2xl p-4 flex items-center gap-3">
+                        <div key={stat.label} className="bg-white border border-slate-200 rounded-2xl p-4 flex items-center gap-3 shadow-sm">
                             <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
-                                stat.color === "indigo" ? "bg-indigo-500/10 text-indigo-400" :
-                                stat.color === "violet" ? "bg-violet-500/10 text-violet-400" :
-                                "bg-emerald-500/10 text-emerald-400"
+                                stat.color === "indigo" ? "bg-indigo-50 text-indigo-600 border border-indigo-100" :
+                                stat.color === "violet" ? "bg-purple-50 text-purple-600 border border-purple-100" :
+                                "bg-emerald-50 text-emerald-600 border border-emerald-100"
                             }`}>
                                 <stat.icon size={15} />
                             </div>
                             <div>
-                                <p className="text-lg font-bold text-white font-display leading-none">{stat.value}</p>
+                                <p className="text-lg font-bold text-slate-900 font-display leading-none">{stat.value}</p>
                                 <p className="text-[10px] text-slate-500 mt-0.5">{stat.label}</p>
                             </div>
                         </div>
