@@ -38,7 +38,7 @@ export default function DelegationFormsPage() {
     };
 
     const copyShareLink = (id) => {
-        const publicUrl = `${window.location.origin}/delegation/form/${id}`;
+        const publicUrl = `${window.location.origin}/?redirect=/delegation/form/${id}`;
         navigator.clipboard.writeText(publicUrl);
         setCopiedId(id);
         showToast("Public shareable link copied!");
