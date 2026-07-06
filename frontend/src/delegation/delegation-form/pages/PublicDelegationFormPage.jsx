@@ -26,34 +26,50 @@ export default function PublicDelegationFormPage() {
 
     const loadForm = async () => {
         setLoading(true);
-        try {
-            const res = await getFormById(formId);
-            const data = res.data && res.data.success !== undefined ? (res.data.success ? res.data.data : null) : res.data;
-            if (data) {
-                setForm(data);
-                
-                // Pre-populate empty answers structure
-                const initial = {};
-                if (data.fields && Array.isArray(data.fields)) {
-                    data.fields.forEach((f) => {
-                        if (f.type === "checkbox") {
-                            initial[f.id] = false;
-                        } else {
-                            initial[f.id] = "";
-                        }
-                    });
+        let retries = 4;
+        let delay = 2000;
+        let loadedData = null;
+
+        while (retries > 0) {
+            try {
+                const res = await getFormById(formId);
+                const data = res.data && res.data.success !== undefined ? (res.data.success ? res.data.data : null) : res.data;
+                if (data) {
+                    loadedData = data;
+                    break;
                 }
-                setAnswers(initial);
-            } else {
-                setForm(null);
+            } catch (e) {
+                console.warn(`Fetch attempt failed. Retries left: ${retries - 1}`, e);
+                retries--;
+                if (retries === 0) {
+                    console.error("Failed to load public form after all retries:", e);
+                    showToast("Failed to retrieve delegation form. It may not exist or might be inactive.", "error");
+                } else {
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    delay += 1500;
+                }
             }
-        } catch (e) {
-            console.error("Failed to load public form:", e);
-            showToast("Failed to retrieve delegation form. It may not exist or might be inactive.", "error");
-            setForm(null);
-        } finally {
-            setLoading(false);
         }
+
+        if (loadedData) {
+            setForm(loadedData);
+            
+            // Pre-populate empty answers structure
+            const initial = {};
+            if (loadedData.fields && Array.isArray(loadedData.fields)) {
+                loadedData.fields.forEach((f) => {
+                    if (f.type === "checkbox") {
+                        initial[f.id] = false;
+                    } else {
+                        initial[f.id] = "";
+                    }
+                });
+            }
+            setAnswers(initial);
+        } else {
+            setForm(null);
+        }
+        setLoading(false);
     };
 
     const handleFieldChange = (fieldId, type, val) => {
@@ -101,8 +117,10 @@ export default function PublicDelegationFormPage() {
 
     if (loading) {
         return (
-            <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-500 text-xs select-none">
-                Loading client portal...
+            <div className="min-h-screen bg-slate-950 flex flex-col gap-2 items-center justify-center text-slate-400 text-xs select-none">
+                <div className="w-8 h-8 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin mb-2" />
+                <span className="font-semibold text-slate-350">Waking up secure client portal...</span>
+                <span className="text-[10px] text-slate-500">Connecting to secure servers (this may take up to a minute)</span>
             </div>
         );
     }

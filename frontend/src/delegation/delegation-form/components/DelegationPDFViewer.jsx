@@ -5,8 +5,8 @@ import { downloadPDF, printPDF } from "../utils/pdfGenerator";
 export default function DelegationPDFViewer({ response, onClose }) {
     if (!response) return null;
 
-    const API = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
-    const fullUrl = response.pdfPath ? (response.pdfPath.startsWith("http") ? response.pdfPath : `${API}${response.pdfPath}`) : "";
+    const API_BASE_URL = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || "https://delegatex.onrender.com";
+    const fullUrl = response.pdfPath ? (response.pdfPath.startsWith("http") ? response.pdfPath : `${API_BASE_URL}${response.pdfPath}`) : "";
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">

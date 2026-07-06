@@ -9,7 +9,7 @@ import { getForms, saveForm } from "../api/delegationFormApi";
 import { useToast } from "../../../context/ToastContext";
 import { formatTimestamp } from "../utils/formHelpers";
 
-const API = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+const API_BASE_URL = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || "https://delegatex.onrender.com";
 
 export default function DelegationFormsPage() {
     const navigate = useNavigate();
@@ -38,7 +38,7 @@ export default function DelegationFormsPage() {
     };
 
     const copyShareLink = (id) => {
-        const publicUrl = `${window.location.origin}/?redirect=/delegation/form/${id}`;
+        const publicUrl = `${window.location.origin}/delegation/form/${id}`;
         navigator.clipboard.writeText(publicUrl);
         setCopiedId(id);
         showToast("Public shareable link copied!");
@@ -83,11 +83,10 @@ export default function DelegationFormsPage() {
                         { label: "Active Links", value: forms.length, icon: FiZap, color: "emerald" },
                     ].map(stat => (
                         <div key={stat.label} className="bg-white border border-slate-200 rounded-2xl p-4 flex items-center gap-3 shadow-sm">
-                            <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
-                                stat.color === "indigo" ? "bg-indigo-50 text-indigo-600 border border-indigo-100" :
-                                stat.color === "violet" ? "bg-purple-50 text-purple-600 border border-purple-100" :
-                                "bg-emerald-50 text-emerald-600 border border-emerald-100"
-                            }`}>
+                            <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${stat.color === "indigo" ? "bg-indigo-50 text-indigo-600 border border-indigo-100" :
+                                    stat.color === "violet" ? "bg-purple-50 text-purple-600 border border-purple-100" :
+                                        "bg-emerald-50 text-emerald-600 border border-emerald-100"
+                                }`}>
                                 <stat.icon size={15} />
                             </div>
                             <div>

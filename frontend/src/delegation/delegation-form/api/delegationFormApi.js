@@ -1,20 +1,20 @@
 import axios from "axios";
 
-const API = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+const API_BASE_URL = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || "https://delegatex.onrender.com";
 
 // GET Forms
 export const getForms = async () => {
-    return await axios.get(`${API}/delegation/forms`);
+    return await axios.get(`${API_BASE_URL}/delegation/forms`);
 };
 
 // GET Form by ID
 export const getFormById = async (id) => {
-    return await axios.get(`${API}/delegation/forms/${id}`);
+    return await axios.get(`${API_BASE_URL}/delegation/forms/${id}`);
 };
 
 // CREATE or UPDATE Form
 export const saveForm = async (formData) => {
-    return await axios.post(`${API}/delegation/forms`, formData);
+    return await axios.post(`${API_BASE_URL}/delegation/forms`, formData);
 };
 
 // SUBMIT Form Response
@@ -26,7 +26,7 @@ export const submitResponse = async (formId, answers, files = []) => {
             data.append("uploaded_files", file);
         });
     }
-    return await axios.post(`${API}/delegation/forms/${formId}/submit`, data, {
+    return await axios.post(`${API_BASE_URL}/delegation/forms/${formId}/submit`, data, {
         headers: {
             "Content-Type": "multipart/form-data"
         }
@@ -35,6 +35,6 @@ export const submitResponse = async (formId, answers, files = []) => {
 
 // GET Responses
 export const getResponses = async (formId = "") => {
-    const url = formId ? `${API}/delegation/responses?formId=${formId}` : `${API}/delegation/responses`;
+    const url = formId ? `${API_BASE_URL}/delegation/responses?formId=${formId}` : `${API_BASE_URL}/delegation/responses`;
     return await axios.get(url);
 };
