@@ -73,7 +73,10 @@ class DelegationFormService:
             
         # Save to DB
         delegation_response_collection.insert_one(response_data)
-        response_data["_id"] = str(response_data["_id"])
+        # Remove the ObjectId injected by MongoDB so it's JSON-serializable
+        response_data.pop("_id", None)
+        # Enrich with form title for the frontend
+        response_data["formTitle"] = form.get("title", "Delegation Form")
         
         return response_data
 

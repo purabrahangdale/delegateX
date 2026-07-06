@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { FiInbox, FiChevronRight, FiArrowLeft, FiFilter } from "react-icons/fi";
+import {
+    FiInbox, FiChevronRight, FiArrowLeft, FiFilter,
+    FiDownload, FiFileText, FiRefreshCw
+} from "react-icons/fi";
 import { getResponses, getForms } from "../api/delegationFormApi";
 import { useToast } from "../../../context/ToastContext";
 import DelegationResponseCard from "../components/DelegationResponseCard";
@@ -37,7 +40,7 @@ export default function DelegationResponsesPage() {
 
     return (
         <div className="space-y-8 mt-2">
-            {/* Header */}
+            {/* ── Header ────────────────────────────────── */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-900 pb-5">
                 <div className="space-y-1">
                     <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
@@ -49,16 +52,24 @@ export default function DelegationResponsesPage() {
                         <FiChevronRight size={12} className="text-slate-700" />
                         <span className="text-white font-bold">Responses</span>
                     </div>
-                    <h1 className="text-xl font-bold tracking-tight text-white font-display mt-2">Client Responses</h1>
+                    <h1 className="text-xl font-bold tracking-tight text-white font-display mt-2">
+                        Client Responses
+                        {!loading && responses.length > 0 && (
+                            <span className="ml-3 text-xs font-semibold text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-0.5 rounded-full align-middle">
+                                {responses.length} total
+                            </span>
+                        )}
+                    </h1>
                 </div>
 
                 <div className="flex items-center gap-3">
+                    {/* Form filter */}
                     <div className="relative flex items-center bg-slate-950 border border-slate-900 rounded-xl px-3 py-1.5 gap-2 select-none">
                         <FiFilter size={13} className="text-slate-500" />
                         <select
                             value={selectedFormId}
                             onChange={(e) => setSelectedFormId(e.target.value)}
-                            className="bg-transparent text-xs text-slate-300 font-semibold outline-none cursor-pointer appearance-none pr-6"
+                            className="bg-transparent text-xs text-slate-300 font-semibold outline-none cursor-pointer appearance-none pr-5"
                         >
                             <option value="" className="bg-slate-950 text-white">All Forms</option>
                             {forms.map(form => (
@@ -68,6 +79,16 @@ export default function DelegationResponsesPage() {
                             ))}
                         </select>
                     </div>
+
+                    {/* Refresh */}
+                    <button
+                        onClick={loadData}
+                        className="p-2 text-slate-500 hover:text-white bg-slate-950 border border-slate-900 rounded-xl transition cursor-pointer"
+                        title="Refresh"
+                    >
+                        <FiRefreshCw size={14} />
+                    </button>
+
                     <Link
                         to="/delegation/delegation-form"
                         className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 px-4 py-2 rounded-xl text-xs font-semibold transition"
@@ -78,9 +99,22 @@ export default function DelegationResponsesPage() {
                 </div>
             </div>
 
+            {/* ── Content ───────────────────────────────── */}
             {loading ? (
-                <div className="flex items-center justify-center py-20 text-slate-500 text-xs">
-                    Loading response records...
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {[1, 2, 3].map(i => (
+                        <div key={i} className="bg-white border border-slate-200 rounded-2xl p-5 animate-pulse space-y-3">
+                            <div className="h-5 w-20 rounded bg-slate-100" />
+                            <div className="h-4 bg-slate-100 rounded w-3/4" />
+                            <div className="h-3 bg-slate-100 rounded w-full" />
+                            <div className="h-3 bg-slate-100 rounded w-1/2" />
+                            <div className="flex gap-2 pt-2 border-t border-slate-100">
+                                <div className="h-7 flex-1 bg-slate-100 rounded-xl" />
+                                <div className="h-7 flex-1 bg-slate-100 rounded-xl" />
+                                <div className="h-7 flex-1 bg-slate-100 rounded-xl" />
+                            </div>
+                        </div>
+                    ))}
                 </div>
             ) : responses.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -93,16 +127,28 @@ export default function DelegationResponsesPage() {
                     ))}
                 </div>
             ) : (
-                <div className="border border-dashed border-slate-800 rounded-3xl p-16 text-center bg-slate-950/20 max-w-xl mx-auto">
-                    <FiInbox size={32} className="mx-auto text-slate-650 mb-3" />
-                    <h3 className="text-sm font-bold text-white tracking-tight">No Submissions Found</h3>
-                    <p className="text-slate-500 text-xs mt-1 leading-relaxed">
+                <div className="border border-dashed border-slate-800 rounded-3xl p-16 text-center bg-slate-950/30 max-w-xl mx-auto">
+                    <div className="w-12 h-12 rounded-2xl bg-slate-800/60 border border-slate-800 flex items-center justify-center text-slate-500 mx-auto mb-4">
+                        <FiInbox size={22} />
+                    </div>
+                    <h3 className="text-sm font-bold text-white tracking-tight font-display">
+                        No Submissions Found
+                    </h3>
+                    <p className="text-slate-500 text-xs mt-2 leading-relaxed max-w-xs mx-auto">
                         There are no client answers submitted yet for {selectedFormId ? "this form" : "any of your delegation forms"}.
+                        Share a public form link to start collecting responses.
                     </p>
+                    <Link
+                        to="/delegation/delegation-form"
+                        className="inline-flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-5 py-2.5 rounded-xl text-xs font-semibold mt-5 transition"
+                    >
+                        <FiFileText size={13} />
+                        Go to Forms
+                    </Link>
                 </div>
             )}
 
-            {/* Light Box PDF Viewer Modal */}
+            {/* ── PDF Lightbox ──────────────────────────── */}
             {selectedResponse && (
                 <DelegationPDFViewer
                     response={selectedResponse}

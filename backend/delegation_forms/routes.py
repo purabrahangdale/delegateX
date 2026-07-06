@@ -1,11 +1,10 @@
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from typing import List, Optional
 import json
 import os
+import time
 from delegation_forms.service import DelegationFormService
 from delegation_forms.model import DelegationForm
-from delegation_forms.response_handler import save_uploaded_file
 
 router = APIRouter()
 
@@ -46,16 +45,26 @@ async def submit_response(
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid JSON format for answers")
 
-    response_id = f"resp-{int(os.path.getmtime('.'))}" # fallback or generate inside service
-    
+    response_id = f"resp-{int(time.time() * 1000)}"
+
     saved_attachments = []
     if uploaded_files:
         for uf in uploaded_files:
-            if uf.filename:
-                # Save attachment
-                saved_file = save_uploaded_file(uf, response_id)
-                saved_attachments.append(saved_file)
-                
+            if uf and uf.filename:
+                upload_dir = os.path.join("static", "delegation_uploads", response_id)
+                os.makedirs(upload_dir, exist_ok=True)
+                file_path = os.path.join(upload_dir, uf.filename)
+                # Async read — correct for FastAPI async routes
+                contents = await uf.read()
+                with open(file_path, "wb") as f:
+                    f.write(contents)
+                web_path = f"/static/delegation_uploads/{response_id}/{uf.filename}"
+                saved_attachments.append({
+                    "fieldName": uf.filename,
+                    "fileName": uf.filename,
+                    "filePath": web_path
+                })
+
     try:
         saved_response = DelegationFormService.submit_response(
             form_id=form_id,
