@@ -1,4 +1,5 @@
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Request
+from fastapi.responses import RedirectResponse
 from typing import List, Optional
 import json
 import os
@@ -26,9 +27,25 @@ async def get_forms():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# GET Single Form Template by ID
+# GET Single Form Template by ID (supporting both forms and form URL formats, redirecting browser HTML requests to frontend)
+@router.get("/delegation/form/{form_id}")
 @router.get("/delegation/forms/{form_id}")
-async def get_form_by_id(form_id: str):
+async def get_form_by_id(form_id: str, request: Request):
+    accept = request.headers.get("accept", "")
+    if "text/html" in accept:
+        host = request.headers.get("host", "")
+        # If running locally
+        if "localhost" in host or "127.0.0.1" in host:
+            return RedirectResponse(url=f"http://localhost:5173/delegation/form/{form_id}")
+        else:
+            # Guess frontend domain from backend host (e.g. backend.onrender.com -> onrender.com)
+            frontend_host = host
+            if "-backend" in host:
+                frontend_host = host.replace("-backend", "")
+            elif "-api" in host:
+                frontend_host = host.replace("-api", "")
+            return RedirectResponse(url=f"https://{frontend_host}/delegation/form/{form_id}")
+
     form = DelegationFormService.get_form_by_id(form_id)
     if not form:
         raise HTTPException(status_code=404, detail="Form not found")
