@@ -23,12 +23,15 @@ export default function DelegationFormsPage() {
     }, []);
 
     const loadForms = async () => {
+        setLoading(true);
         try {
             const res = await getForms();
-            setForms(res.data || []);
+            const data = res.data && res.data.success !== undefined ? (res.data.success ? res.data.data : []) : res.data;
+            setForms(Array.isArray(data) ? data : []);
         } catch (e) {
             console.error("Failed to load forms:", e);
             showToast("Failed to fetch delegation forms.", "error");
+            setForms([]);
         } finally {
             setLoading(false);
         }

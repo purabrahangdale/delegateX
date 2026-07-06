@@ -28,11 +28,15 @@ export default function DelegationResponsesPage() {
                 getResponses(selectedFormId),
                 getForms()
             ]);
-            setResponses(respRes.data || []);
-            setForms(formsRes.data || []);
+            const respData = respRes.data && respRes.data.success !== undefined ? (respRes.data.success ? respRes.data.data : []) : respRes.data;
+            const formsData = formsRes.data && formsRes.data.success !== undefined ? (formsRes.data.success ? formsRes.data.data : []) : formsRes.data;
+            setResponses(Array.isArray(respData) ? respData : []);
+            setForms(Array.isArray(formsData) ? formsData : []);
         } catch (e) {
             console.error("Failed to load responses data:", e);
             showToast("Failed to fetch response submissions.", "error");
+            setResponses([]);
+            setForms([]);
         } finally {
             setLoading(false);
         }

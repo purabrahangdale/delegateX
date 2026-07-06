@@ -25,23 +25,32 @@ export default function PublicDelegationFormPage() {
     }, [formId]);
 
     const loadForm = async () => {
+        setLoading(true);
         try {
             const res = await getFormById(formId);
-            setForm(res.data);
-            
-            // Pre-populate empty answers structure
-            const initial = {};
-            res.data.fields.forEach((f) => {
-                if (f.type === "checkbox") {
-                    initial[f.id] = false;
-                } else {
-                    initial[f.id] = "";
+            const data = res.data && res.data.success !== undefined ? (res.data.success ? res.data.data : null) : res.data;
+            if (data) {
+                setForm(data);
+                
+                // Pre-populate empty answers structure
+                const initial = {};
+                if (data.fields && Array.isArray(data.fields)) {
+                    data.fields.forEach((f) => {
+                        if (f.type === "checkbox") {
+                            initial[f.id] = false;
+                        } else {
+                            initial[f.id] = "";
+                        }
+                    });
                 }
-            });
-            setAnswers(initial);
+                setAnswers(initial);
+            } else {
+                setForm(null);
+            }
         } catch (e) {
             console.error("Failed to load public form:", e);
             showToast("Failed to retrieve delegation form. It may not exist or might be inactive.", "error");
+            setForm(null);
         } finally {
             setLoading(false);
         }
@@ -79,7 +88,8 @@ export default function PublicDelegationFormPage() {
             const filesList = Object.values(fileValues).filter(Boolean);
             
             const res = await submitResponse(formId, answers, filesList);
-            setSubmittedResponse(res.data.response);
+            const data = res.data && res.data.success !== undefined ? (res.data.success ? res.data.data : res.data) : res.data;
+            setSubmittedResponse(data.response || data);
             showToast("Form details submitted successfully!");
         } catch (err) {
             console.error("Failed to submit form:", err);

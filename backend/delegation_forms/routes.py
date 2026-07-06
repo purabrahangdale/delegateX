@@ -13,7 +13,7 @@ router = APIRouter()
 async def create_or_update_form(form: DelegationForm):
     try:
         saved_form = DelegationFormService.create_form(form.dict())
-        return {"message": "Form template saved successfully", "form": saved_form}
+        return {"success": True, "data": saved_form}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -21,7 +21,8 @@ async def create_or_update_form(form: DelegationForm):
 @router.get("/delegation/forms")
 async def get_forms():
     try:
-        return DelegationFormService.get_forms()
+        forms = DelegationFormService.get_forms()
+        return {"success": True, "data": forms}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -31,7 +32,7 @@ async def get_form_by_id(form_id: str):
     form = DelegationFormService.get_form_by_id(form_id)
     if not form:
         raise HTTPException(status_code=404, detail="Form not found")
-    return form
+    return {"success": True, "data": form}
 
 # SUBMIT response (supporting optional file uploads)
 @router.post("/delegation/forms/{form_id}/submit")
@@ -71,7 +72,7 @@ async def submit_response(
             answers=answers,
             files=saved_attachments
         )
-        return {"message": "Response submitted successfully", "response": saved_response}
+        return {"success": True, "data": {"message": "Response submitted successfully", "response": saved_response}}
     except ValueError as val_e:
         raise HTTPException(status_code=404, detail=str(val_e))
     except Exception as e:
@@ -81,6 +82,7 @@ async def submit_response(
 @router.get("/delegation/responses")
 async def get_responses(formId: Optional[str] = None):
     try:
-        return DelegationFormService.get_responses_by_form(formId)
+        responses = DelegationFormService.get_responses_by_form(formId)
+        return {"success": True, "data": responses}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

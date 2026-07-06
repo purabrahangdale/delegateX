@@ -27,10 +27,11 @@ export default function CreateDelegationFormPage() {
     const loadFormDetails = async (id) => {
         try {
             const res = await getFormById(id);
-            if (res.data) {
-                setTitle(res.data.title || "");
-                setDescription(res.data.description || "");
-                setFields(res.data.fields || []);
+            const data = res.data && res.data.success !== undefined ? (res.data.success ? res.data.data : null) : res.data;
+            if (data) {
+                setTitle(data.title || "");
+                setDescription(data.description || "");
+                setFields(data.fields || []);
             }
         } catch (e) {
             console.error("Failed to load form details:", e);
