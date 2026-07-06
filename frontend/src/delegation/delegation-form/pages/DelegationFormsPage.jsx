@@ -50,7 +50,7 @@ export default function DelegationFormsPage() {
             {/* ── Header ────────────────────────────────── */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-900 pb-5">
                 <div>
-                    <h1 className="text-xl font-bold tracking-tight text-white font-display">
+                    <h1 className="text-xl font-bold tracking-tight text-slate-900 font-display">
                         Delegation Forms
                     </h1>
                     <p className="text-slate-500 text-xs mt-0.5">
@@ -189,7 +189,7 @@ export default function DelegationFormsPage() {
                     <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 mx-auto mb-4">
                         <FiFileText size={22} />
                     </div>
-                    <h3 className="text-sm font-bold text-white tracking-tight font-display">
+                    <h3 className="text-sm font-bold text-slate-900 tracking-tight font-display">
                         No Delegation Forms Yet
                     </h3>
                     <p className="text-slate-500 text-xs mt-2 leading-relaxed max-w-xs mx-auto">

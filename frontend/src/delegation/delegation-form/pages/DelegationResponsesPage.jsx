@@ -52,11 +52,11 @@ export default function DelegationResponsesPage() {
                         <FiChevronRight size={12} className="text-slate-700" />
                         <span>Delegation</span>
                         <FiChevronRight size={12} className="text-slate-700" />
-                        <Link to="/delegation/delegation-form" className="hover:text-slate-300 transition">Forms</Link>
+                        <Link to="/delegation/delegation-form" className="hover:text-slate-350 transition">Forms</Link>
                         <FiChevronRight size={12} className="text-slate-700" />
-                        <span className="text-white font-bold">Responses</span>
+                        <span className="text-slate-900 font-bold">Responses</span>
                     </div>
-                    <h1 className="text-xl font-bold tracking-tight text-white font-display mt-2">
+                    <h1 className="text-xl font-bold tracking-tight text-slate-900 font-display mt-2">
                         Client Responses
                         {!loading && responses.length > 0 && (
                             <span className="ml-3 text-xs font-semibold text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-0.5 rounded-full align-middle">
@@ -135,7 +135,7 @@ export default function DelegationResponsesPage() {
                     <div className="w-12 h-12 rounded-2xl bg-slate-800/60 border border-slate-800 flex items-center justify-center text-slate-500 mx-auto mb-4">
                         <FiInbox size={22} />
                     </div>
-                    <h3 className="text-sm font-bold text-white tracking-tight font-display">
+                    <h3 className="text-sm font-bold text-slate-900 tracking-tight font-display">
                         No Submissions Found
                     </h3>
                     <p className="text-slate-500 text-xs mt-2 leading-relaxed max-w-xs mx-auto">

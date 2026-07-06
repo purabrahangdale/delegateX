@@ -75,7 +75,7 @@ export default function CreateDelegationFormPage() {
                     <FiChevronRight size={12} className="text-slate-700" />
                     <Link to="/delegation/delegation-form" className="hover:text-slate-300 transition">Forms</Link>
                     <FiChevronRight size={12} className="text-slate-700" />
-                    <span className="text-white font-bold">{editId ? "Edit" : "Create"}</span>
+                    <span className="text-slate-900 font-bold">{editId ? "Edit" : "Create"}</span>
                 </div>
 
                 <div className="flex items-center gap-2.5">
