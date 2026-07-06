@@ -1,22 +1,25 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { FiPieChart, FiUsers, FiBriefcase, FiCheckSquare, FiChevronLeft, FiChevronRight, FiGrid, FiPlusSquare, FiLayers, FiChevronDown, FiCalendar, FiX, FiBarChart2, FiFileText, FiSettings } from "react-icons/fi";
+import { FiPieChart, FiUsers, FiBriefcase, FiCheckSquare, FiChevronLeft, FiChevronRight, FiGrid, FiPlusSquare, FiLayers, FiChevronDown, FiCalendar, FiX, FiBarChart2, FiFileText, FiSettings, FiMail, FiClipboard, FiMessageCircle } from "react-icons/fi";
 
 function Sidebar({ isCollapsed, setIsCollapsed, onClose }) {
     const location = useLocation();
 
     const isDelegationActive = location.pathname.startsWith("/tasks") ||
         location.pathname.startsWith("/dashboard-delegation") ||
-        location.pathname.startsWith("/create-delegation");
+        location.pathname.startsWith("/create-delegation") ||
+        location.pathname.startsWith("/delegation");
 
     const isCrmActive = location.pathname.startsWith("/crm");
     const isEmployeesActive = location.pathname.startsWith("/employees");
     const isSettingsActive = location.pathname.startsWith("/settings");
+    const isTemplatesActive = location.pathname.startsWith("/templates");
 
     const [isDelegationOpen, setIsDelegationOpen] = useState(isDelegationActive);
     const [isCrmOpen, setIsCrmOpen] = useState(isCrmActive);
     const [isEmployeesOpen, setIsEmployeesOpen] = useState(isEmployeesActive);
     const [isSettingsOpen, setIsSettingsOpen] = useState(isSettingsActive);
+    const [isTemplatesOpen, setIsTemplatesOpen] = useState(isTemplatesActive);
 
     // Keep submenu open if a child route becomes active
     useEffect(() => {
@@ -42,6 +45,12 @@ function Sidebar({ isCollapsed, setIsCollapsed, onClose }) {
             setIsSettingsOpen(true);
         }
     }, [location.pathname, isSettingsActive]);
+
+    useEffect(() => {
+        if (isTemplatesActive) {
+            setIsTemplatesOpen(true);
+        }
+    }, [location.pathname, isTemplatesActive]);
 
     const menuItems = [
         {
@@ -91,6 +100,11 @@ function Sidebar({ isCollapsed, setIsCollapsed, onClose }) {
                     path: "/tasks",
                     icon: FiCheckSquare,
                 },
+                {
+                    title: "Delegation Form",
+                    path: "/delegation/delegation-form",
+                    icon: FiFileText,
+                },
             ]
         },
         {
@@ -131,6 +145,48 @@ function Sidebar({ isCollapsed, setIsCollapsed, onClose }) {
             ]
         },
         {
+            title: "Templates",
+            icon: FiFileText,
+            isDropdown: true,
+            children: [
+                {
+                    title: "Email Templates",
+                    path: "/templates/email",
+                    icon: FiMail,
+                },
+                {
+                    title: "Reusable Layouts",
+                    path: "/templates/layouts",
+                    icon: FiLayers,
+                },
+                {
+                    title: "CRM Notification Templates",
+                    path: "/templates/crm",
+                    icon: FiBriefcase,
+                },
+                {
+                    title: "Client Emails",
+                    path: "/templates/client",
+                    icon: FiUsers,
+                },
+                {
+                    title: "Employee Emails",
+                    path: "/templates/employee",
+                    icon: FiUsers,
+                },
+                {
+                    title: "Form Templates",
+                    path: "/templates/form-templates",
+                    icon: FiClipboard,
+                },
+                {
+                    title: "WhatsApp Templates",
+                    path: "/templates/whatsapp",
+                    icon: FiMessageCircle,
+                },
+            ]
+        },
+        {
             title: "Settings",
             icon: FiSettings,
             isDropdown: true,
@@ -155,6 +211,7 @@ function Sidebar({ isCollapsed, setIsCollapsed, onClose }) {
         if (title === "CRM") return isCrmOpen;
         if (title === "Employees") return isEmployeesOpen;
         if (title === "Settings") return isSettingsOpen;
+        if (title === "Templates") return isTemplatesOpen;
         return false;
     };
 
@@ -163,6 +220,7 @@ function Sidebar({ isCollapsed, setIsCollapsed, onClose }) {
         else if (title === "CRM") setIsCrmOpen(v => !v);
         else if (title === "Employees") setIsEmployeesOpen(v => !v);
         else if (title === "Settings") setIsSettingsOpen(v => !v);
+        else if (title === "Templates") setIsTemplatesOpen(v => !v);
     };
 
     return (
@@ -221,8 +279,8 @@ function Sidebar({ isCollapsed, setIsCollapsed, onClose }) {
                                 <button
                                     onClick={handleToggle}
                                     className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl transition-all duration-200 group relative cursor-pointer text-left focus:outline-none ${hasActiveChild
-                                            ? "text-white font-semibold bg-slate-900/20"
-                                            : "hover:bg-slate-900/60 hover:text-slate-200 text-slate-400"
+                                        ? "text-white font-semibold bg-slate-900/20"
+                                        : "hover:bg-slate-900/60 hover:text-slate-200 text-slate-400"
                                         }`}
                                 >
                                     <div className="flex items-center gap-3">
@@ -250,7 +308,7 @@ function Sidebar({ isCollapsed, setIsCollapsed, onClose }) {
 
                                 {/* Child Items Submenu - Indented with smaller spacing and height transition */}
                                 <div
-                                    className={`transition-all duration-300 ease-in-out overflow-hidden space-y-1 ${isOpen ? "max-h-72 opacity-100" : "max-h-0 opacity-0 pointer-events-none"
+                                    className={`transition-all duration-300 ease-in-out overflow-hidden space-y-1 ${isOpen ? "max-h-96 opacity-100" : "max-h-0 opacity-0 pointer-events-none"
                                         }`}
                                 >
                                     {item.children.map((child, cIdx) => {
@@ -295,8 +353,8 @@ function Sidebar({ isCollapsed, setIsCollapsed, onClose }) {
                             to={item.path}
                             onClick={() => onClose && onClose()}
                             className={`flex items-center gap-3 px-3.5 py-3 rounded-xl transition-all duration-200 group relative ${active
-                                    ? "bg-slate-900 text-white font-medium border-l-2 border-indigo-500 rounded-l-none"
-                                    : "hover:bg-slate-900/60 hover:text-slate-200"
+                                ? "bg-slate-900 text-white font-medium border-l-2 border-indigo-500 rounded-l-none"
+                                : "hover:bg-slate-900/60 hover:text-slate-200"
                                 }`}
                         >
                             <Icon size={16} className={active ? "text-indigo-400" : "text-slate-500 group-hover:text-slate-300 transition"} />

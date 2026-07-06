@@ -72,32 +72,32 @@ def seed_database():
     print("Inserting projects...")
     project_col.insert_many(projects)
 
-    # 2. Define Realistic Employees with Roles
+    # 2. Define Realistic Employees with Roles and Emails
     employees = [
         # Ecommerce Platform Allocations
-        {"name": "Aman Verma", "role": "Frontend Engineer", "project": "Ecommerce Platform", "status": "Active"},
-        {"name": "Sanjay Kumar", "role": "Frontend Engineer", "project": "Ecommerce Platform", "status": "Active"},
-        {"name": "Nisha Patel", "role": "Frontend Engineer", "project": "Ecommerce Platform", "status": "Active"},
-        {"name": "Rohan Sharma", "role": "Backend Engineer", "project": "Ecommerce Platform", "status": "Active"},
-        {"name": "Meera Joshi", "role": "QA Tester", "project": "Ecommerce Platform", "status": "Active"},
+        {"name": "Aman Verma", "role": "Frontend Engineer", "project": "Ecommerce Platform", "status": "Active", "email": "aman.verma@gmail.com"},
+        {"name": "Sanjay Kumar", "role": "Frontend Engineer", "project": "Ecommerce Platform", "status": "Active", "email": "sanjay.kumar@gmail.com"},
+        {"name": "Nisha Patel", "role": "Frontend Engineer", "project": "Ecommerce Platform", "status": "Active", "email": "nisha.patel@gmail.com"},
+        {"name": "Rohan Sharma", "role": "Backend Engineer", "project": "Ecommerce Platform", "status": "Active", "email": "rohan.sharma@gmail.com"},
+        {"name": "Meera Joshi", "role": "QA Tester", "project": "Ecommerce Platform", "status": "Active", "email": "meera.joshi@gmail.com"},
         
         # CRM Dashboard Allocations (Completed Project)
-        {"name": "Vikram Singh", "role": "Backend Engineer", "project": "CRM Dashboard", "status": "Away"},
-        {"name": "Pooja Hegde", "role": "Backend Engineer", "project": "CRM Dashboard", "status": "Active"},
-        {"name": "Ajay Rao", "role": "QA Tester", "project": "CRM Dashboard", "status": "Active"},
+        {"name": "Vikram Singh", "role": "Backend Engineer", "project": "CRM Dashboard", "status": "Away", "email": "vikram.singh@gmail.com"},
+        {"name": "Pooja Hegde", "role": "Backend Engineer", "project": "CRM Dashboard", "status": "Active", "email": "pooja.hegde@gmail.com"},
+        {"name": "Ajay Rao", "role": "QA Tester", "project": "CRM Dashboard", "status": "Active", "email": "ajay.rao@gmail.com"},
 
         # HR Management Allocations
-        {"name": "Priya Patel", "role": "Fullstack Developer", "project": "HR Management System", "status": "Active"},
-        {"name": "Karan Malhotra", "role": "MERN Developer", "project": "HR Management System", "status": "On Leave"},
+        {"name": "Priya Patel", "role": "Fullstack Developer", "project": "HR Management System", "status": "Active", "email": "priya.patel@gmail.com"},
+        {"name": "Karan Malhotra", "role": "MERN Developer", "project": "HR Management System", "status": "On Leave", "email": "karan.malhotra@gmail.com"},
         
         # Cross Project / Management
-        {"name": "Rajesh Mehta", "role": "Project Manager", "project": "Task Delegation System", "status": "Active"},
-        {"name": "Divya Teja", "role": "Process Coordinator", "project": "Task Delegation System", "status": "Active"},
+        {"name": "Rajesh Mehta", "role": "Project Manager", "project": "Task Delegation System", "status": "Active", "email": "rajesh.mehta@gmail.com"},
+        {"name": "Divya Teja", "role": "Process Coordinator", "project": "Task Delegation System", "status": "Active", "email": "divya.teja@gmail.com"},
         
         # AI Analytics & Platform Build
-        {"name": "Ananya Roy", "role": "UI/UX Designer", "project": "AI Analytics Tool", "status": "Active"},
-        {"name": "Kabir Das", "role": "DevOps Engineer", "project": "AI Analytics Tool", "status": "Active"},
-        {"name": "Arjun Nair", "role": "Fullstack Developer", "project": "Employee Tracking Platform", "status": "Active"},
+        {"name": "Ananya Roy", "role": "UI/UX Designer", "project": "AI Analytics Tool", "status": "Active", "email": "ananya.roy@gmail.com"},
+        {"name": "Kabir Das", "role": "DevOps Engineer", "project": "AI Analytics Tool", "status": "Active", "email": "kabir.das@gmail.com"},
+        {"name": "Arjun Nair", "role": "Fullstack Developer", "project": "Employee Tracking Platform", "status": "Active", "email": "arjun.nair@gmail.com"},
     ]
 
     print("Inserting employees...")

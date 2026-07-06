@@ -1,9 +1,10 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, BackgroundTasks
 from bson import ObjectId
 from datetime import datetime
 from app.config.database import crm_lead_collection, crm_meeting_collection
 from app.models.crm_model import Lead, Meeting
 from app.websocket.events import broadcast_crm_event, trigger_and_broadcast_notification
+from app.services.email_service import send_lead_created_notification, send_email, load_template
 import asyncio
 
 router = APIRouter()
@@ -20,7 +21,8 @@ async def get_crm_leads():
 # CREATE Lead
 @router.post("/create-lead")
 @router.post("/crm/leads")
-async def create_lead(lead: Lead):
+async def create_lead(lead: Lead, background_tasks: BackgroundTasks):
+
     lead_dict = lead.dict()
     current_date = datetime.utcnow().isoformat().split("T")[0]
     
@@ -42,6 +44,51 @@ async def create_lead(lead: Lead):
         "New Lead Registered",
         f"Lead '{lead_dict['name']}' has been registered with a value of ₹{lead_dict.get('value', 0)}."
     ))
+    
+    # 1. Send Employee Assignment Email (Keep employee email workflow unchanged)
+    employee_sent = False
+    try:
+        employee_sent = await send_lead_created_notification(lead_dict)
+    except Exception as emp_e:
+        print("Employee assignment email exception:", str(emp_e))
+
+    # 2. Send Client Welcome Email immediately after employee email sending
+    print("CLIENT EMAIL SEND STARTED")
+    print("CLIENT EMAIL:", lead.email)
+    client_sent = False
+    try:
+        client_html_template = load_template(
+            "lead_client_welcome.html",
+            subject="Welcome to DelegateX CRM",
+            customer_name=lead_dict.get("name") or "Valued Client",
+            client_name=lead_dict.get("name") or "Valued Client",
+            customer_email=lead_dict.get("email"),
+            client_email=lead_dict.get("email"),
+            customer_phone=lead_dict.get("phone") or "N/A",
+            project_type=lead_dict.get("projectType") or "Residential",
+            employee_name=lead_dict.get("assignedTo") or "Sarah Jenkins"
+        )
+        
+        # Inject the verified automated email paragraph dynamically into the email body
+        verified_msg = "<p>This is a verified automated email from DelegateX CRM.</p>"
+        if "Welcome to DelegateX" in client_html_template:
+            client_html_template = client_html_template.replace(
+                "Welcome to DelegateX.",
+                f"Welcome to DelegateX.{verified_msg}"
+            )
+        
+        await send_email(
+            lead.email,
+            "Welcome to DelegateX CRM",
+            client_html_template
+        )
+        client_sent = True
+        print("CLIENT EMAIL SENT SUCCESSFULLY")
+    except Exception as e:
+        print("EMAIL ERROR:", str(e))
+
+    print(f"client={client_sent}")
+    print(f"employee={employee_sent}")
     
     return {
         "message": "Lead registered successfully",

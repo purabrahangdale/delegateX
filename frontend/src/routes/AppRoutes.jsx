@@ -12,12 +12,20 @@ import DelegationDashboard from "../pages/DelegationDashboard";
 import CRMView from "../pages/CRMView";
 import EmployeeWorkInsights from "../pages/EmployeeWorkInsights";
 import UserManagement from "../pages/UserManagement";
+import TemplatesView from "../pages/TemplatesView";
+import FormTemplatesView from "../pages/FormTemplatesView";
+import CreateFormTemplateView from "../pages/CreateFormTemplateView";
+import DelegationFormsPage from "../delegation/delegation-form/pages/DelegationFormsPage";
+import CreateDelegationFormPage from "../delegation/delegation-form/pages/CreateDelegationFormPage";
+import DelegationResponsesPage from "../delegation/delegation-form/pages/DelegationResponsesPage";
+import PublicDelegationFormPage from "../delegation/delegation-form/pages/PublicDelegationFormPage";
 
 function AppRoutes() {
     return (
         <BrowserRouter>
             <Routes>
                 <Route path="/login" element={<Login />} />
+                <Route path="/delegation/form/:formId" element={<PublicDelegationFormPage />} />
                 <Route element={<AdminLayout />}>
                     <Route path="/" element={<Dashboard />} />
                     <Route path="/employees" element={<Employees />} />
@@ -28,9 +36,18 @@ function AppRoutes() {
                     <Route path="/employees/dashboard" element={<EmployeeWorkInsights />} />
 
                     <Route path="/create-delegation" element={<CreateDelegation />} />
+                    
+                    <Route path="/delegation/delegation-form" element={<DelegationFormsPage />} />
+                    <Route path="/delegation/delegation-form/create" element={<CreateDelegationFormPage />} />
+                    <Route path="/delegation/forms/edit/:id" element={<CreateDelegationFormPage />} />
+                    <Route path="/delegation/delegation-form/responses" element={<DelegationResponsesPage />} />
 
                     <Route path="/crm/:view" element={<CRMView />} />
                     <Route path="/settings/users" element={<UserManagement />} />
+                    <Route path="/templates/form-templates" element={<FormTemplatesView />} />
+                    <Route path="/templates/form-templates/create" element={<CreateFormTemplateView />} />
+                    <Route path="/templates" element={<TemplatesView />} />
+                    <Route path="/templates/:view" element={<TemplatesView />} />
                 </Route>
             </Routes>
         </BrowserRouter>

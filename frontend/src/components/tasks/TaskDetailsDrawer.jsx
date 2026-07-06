@@ -133,10 +133,10 @@ function TaskDetailsDrawer({ task, onUpdate }) {
         const today = new Date();
         deadline.setHours(0, 0, 0, 0);
         today.setHours(0, 0, 0, 0);
-        
+
         const diffTime = deadline - today;
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        
+
         if (diffDays < 0) {
             const absDays = Math.abs(diffDays);
             return `${absDays} day${absDays !== 1 ? 's' : ''} ago`;
@@ -395,8 +395,8 @@ function TaskDetailsDrawer({ task, onUpdate }) {
         return nameMatch || roleMatch || emailMatch;
     });
 
-    const taskCode = currentTask._id 
-        ? `DLG-${currentTask._id.substring(18).toUpperCase()}` 
+    const taskCode = currentTask._id
+        ? `DLG-${currentTask._id.substring(18).toUpperCase()}`
         : `DLG-${currentTask.id || "001"}`;
 
     const tabs = [
@@ -519,313 +519,309 @@ function TaskDetailsDrawer({ task, onUpdate }) {
                 {/* LEFT COLUMN: Tabbed Card (Spans 2 columns on xl) */}
                 <div className="xl:col-span-2 space-y-5">
                     <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5 flex flex-col min-w-0">
-                    {/* Tab Navigation */}
-                    <div className="flex flex-wrap gap-2 border-b border-slate-150 pb-3 flex-shrink-0">
-                        {tabs.map(tab => {
-                            const TabIcon = tab.icon;
-                            const isActive = activeTab === tab.id;
-                            return (
-                                <button
-                                    key={tab.id}
-                                    onClick={() => setActiveTab(tab.id)}
-                                    className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl transition cursor-pointer border outline-none ${
-                                        isActive
-                                            ? "bg-indigo-50 border-indigo-150 text-indigo-700"
-                                            : "text-slate-500 border-transparent hover:text-slate-700 hover:bg-slate-50"
-                                    }`}
-                                >
-                                    <TabIcon size={14} />
-                                    <span>{tab.label}</span>
-                                    {tab.count !== undefined && (
-                                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
-                                            isActive ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-500"
-                                        }`}>
-                                            {tab.countLabel || tab.count}
-                                        </span>
-                                    )}
-                                </button>
-                            );
-                        })}
-                    </div>
+                        {/* Tab Navigation */}
+                        <div className="flex flex-wrap gap-2 border-b border-slate-150 pb-3 flex-shrink-0">
+                            {tabs.map(tab => {
+                                const TabIcon = tab.icon;
+                                const isActive = activeTab === tab.id;
+                                return (
+                                    <button
+                                        key={tab.id}
+                                        onClick={() => setActiveTab(tab.id)}
+                                        className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl transition cursor-pointer border outline-none ${isActive
+                                                ? "bg-indigo-50 border-indigo-150 text-indigo-700"
+                                                : "text-slate-500 border-transparent hover:text-slate-700 hover:bg-slate-50"
+                                            }`}
+                                    >
+                                        <TabIcon size={14} />
+                                        <span>{tab.label}</span>
+                                        {tab.count !== undefined && (
+                                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${isActive ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-500"
+                                                }`}>
+                                                {tab.countLabel || tab.count}
+                                            </span>
+                                        )}
+                                    </button>
+                                );
+                            })}
+                        </div>
 
-                    {/* Tab Content Area */}
-                    <div className="pt-4 min-h-[300px] flex-1">
-                        {activeTab === "overview" && (
-                            <div className="space-y-5 animate-fade-in">
-                                {isEditing ? (
-                                    <form onSubmit={handleSaveEdit} className="space-y-4">
-                                        <div className="space-y-3">
-                                            <div>
-                                                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Task Title</label>
-                                                <input
-                                                    type="text"
-                                                    value={editForm.title}
-                                                    onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
-                                                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:border-indigo-500 outline-none transition font-sans"
-                                                    required
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Description Summary</label>
-                                                <textarea
-                                                    rows="3"
-                                                    value={editForm.description}
-                                                    onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                                                    className="w-full bg-white border border-slate-200 rounded-xl p-3 text-xs text-slate-850 focus:border-indigo-500 outline-none transition font-sans resize-none"
-                                                />
-                                            </div>
-                                            <div className="grid grid-cols-2 gap-3">
+                        {/* Tab Content Area */}
+                        <div className="pt-4 min-h-[300px] flex-1">
+                            {activeTab === "overview" && (
+                                <div className="space-y-5 animate-fade-in">
+                                    {isEditing ? (
+                                        <form onSubmit={handleSaveEdit} className="space-y-4">
+                                            <div className="space-y-3">
                                                 <div>
-                                                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Priority</label>
-                                                    <select
-                                                        value={editForm.priority}
-                                                        onChange={(e) => setEditForm({ ...editForm, priority: e.target.value })}
-                                                        className="w-full bg-white border border-slate-200 rounded-xl px-2 py-2 text-xs text-slate-705 focus:border-indigo-500 outline-none transition font-sans cursor-pointer"
-                                                    >
-                                                        <option>High</option>
-                                                        <option>Medium</option>
-                                                        <option>Low</option>
-                                                    </select>
-                                                </div>
-                                                <div>
-                                                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Due Date</label>
+                                                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Task Title</label>
                                                     <input
-                                                        type="date"
-                                                        value={editForm.deadline}
-                                                        onChange={(e) => setEditForm({ ...editForm, deadline: e.target.value })}
-                                                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-850 focus:border-indigo-500 outline-none transition font-sans"
+                                                        type="text"
+                                                        value={editForm.title}
+                                                        onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                                                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:border-indigo-500 outline-none transition font-sans"
+                                                        required
                                                     />
                                                 </div>
-                                            </div>
-                                        </div>
-
-                                        <div className="flex gap-3 pt-2">
-                                            <button
-                                                type="button"
-                                                onClick={() => setIsEditing(false)}
-                                                className="flex-1 h-9 text-xs rounded-xl font-semibold border border-slate-200 bg-white hover:bg-slate-50 text-slate-650 transition-all cursor-pointer"
-                                            >
-                                                Cancel
-                                            </button>
-                                            <button
-                                                type="submit"
-                                                className="flex-1 h-9 text-xs rounded-xl font-semibold bg-indigo-650 hover:bg-indigo-750 text-white transition-all cursor-pointer"
-                                            >
-                                                Save Details
-                                            </button>
-                                        </div>
-                                    </form>
-                                ) : (
-                                    <div className="space-y-5">
-                                        <div className="space-y-2">
-                                            <div className="flex justify-between items-center">
-                                                <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Description</h4>
-                                                <button
-                                                    onClick={startEdit}
-                                                    className="text-indigo-650 hover:text-indigo-805 text-xs font-semibold flex items-center gap-1 bg-transparent border-0 outline-none cursor-pointer p-0"
-                                                >
-                                                    <FiEdit size={12} />
-                                                    Edit Details
-                                                </button>
-                                            </div>
-                                            <p className="text-slate-600 text-xs leading-relaxed font-sans whitespace-pre-wrap">
-                                                {currentTask.description || "No description provided."}
-                                            </p>
-                                        </div>
-
-                                        {/* Meta cards */}
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 border-t border-slate-100">
-                                            <div className="bg-slate-50 border border-slate-150 p-3 rounded-xl flex items-center gap-3">
-                                                <div className="w-8 h-8 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs shrink-0 font-display">
-                                                    {(currentTask.created_by || "System Admin").charAt(0)}
-                                                </div>
                                                 <div>
-                                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">CREATED BY</span>
-                                                    <span className="text-xs font-bold text-slate-700 block truncate">{currentTask.created_by || "System Admin"}</span>
+                                                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Description Summary</label>
+                                                    <textarea
+                                                        rows="3"
+                                                        value={editForm.description}
+                                                        onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                                                        className="w-full bg-white border border-slate-200 rounded-xl p-3 text-xs text-slate-850 focus:border-indigo-500 outline-none transition font-sans resize-none"
+                                                    />
                                                 </div>
-                                            </div>
-                                            <div className="bg-slate-50 border border-slate-150 p-3 rounded-xl flex items-center gap-3">
-                                                <div className="w-8 h-8 rounded-xl bg-white border border-slate-150 text-slate-400 flex items-center justify-center shrink-0">
-                                                    <FiCalendar size={14} />
-                                                </div>
-                                                <div>
-                                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">CREATED ON</span>
-                                                    <span className="text-xs font-bold text-slate-700 block">Jun 20, 2026</span>
-                                                </div>
-                                            </div>
-                                            <div className="bg-slate-50 border border-slate-150 p-3 rounded-xl flex items-center gap-3">
-                                                <div className="w-8 h-8 rounded-xl bg-white border border-slate-150 text-slate-400 flex items-center justify-center shrink-0">
-                                                    <FiClock size={14} />
-                                                </div>
-                                                <div>
-                                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">LAST SYNC</span>
-                                                    <span className="text-xs font-bold text-slate-700 block">Just now</span>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* Details table */}
-                                        <div className="space-y-3 pt-2 border-t border-slate-100">
-                                            <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Details</h4>
-                                            <div className="divide-y divide-slate-100 border-t border-b border-slate-100">
-                                                <div className="flex justify-between items-center py-2.5 text-xs">
-                                                    <span className="text-slate-500 font-semibold">Priority</span>
-                                                    <span className={`px-2.5 py-0.5 rounded-lg text-[10px] font-bold border uppercase tracking-wider ${getPriorityStyle(currentTask.priority)}`}>
-                                                        {currentTask.priority || "Medium"}
-                                                    </span>
-                                                </div>
-                                                <div className="flex justify-between items-center py-2.5 text-xs">
-                                                    <span className="text-slate-500 font-semibold">Assigned Representative</span>
-                                                    <div className="flex items-center gap-1.5">
-                                                        <div className="w-5.5 h-5.5 rounded-md bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold text-[9px] shrink-0 font-display">
-                                                            {currentTask.employee?.charAt(0) || "?"}
-                                                        </div>
-                                                        <span className="font-bold text-slate-800">{currentTask.employee}</span>
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    <div>
+                                                        <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Priority</label>
+                                                        <select
+                                                            value={editForm.priority}
+                                                            onChange={(e) => setEditForm({ ...editForm, priority: e.target.value })}
+                                                            className="w-full bg-white border border-slate-200 rounded-xl px-2 py-2 text-xs text-slate-705 focus:border-indigo-500 outline-none transition font-sans cursor-pointer"
+                                                        >
+                                                            <option>High</option>
+                                                            <option>Medium</option>
+                                                            <option>Low</option>
+                                                        </select>
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Due Date</label>
+                                                        <input
+                                                            type="date"
+                                                            value={editForm.deadline}
+                                                            onChange={(e) => setEditForm({ ...editForm, deadline: e.target.value })}
+                                                            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-850 focus:border-indigo-500 outline-none transition font-sans"
+                                                        />
                                                     </div>
                                                 </div>
-                                                <div className="flex justify-between items-center py-2.5 text-xs">
-                                                    <span className="text-slate-500 font-semibold">Work Status</span>
-                                                    <span className={`px-2.5 py-0.5 rounded-lg text-[10px] font-bold border uppercase tracking-wider ${getStatusStyle(currentTask.status)}`}>
-                                                        {currentTask.status || "Pending"}
-                                                    </span>
+                                            </div>
+
+                                            <div className="flex gap-3 pt-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setIsEditing(false)}
+                                                    className="flex-1 h-9 text-xs rounded-xl font-semibold border border-slate-200 bg-white hover:bg-slate-50 text-slate-650 transition-all cursor-pointer"
+                                                >
+                                                    Cancel
+                                                </button>
+                                                <button
+                                                    type="submit"
+                                                    className="flex-1 h-9 text-xs rounded-xl font-semibold bg-indigo-650 hover:bg-indigo-750 text-white transition-all cursor-pointer"
+                                                >
+                                                    Save Details
+                                                </button>
+                                            </div>
+                                        </form>
+                                    ) : (
+                                        <div className="space-y-5">
+                                            <div className="space-y-2">
+                                                <div className="flex justify-between items-center">
+                                                    <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Description</h4>
+                                                    <button
+                                                        onClick={startEdit}
+                                                        className="text-indigo-650 hover:text-indigo-805 text-xs font-semibold flex items-center gap-1 bg-transparent border-0 outline-none cursor-pointer p-0"
+                                                    >
+                                                        <FiEdit size={12} />
+                                                        Edit Details
+                                                    </button>
                                                 </div>
-                                                <div className="flex justify-between items-center py-2.5 text-xs">
-                                                    <span className="text-slate-500 font-semibold">Due Date Target</span>
-                                                    <span className="font-bold text-slate-800">
-                                                        {currentTask.deadline} {currentTask.deadline && `(${getRelativeTimelineText(currentTask.deadline)})`}
-                                                    </span>
+                                                <p className="text-slate-600 text-xs leading-relaxed font-sans whitespace-pre-wrap">
+                                                    {currentTask.description || "No description provided."}
+                                                </p>
+                                            </div>
+
+                                            {/* Meta cards */}
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 border-t border-slate-100">
+                                                <div className="bg-slate-50 border border-slate-150 p-3 rounded-xl flex items-center gap-3">
+                                                    <div className="w-8 h-8 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs shrink-0 font-display">
+                                                        {(currentTask.created_by || "System Admin").charAt(0)}
+                                                    </div>
+                                                    <div>
+                                                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">CREATED BY</span>
+                                                        <span className="text-xs font-bold text-slate-700 block truncate">{currentTask.created_by || "System Admin"}</span>
+                                                    </div>
+                                                </div>
+                                                <div className="bg-slate-50 border border-slate-150 p-3 rounded-xl flex items-center gap-3">
+                                                    <div className="w-8 h-8 rounded-xl bg-white border border-slate-150 text-slate-400 flex items-center justify-center shrink-0">
+                                                        <FiCalendar size={14} />
+                                                    </div>
+                                                    <div>
+                                                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">CREATED ON</span>
+                                                        <span className="text-xs font-bold text-slate-700 block">Jun 20, 2026</span>
+                                                    </div>
+                                                </div>
+                                                <div className="bg-slate-50 border border-slate-150 p-3 rounded-xl flex items-center gap-3">
+                                                    <div className="w-8 h-8 rounded-xl bg-white border border-slate-150 text-slate-400 flex items-center justify-center shrink-0">
+                                                        <FiClock size={14} />
+                                                    </div>
+                                                    <div>
+                                                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">LAST SYNC</span>
+                                                        <span className="text-xs font-bold text-slate-700 block">Just now</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Details table */}
+                                            <div className="space-y-3 pt-2 border-t border-slate-100">
+                                                <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Details</h4>
+                                                <div className="divide-y divide-slate-100 border-t border-b border-slate-100">
+                                                    <div className="flex justify-between items-center py-2.5 text-xs">
+                                                        <span className="text-slate-500 font-semibold">Priority</span>
+                                                        <span className={`px-2.5 py-0.5 rounded-lg text-[10px] font-bold border uppercase tracking-wider ${getPriorityStyle(currentTask.priority)}`}>
+                                                            {currentTask.priority || "Medium"}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex justify-between items-center py-2.5 text-xs">
+                                                        <span className="text-slate-500 font-semibold">Assigned Representative</span>
+                                                        <div className="flex items-center gap-1.5">
+                                                            <div className="w-5.5 h-5.5 rounded-md bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold text-[9px] shrink-0 font-display">
+                                                                {currentTask.employee?.charAt(0) || "?"}
+                                                            </div>
+                                                            <span className="font-bold text-slate-800">{currentTask.employee}</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex justify-between items-center py-2.5 text-xs">
+                                                        <span className="text-slate-500 font-semibold">Work Status</span>
+                                                        <span className={`px-2.5 py-0.5 rounded-lg text-[10px] font-bold border uppercase tracking-wider ${getStatusStyle(currentTask.status)}`}>
+                                                            {currentTask.status || "Pending"}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex justify-between items-center py-2.5 text-xs">
+                                                        <span className="text-slate-500 font-semibold">Due Date Target</span>
+                                                        <span className="font-bold text-slate-800">
+                                                            {currentTask.deadline} {currentTask.deadline && `(${getRelativeTimelineText(currentTask.deadline)})`}
+                                                        </span>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {activeTab === "checklist" && (
+                                <div className="space-y-4 animate-fade-in">
+                                    <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Checklist Tasks</h3>
+                                        <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2.5 py-0.5 border border-indigo-100 rounded-full">
+                                            {completedChecklist}/{totalChecklist} Done
+                                        </span>
                                     </div>
-                                )}
-                            </div>
-                        )}
-
-                        {activeTab === "checklist" && (
-                            <div className="space-y-4 animate-fade-in">
-                                <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-                                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Checklist Tasks</h3>
-                                    <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2.5 py-0.5 border border-indigo-100 rounded-full">
-                                        {completedChecklist}/{totalChecklist} Done
-                                    </span>
-                                </div>
-                                <div className="space-y-2">
-                                    {checklist.map((item) => (
-                                        <div
-                                            key={item.id}
-                                            onClick={() => toggleChecklistItem(item.id)}
-                                            className={`flex items-start gap-2.5 py-2.5 px-3 border rounded-xl cursor-pointer transition text-xs font-medium ${
-                                                item.done
-                                                    ? "bg-slate-50/50 border-slate-150 text-slate-400 line-through"
-                                                    : "bg-white border-slate-200/80 text-slate-700 hover:border-slate-300 hover:bg-slate-50/20"
-                                            }`}
-                                        >
-                                            <div className={`mt-0.5 shrink-0 h-4 w-4 border rounded flex items-center justify-center transition ${
-                                                item.done ? "bg-indigo-600 border-indigo-600 text-white" : "border-slate-300 bg-white"
-                                            }`}>
-                                                {item.done && <FiX size={10} className="rotate-45" />}
-                                            </div>
-                                            <span className="font-sans leading-tight">{item.text}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-                        {activeTab === "comments" && (
-                            <div className="space-y-4 animate-fade-in">
-                                <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-                                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Comments Feed</h3>
-                                    <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2.5 py-0.5 border border-indigo-100 rounded-full">
-                                        {comments.length} Total
-                                    </span>
-                                </div>
-                                <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
-                                    {comments.map((comment) => (
-                                        <div key={comment.id} className="bg-slate-50/50 border border-slate-200/60 p-3 rounded-xl space-y-1.5">
-                                            <div className="flex justify-between items-center text-[10px]">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="font-bold text-slate-750">{comment.author}</span>
-                                                    <span className="text-[8px] bg-indigo-50 text-indigo-650 font-bold px-1.5 py-0.5 rounded uppercase tracking-wider">{comment.role}</span>
-                                                </div>
-                                                <span className="text-slate-400 font-semibold">{comment.time}</span>
-                                            </div>
-                                            <p className="text-xs text-slate-600 leading-relaxed font-sans whitespace-pre-wrap">{comment.text}</p>
-                                        </div>
-                                    ))}
-                                </div>
-                                <form onSubmit={handleAddComment} className="flex gap-2 pt-2">
-                                    <input
-                                        type="text"
-                                        placeholder="Write comment updates..."
-                                        value={newComment}
-                                        onChange={(e) => setNewComment(e.target.value)}
-                                        className="flex-1 bg-slate-55 border border-slate-200 rounded-xl px-4 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:bg-white focus:border-indigo-500 transition font-sans"
-                                    />
-                                    <button
-                                        type="submit"
-                                        className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 rounded-xl shadow-xs transition active:scale-[0.98] cursor-pointer flex items-center justify-center shrink-0 border-0 outline-none"
-                                    >
-                                        <FiSend size={14} />
-                                    </button>
-                                </form>
-                            </div>
-                        )}
-
-                        {activeTab === "attachments" && (
-                            <div className="space-y-4 animate-fade-in">
-                                <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-                                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Task Attachments</h3>
-                                    <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2.5 py-0.5 border border-indigo-100 rounded-full">
-                                        {attachments.length} files
-                                    </span>
-                                </div>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                    {attachments.map((file) => (
-                                        <div key={file.id} className="bg-slate-50/50 border border-slate-200 p-3 rounded-xl flex items-center justify-between gap-2 shadow-xs">
-                                            <div className="flex items-center gap-2.5 min-w-0">
-                                                <div className="p-2 rounded-lg bg-white border border-slate-200 text-indigo-600 shrink-0">
-                                                    <FiFileText size={14} />
-                                                </div>
-                                                <div className="min-w-0 leading-tight">
-                                                    <span className="text-xs font-bold text-slate-800 block truncate" title={file.name}>{file.name}</span>
-                                                    <span className="text-[9px] text-slate-400 font-semibold block uppercase tracking-wider mt-0.5">{file.size} • {file.date}</span>
-                                                </div>
-                                            </div>
-                                            <button
-                                                type="button"
-                                                className="text-[10px] text-indigo-650 hover:text-indigo-805 font-bold py-1.5 px-3 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg shadow-xs transition shrink-0 cursor-pointer outline-none"
+                                    <div className="space-y-2">
+                                        {checklist.map((item) => (
+                                            <div
+                                                key={item.id}
+                                                onClick={() => toggleChecklistItem(item.id)}
+                                                className={`flex items-start gap-2.5 py-2.5 px-3 border rounded-xl cursor-pointer transition text-xs font-medium ${item.done
+                                                        ? "bg-slate-50/50 border-slate-150 text-slate-400 line-through"
+                                                        : "bg-white border-slate-200/80 text-slate-700 hover:border-slate-300 hover:bg-slate-50/20"
+                                                    }`}
                                             >
-                                                View
-                                            </button>
-                                        </div>
-                                    ))}
+                                                <div className={`mt-0.5 shrink-0 h-4 w-4 border rounded flex items-center justify-center transition ${item.done ? "bg-indigo-600 border-indigo-600 text-white" : "border-slate-300 bg-white"
+                                                    }`}>
+                                                    {item.done && <FiX size={10} className="rotate-45" />}
+                                                </div>
+                                                <span className="font-sans leading-tight">{item.text}</span>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
-                            </div>
-                        )}
+                            )}
 
-                        {activeTab === "activity" && (
-                            <div className="space-y-4 animate-fade-in">
-                                <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-                                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Activity Feed</h3>
+                            {activeTab === "comments" && (
+                                <div className="space-y-4 animate-fade-in">
+                                    <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Comments Feed</h3>
+                                        <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2.5 py-0.5 border border-indigo-100 rounded-full">
+                                            {comments.length} Total
+                                        </span>
+                                    </div>
+                                    <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
+                                        {comments.map((comment) => (
+                                            <div key={comment.id} className="bg-slate-50/50 border border-slate-200/60 p-3 rounded-xl space-y-1.5">
+                                                <div className="flex justify-between items-center text-[10px]">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="font-bold text-slate-750">{comment.author}</span>
+                                                        <span className="text-[8px] bg-indigo-50 text-indigo-650 font-bold px-1.5 py-0.5 rounded uppercase tracking-wider">{comment.role}</span>
+                                                    </div>
+                                                    <span className="text-slate-400 font-semibold">{comment.time}</span>
+                                                </div>
+                                                <p className="text-xs text-slate-600 leading-relaxed font-sans whitespace-pre-wrap">{comment.text}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <form onSubmit={handleAddComment} className="flex gap-2 pt-2">
+                                        <input
+                                            type="text"
+                                            placeholder="Write comment updates..."
+                                            value={newComment}
+                                            onChange={(e) => setNewComment(e.target.value)}
+                                            className="flex-1 bg-slate-55 border border-slate-200 rounded-xl px-4 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:bg-white focus:border-indigo-500 transition font-sans"
+                                        />
+                                        <button
+                                            type="submit"
+                                            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 rounded-xl shadow-xs transition active:scale-[0.98] cursor-pointer flex items-center justify-center shrink-0 border-0 outline-none"
+                                        >
+                                            <FiSend size={14} />
+                                        </button>
+                                    </form>
                                 </div>
-                                <div className="relative pl-4 border-l border-slate-150 space-y-4 py-1.5 ml-2">
-                                    {activities.map((act) => (
-                                        <div key={act.id} className="relative text-xs">
-                                            <div className="absolute -left-[20.5px] top-1 h-2 w-2 rounded-full border border-white bg-indigo-600 ring-4 ring-white"></div>
-                                            <span className="font-bold text-slate-700">{act.author}</span>{" "}
-                                            <span className="text-slate-600 font-medium font-sans">{act.text}</span>
-                                            <span className="block text-[8px] text-slate-400 mt-1 font-bold uppercase tracking-wider">{act.time}</span>
-                                        </div>
-                                    ))}
+                            )}
+
+                            {activeTab === "attachments" && (
+                                <div className="space-y-4 animate-fade-in">
+                                    <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Task Attachments</h3>
+                                        <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2.5 py-0.5 border border-indigo-100 rounded-full">
+                                            {attachments.length} files
+                                        </span>
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        {attachments.map((file) => (
+                                            <div key={file.id} className="bg-slate-50/50 border border-slate-200 p-3 rounded-xl flex items-center justify-between gap-2 shadow-xs">
+                                                <div className="flex items-center gap-2.5 min-w-0">
+                                                    <div className="p-2 rounded-lg bg-white border border-slate-200 text-indigo-600 shrink-0">
+                                                        <FiFileText size={14} />
+                                                    </div>
+                                                    <div className="min-w-0 leading-tight">
+                                                        <span className="text-xs font-bold text-slate-800 block truncate" title={file.name}>{file.name}</span>
+                                                        <span className="text-[9px] text-slate-400 font-semibold block uppercase tracking-wider mt-0.5">{file.size} • {file.date}</span>
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    className="text-[10px] text-indigo-650 hover:text-indigo-805 font-bold py-1.5 px-3 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg shadow-xs transition shrink-0 cursor-pointer outline-none"
+                                                >
+                                                    View
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
-                            </div>
-                        )}
+                            )}
+
+                            {activeTab === "activity" && (
+                                <div className="space-y-4 animate-fade-in">
+                                    <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Activity Feed</h3>
+                                    </div>
+                                    <div className="relative pl-4 border-l border-slate-150 space-y-4 py-1.5 ml-2">
+                                        {activities.map((act) => (
+                                            <div key={act.id} className="relative text-xs">
+                                                <div className="absolute -left-[20.5px] top-1 h-2 w-2 rounded-full border border-white bg-indigo-600 ring-4 ring-white"></div>
+                                                <span className="font-bold text-slate-700">{act.author}</span>{" "}
+                                                <span className="text-slate-600 font-medium font-sans">{act.text}</span>
+                                                <span className="block text-[8px] text-slate-400 mt-1 font-bold uppercase tracking-wider">{act.time}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                     </div>
-                </div>
 
-                {/* Dedicated Cards for Checklist Preview & Recent Discussion */}
+                    {/* Dedicated Cards for Checklist Preview & Recent Discussion */}
                     {activeTab === "overview" && (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-5 animate-fade-in">
                             {/* Card 1: Checklist Preview */}
@@ -846,13 +842,11 @@ function TaskDetailsDrawer({ task, onUpdate }) {
                                     {checklist.slice(0, 3).map((item) => (
                                         <div
                                             key={item.id}
-                                            className={`flex items-start gap-2.5 py-2.5 px-3 border rounded-xl text-xs font-medium ${
-                                                item.done ? "bg-slate-50/50 border-slate-150 text-slate-400 line-through" : "bg-white border-slate-200 text-slate-700"
-                                            }`}
+                                            className={`flex items-start gap-2.5 py-2.5 px-3 border rounded-xl text-xs font-medium ${item.done ? "bg-slate-50/50 border-slate-150 text-slate-400 line-through" : "bg-white border-slate-200 text-slate-700"
+                                                }`}
                                         >
-                                            <div className={`mt-0.5 shrink-0 h-4 w-4 border rounded flex items-center justify-center ${
-                                                item.done ? "bg-indigo-650 border-indigo-650 text-white" : "border-slate-300 bg-white"
-                                            }`}>
+                                            <div className={`mt-0.5 shrink-0 h-4 w-4 border rounded flex items-center justify-center ${item.done ? "bg-indigo-650 border-indigo-650 text-white" : "border-slate-300 bg-white"
+                                                }`}>
                                                 {item.done && <FiX size={8} className="rotate-45" />}
                                             </div>
                                             <span className="font-sans leading-tight truncate">{item.text}</span>
@@ -1032,13 +1026,13 @@ function TaskDetailsDrawer({ task, onUpdate }) {
                                             key={emp._id}
                                             onClick={() => handleSaveAssignee(emp)}
                                             className={`flex items-center gap-2.5 p-2 rounded-lg cursor-pointer transition-colors duration-150 text-left ${isSelected
-                                                    ? "bg-indigo-50 text-indigo-700 font-bold"
-                                                    : "hover:bg-slate-55 text-slate-700"
+                                                ? "bg-indigo-50 text-indigo-700 font-bold"
+                                                : "hover:bg-slate-55 text-slate-700"
                                                 }`}
                                         >
                                             <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 font-display ${isSelected
-                                                    ? "bg-indigo-100 text-indigo-700"
-                                                    : "bg-indigo-50 text-indigo-650 border border-indigo-100/40"
+                                                ? "bg-indigo-100 text-indigo-700"
+                                                : "bg-indigo-50 text-indigo-650 border border-indigo-100/40"
                                                 }`}>
                                                 {emp.name.charAt(0)}
                                             </div>

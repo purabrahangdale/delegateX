@@ -1,0 +1,37 @@
+<h1 style="margin: 0 0 16px 0; font-size: 20px; font-weight: 600; line-height: 1.25; letter-spacing: -0.02em; color: #18181b;">New Task Assigned</h1>
+
+<p style="margin: 0 0 24px 0; font-size: 15px; line-height: 1.6; color: #3f3f46;">
+  Dear {employee_name},
+</p>
+
+<p style="margin: 0 0 24px 0; font-size: 15px; line-height: 1.6; color: #3f3f46;">
+  A new task, <strong>{task_title}</strong>, has been scheduled and assigned to you in the DelegateX workspace.
+</p>
+
+<!-- Details Table -->
+<table border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom: 24px; font-size: 14px;">
+  <tr>
+    <td class="table-header" style="padding: 10px 0; font-weight: 500; color: #71717a; border-bottom: 1px solid #f4f4f5; width: 120px; vertical-align: top;">Project</td>
+    <td class="table-data" style="padding: 10px 0; color: #18181b; border-bottom: 1px solid #f4f4f5; font-weight: 500;">{project}</td>
+  </tr>
+  <tr>
+    <td class="table-header" style="padding: 10px 0; font-weight: 500; color: #71717a; border-bottom: 1px solid #f4f4f5; vertical-align: top;">Priority</td>
+    <td class="table-data" style="padding: 10px 0; color: #18181b; border-bottom: 1px solid #f4f4f5;">
+      <span style="display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; {priority_style}">{priority}</span>
+    </td>
+  </tr>
+  <tr>
+    <td class="table-header" style="padding: 10px 0; font-weight: 500; color: #71717a; border-bottom: 1px solid #f4f4f5; vertical-align: top;">Deadline</td>
+    <td class="table-data" style="padding: 10px 0; color: #ef4444; border-bottom: 1px solid #f4f4f5; font-weight: 500;">{deadline}</td>
+  </tr>
+  <tr>
+    <td class="table-header" style="padding: 10px 0; font-weight: 500; color: #71717a; border-bottom: 1px solid #f4f4f5; vertical-align: top;">Assigned Date</td>
+    <td class="table-data" style="padding: 10px 0; color: #18181b; border-bottom: 1px solid #f4f4f5;">{assigned_date}</td>
+  </tr>
+</table>
+
+<!-- Description Well -->
+<div class="well" style="padding: 16px; background-color: #f9fafb; border-left: 3px solid #e4e4e7; border-radius: 0 4px 4px 0; margin-bottom: 24px;">
+  <span class="text-muted" style="display: block; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #71717a; margin-bottom: 6px;">Task Description</span>
+  <p class="description-text" style="margin: 0; font-size: 14px; line-height: 1.6; color: #3f3f46; white-space: pre-line;">{description}</p>
+</div>

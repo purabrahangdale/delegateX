@@ -8,9 +8,16 @@ from app.websocket.delegation_socket import router as delegation_ws_router
 from app.websocket.crm_socket import router as crm_ws_router
 from app.websocket.notifications import router as notifications_router
 from app.routes.crm_routes import router as crm_router
-
+from app.routes.email_routes import router as email_router
+from delegation_forms.routes import router as delegation_form_router
+from fastapi.staticfiles import StaticFiles
+import os
 
 app = FastAPI()
+
+# Ensure static directory exists
+os.makedirs("static", exist_ok=True)
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # CORS
 
@@ -31,8 +38,10 @@ app.include_router(delegation_ws_router)
 app.include_router(crm_ws_router)
 app.include_router(notifications_router)
 app.include_router(crm_router)
+app.include_router(email_router)
+app.include_router(delegation_form_router)
 
 
 @app.get("/")
 def home():
-    return {"message": "Backend Running Successfully"}
+    return {"message": "Backend Running Successfully"}
