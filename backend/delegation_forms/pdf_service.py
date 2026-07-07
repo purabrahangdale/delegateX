@@ -38,9 +38,9 @@ def _format_value(value) -> str:
     if isinstance(value, bool):
         return "Yes" if value else "No"
     if isinstance(value, list):
-        return ", ".join(str(v) for v in value) if value else "—"
+        return ", ".join(str(v) for v in value) if value else "-"
     s = str(value).strip()
-    return s if s else "—"
+    return s if s else "-"
 
 
 def generate_delegation_pdf(

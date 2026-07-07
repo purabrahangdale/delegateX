@@ -46,14 +46,29 @@ export default function DelegationFieldRenderer({ field, value, onChange, error,
             )}
 
             {field.type === "phone" && (
-                <input
-                    type="tel"
-                    disabled={disabled}
-                    placeholder={field.placeholder || "e.g. +1 (555) 000-0000"}
-                    value={value || ""}
-                    onChange={(e) => onChange && onChange(e.target.value)}
-                    className={inputClass}
-                />
+                <div className="flex gap-2 w-full">
+                    <div className={`${
+                        light 
+                            ? "bg-slate-100 border-slate-200 text-slate-700" 
+                            : "bg-slate-950 border-slate-800 text-slate-200"
+                        } border rounded-xl py-2.5 px-3.5 text-xs font-semibold flex items-center justify-center select-none min-w-[50px] shrink-0`}
+                    >
+                        +91
+                    </div>
+                    <input
+                        type="tel"
+                        disabled={disabled}
+                        placeholder={field.placeholder || "Enter 10-digit number"}
+                        value={value || ""}
+                        onChange={(e) => {
+                            const val = e.target.value.replace(/\D/g, "");
+                            if (val.length <= 10 && onChange) {
+                                onChange(val);
+                            }
+                        }}
+                        className={inputClass}
+                    />
+                </div>
             )}
 
             {field.type === "number" && (

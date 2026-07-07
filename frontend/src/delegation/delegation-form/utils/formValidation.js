@@ -20,9 +20,9 @@ export const validateFormAnswers = (fields, answers) => {
                     errors[field.id] = "Invalid email format";
                 }
             } else if (field.type === "phone") {
-                const phoneRegex = /^\+?[0-9\s-]{7,15}$/;
+                const phoneRegex = /^[0-9]{10}$/;
                 if (!phoneRegex.test(val)) {
-                    errors[field.id] = "Invalid phone number format";
+                    errors[field.id] = "Phone number must be exactly 10 digits";
                 }
             } else if (field.type === "number") {
                 if (isNaN(Number(val))) {
