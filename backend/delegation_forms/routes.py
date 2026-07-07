@@ -86,3 +86,39 @@ async def get_responses(formId: Optional[str] = None):
         return {"success": True, "data": responses}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# Dynamic PDF retrieval/generation
+from fastapi.responses import FileResponse
+
+@router.get("/delegation/responses/{response_id}/pdf")
+async def get_response_pdf(response_id: str):
+    from app.config.database import delegation_response_collection, delegation_form_collection
+    from delegation_forms.pdf_service import generate_delegation_pdf
+    
+    doc = delegation_response_collection.find_one({"id": response_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Response not found")
+        
+    pdf_dir = os.path.join("static", "delegation_pdfs")
+    file_path = os.path.join(pdf_dir, f"response_{response_id}.pdf")
+    
+    if not os.path.exists(file_path):
+        form_id = doc.get("formId")
+        form = delegation_form_collection.find_one({"id": form_id})
+        if not form:
+            raise HTTPException(status_code=404, detail="Form template not found")
+            
+        try:
+            generate_delegation_pdf(
+                form_title=form.get("title", "Delegation Form"),
+                form_description=form.get("description", ""),
+                answers=doc.get("answers", {}),
+                fields=form.get("fields", []),
+                response_id=response_id,
+                timestamp=doc.get("timestamp", "")
+            )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to generate PDF: {str(e)}")
+            
+    return FileResponse(file_path, media_type="application/pdf", filename=f"response_{response_id}.pdf")
+

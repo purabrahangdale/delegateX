@@ -65,8 +65,8 @@ class DelegationFormService:
                 response_id=response_id,
                 timestamp=timestamp
             )
-            # Standardize path for web serving
-            web_pdf_path = f"/static/delegation_pdfs/response_{response_id}.pdf"
+            # Standardize path for web serving via dynamic route
+            web_pdf_path = f"/delegation/responses/{response_id}/pdf"
             response_data["pdfPath"] = web_pdf_path
         except Exception as e:
             print("Failed to generate PDF:", str(e))
@@ -79,7 +79,7 @@ class DelegationFormService:
         response_data["formTitle"] = form.get("title", "Delegation Form")
         
         return response_data
-
+ 
     @staticmethod
     def get_responses_by_form(form_id: str = None) -> list:
         query = {"formId": form_id} if form_id else {}
@@ -93,6 +93,9 @@ class DelegationFormService:
                 doc["formTitle"] = f_doc.get("title")
             else:
                 doc["formTitle"] = "Unknown Form"
+            
+            # Use dynamic PDF endpoint
+            doc["pdfPath"] = f"/delegation/responses/{doc.get('id')}/pdf"
                 
             responses.append(doc)
         return responses
