@@ -20,7 +20,7 @@ function Dashboard() {
                     getProjects(),
                     getTasks()
                 ]);
-                setEmployees(empRes.data || []);
+                setEmployees(Array.isArray(empRes) ? empRes : (empRes?.data || []));
                 setProjects(projRes.data || []);
                 setTasks(taskRes.data || []);
             } catch (err) {

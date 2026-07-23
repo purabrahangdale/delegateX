@@ -1,7 +1,5 @@
-import { ReconnectingWebSocket, getWebSocketUrl } from "./socket";
+import { getOrCreateSocketSingleton } from "./socket";
 
 export const createDelegationSocket = () => {
-    const url = getWebSocketUrl("/ws/delegation");
-    const ws = new ReconnectingWebSocket(url);
-    return ws;
+    return getOrCreateSocketSingleton("/ws/delegation");
 };

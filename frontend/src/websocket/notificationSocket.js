@@ -1,7 +1,5 @@
-import { ReconnectingWebSocket, getWebSocketUrl } from "./socket";
+import { getOrCreateSocketSingleton } from "./socket";
 
 export const createNotificationSocket = () => {
-    const url = getWebSocketUrl("/ws/notifications");
-    const ws = new ReconnectingWebSocket(url);
-    return ws;
+    return getOrCreateSocketSingleton("/ws/notifications");
 };

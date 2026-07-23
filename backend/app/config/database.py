@@ -21,3 +21,9 @@ crm_lead_collection = db["crm_leads"]
 crm_meeting_collection = db["crm_meetings"]
 delegation_form_collection = db["delegation_forms"]
 delegation_response_collection = db["delegation_responses"]
+
+# WhatsApp Automation collections
+whatsapp_message_collection = db["whatsapp_messages"]
+whatsapp_template_collection = db["whatsapp_templates"]
+automation_log_collection = db["automation_logs"]
+automation_settings_collection = db["automation_settings"]

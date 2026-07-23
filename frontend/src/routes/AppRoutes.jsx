@@ -19,6 +19,12 @@ import DelegationFormsPage from "../delegation/delegation-form/pages/DelegationF
 import CreateDelegationFormPage from "../delegation/delegation-form/pages/CreateDelegationFormPage";
 import DelegationResponsesPage from "../delegation/delegation-form/pages/DelegationResponsesPage";
 import PublicDelegationFormPage from "../delegation/delegation-form/pages/PublicDelegationFormPage";
+import WhatsAppDashboard from "../whatsapp/pages/WhatsAppDashboard";
+import WhatsAppInbox from "../whatsapp/pages/WhatsAppInbox";
+import WhatsAppTemplates from "../whatsapp/pages/WhatsAppTemplates";
+import CreateWhatsAppTemplate from "../whatsapp/pages/CreateWhatsAppTemplate";
+import WhatsAppLogs from "../whatsapp/pages/WhatsAppLogs";
+import WhatsAppSettings from "../whatsapp/pages/WhatsAppSettings";
 
 function AppRoutes() {
     return (
@@ -36,13 +42,24 @@ function AppRoutes() {
                     <Route path="/employees/dashboard" element={<EmployeeWorkInsights />} />
 
                     <Route path="/create-delegation" element={<CreateDelegation />} />
-                    
+
                     <Route path="/delegation/delegation-form" element={<DelegationFormsPage />} />
                     <Route path="/delegation/delegation-form/create" element={<CreateDelegationFormPage />} />
                     <Route path="/delegation/forms/edit/:id" element={<CreateDelegationFormPage />} />
                     <Route path="/delegation/delegation-form/responses" element={<DelegationResponsesPage />} />
 
                     <Route path="/crm/:view" element={<CRMView />} />
+
+                    {/* WhatsApp Automation */}
+                    <Route path="/whatsapp/dashboard" element={<WhatsAppDashboard />} />
+                    <Route path="/whatsapp/inbox" element={<WhatsAppInbox />} />
+                    <Route path="/whatsapp/templates" element={<WhatsAppTemplates />} />
+                    <Route path="/whatsapp/templates/create" element={<CreateWhatsAppTemplate />} />
+                    <Route path="/whatsapp/templates/new" element={<CreateWhatsAppTemplate />} />
+                    <Route path="/whatsapp/create-template" element={<CreateWhatsAppTemplate />} />
+                    <Route path="/whatsapp/logs" element={<WhatsAppLogs />} />
+                    <Route path="/whatsapp/settings" element={<WhatsAppSettings />} />
+
                     <Route path="/settings/users" element={<UserManagement />} />
                     <Route path="/templates/form-templates" element={<FormTemplatesView />} />
                     <Route path="/templates/form-templates/create" element={<CreateFormTemplateView />} />

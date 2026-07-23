@@ -1,0 +1,14 @@
+# CRM Lead Handling Guidelines
+
+1. Response Time SLA:
+   - All newly registered inbound leads must be contacted by the assigned Sales Representative within 2 hours of creation.
+
+2. Lead Status Definitions:
+   - **New**: Newly registered lead, not yet contacted.
+   - **In Progress**: Active communication or quotation negotiations ongoing.
+   - **Converted**: Lead signed service contract or paid initial invoice.
+   - **Lost**: Lead chose competitor or decided not to proceed.
+
+3. Recording Meetings & Follow-ups:
+   - Every client meeting, call, or consultation must be logged under CRM meetings with a clean Minutes of Meeting (MOM).
+   - Follow-up dates must be set explicitly for any active lead in progress.

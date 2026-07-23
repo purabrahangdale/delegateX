@@ -56,7 +56,7 @@ function Navbar({ onToggleMobileMenu }) {
                 getTasks()
             ]);
             setAllData({
-                employees: empRes.data || [],
+                employees: Array.isArray(empRes) ? empRes : (empRes?.data || []),
                 projects: projRes.data || [],
                 tasks: taskRes.data || []
             });

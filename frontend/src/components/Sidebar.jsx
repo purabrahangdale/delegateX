@@ -14,12 +14,14 @@ function Sidebar({ isCollapsed, setIsCollapsed, onClose }) {
     const isEmployeesActive = location.pathname.startsWith("/employees");
     const isSettingsActive = location.pathname.startsWith("/settings");
     const isTemplatesActive = location.pathname.startsWith("/templates");
+    const isWhatsappActive = location.pathname.startsWith("/whatsapp");
 
     const [isDelegationOpen, setIsDelegationOpen] = useState(isDelegationActive);
     const [isCrmOpen, setIsCrmOpen] = useState(isCrmActive);
     const [isEmployeesOpen, setIsEmployeesOpen] = useState(isEmployeesActive);
     const [isSettingsOpen, setIsSettingsOpen] = useState(isSettingsActive);
     const [isTemplatesOpen, setIsTemplatesOpen] = useState(isTemplatesActive);
+    const [isWhatsappOpen, setIsWhatsappOpen] = useState(isWhatsappActive);
 
     // Keep submenu open if a child route becomes active
     useEffect(() => {
@@ -51,6 +53,12 @@ function Sidebar({ isCollapsed, setIsCollapsed, onClose }) {
             setIsTemplatesOpen(true);
         }
     }, [location.pathname, isTemplatesActive]);
+
+    useEffect(() => {
+        if (isWhatsappActive) {
+            setIsWhatsappOpen(true);
+        }
+    }, [location.pathname, isWhatsappActive]);
 
     const menuItems = [
         {
@@ -187,6 +195,38 @@ function Sidebar({ isCollapsed, setIsCollapsed, onClose }) {
             ]
         },
         {
+            title: "WhatsApp Automation",
+            icon: FiMessageCircle,
+            isDropdown: true,
+            children: [
+                {
+                    title: "WA Dashboard",
+                    path: "/whatsapp/dashboard",
+                    icon: FiGrid,
+                },
+                {
+                    title: "Inbox",
+                    path: "/whatsapp/inbox",
+                    icon: FiMessageCircle,
+                },
+                {
+                    title: "WA Templates",
+                    path: "/whatsapp/templates",
+                    icon: FiFileText,
+                },
+                {
+                    title: "Automation Logs",
+                    path: "/whatsapp/logs",
+                    icon: FiBarChart2,
+                },
+                {
+                    title: "WA Settings",
+                    path: "/whatsapp/settings",
+                    icon: FiSettings,
+                },
+            ]
+        },
+        {
             title: "Settings",
             icon: FiSettings,
             isDropdown: true,
@@ -212,6 +252,7 @@ function Sidebar({ isCollapsed, setIsCollapsed, onClose }) {
         if (title === "Employees") return isEmployeesOpen;
         if (title === "Settings") return isSettingsOpen;
         if (title === "Templates") return isTemplatesOpen;
+        if (title === "WhatsApp Automation") return isWhatsappOpen;
         return false;
     };
 
@@ -221,6 +262,7 @@ function Sidebar({ isCollapsed, setIsCollapsed, onClose }) {
         else if (title === "Employees") setIsEmployeesOpen(v => !v);
         else if (title === "Settings") setIsSettingsOpen(v => !v);
         else if (title === "Templates") setIsTemplatesOpen(v => !v);
+        else if (title === "WhatsApp Automation") setIsWhatsappOpen(v => !v);
     };
 
     return (

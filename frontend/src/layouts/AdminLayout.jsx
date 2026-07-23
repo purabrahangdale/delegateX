@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Outlet } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
+import AIChatbot from "../components/chatbot/AIChatbot";
 
 function AdminLayout() {
     const [isCollapsed, setIsCollapsed] = useState(false);
@@ -58,6 +59,7 @@ function AdminLayout() {
                 <main className="flex-1 p-3 sm:p-4 md:p-6 lg:p-8 overflow-y-auto max-w-7xl w-full mx-auto animate-fade-in">
                     <Outlet />
                 </main>
+                <AIChatbot />
             </div>
         </div>
     );

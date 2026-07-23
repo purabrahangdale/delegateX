@@ -3,6 +3,7 @@ import axios from "axios";
 import { createDelegationSocket } from "../websocket/delegationSocket";
 import { createCrmSocket } from "../websocket/crmSocket";
 import { createNotificationSocket } from "../websocket/notificationSocket";
+import { createWhatsappSocket } from "../websocket/whatsappSocket";
 
 const WebSocketContext = createContext(null);
 
@@ -12,10 +13,10 @@ export const WebSocketProvider = ({ children }) => {
     const [delegationSocket, setDelegationSocket] = useState(null);
     const [crmSocket, setCrmSocket] = useState(null);
     const [notificationSocket, setNotificationSocket] = useState(null);
+    const [whatsappSocket, setWhatsappSocket] = useState(null);
     const [notifications, setNotifications] = useState([]);
     const [isLoadingNotifications, setIsLoadingNotifications] = useState(true);
 
-    // Fetch initial notifications
     const fetchNotifications = async () => {
         setIsLoadingNotifications(true);
         try {
@@ -28,25 +29,24 @@ export const WebSocketProvider = ({ children }) => {
         }
     };
 
-
     useEffect(() => {
-        // Initialize sockets
         const delSock = createDelegationSocket();
         const crmSock = createCrmSocket();
         const notifSock = createNotificationSocket();
+        const whatsappSock = createWhatsappSocket();
 
         delSock.connect();
         crmSock.connect();
         notifSock.connect();
+        whatsappSock.connect();
 
         setDelegationSocket(delSock);
         setCrmSocket(crmSock);
         setNotificationSocket(notifSock);
+        setWhatsappSocket(whatsappSock);
 
-        // Fetch notifications on load
         fetchNotifications();
 
-        // Listen for notification socket events
         const handleNotificationEvent = (eventData) => {
             if (eventData.event === "notification_received") {
                 setNotifications(prev => [eventData.data, ...prev]);
@@ -66,9 +66,7 @@ export const WebSocketProvider = ({ children }) => {
         notifSock.on("message", handleNotificationEvent);
 
         return () => {
-            delSock.close();
-            crmSock.close();
-            notifSock.close();
+            notifSock.off("message", handleNotificationEvent);
         };
     }, []);
 
@@ -104,6 +102,7 @@ export const WebSocketProvider = ({ children }) => {
                 delegationSocket,
                 crmSocket,
                 notificationSocket,
+                whatsappSocket,
                 notifications,
                 isLoadingNotifications,
                 unreadCount,

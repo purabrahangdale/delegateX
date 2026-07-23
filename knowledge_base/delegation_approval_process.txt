@@ -1,0 +1,13 @@
+# Delegation Approval Process Policy
+
+1. Creation:
+   - Any Team Lead or Manager can assign a delegation to a direct report.
+   - All delegations must have a title, detailed description, priority (Low, Medium, High, Urgent), and a clear deadline.
+
+2. Review & Acceptance:
+   - Once assigned, the employee receives a notification and the delegation goes into "Pending" status.
+   - The employee must review and transition the task to "In Progress" within 24 hours of assignment.
+
+3. Completion & Submission:
+   - When the work is complete, the employee marks the task as "Completed" and inputs the completion date.
+   - The assigner will review the work. If approved, the status is closed. If changes are requested, the status is reverted to "In Progress" with comments.

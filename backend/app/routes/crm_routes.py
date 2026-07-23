@@ -45,6 +45,13 @@ async def create_lead(lead: Lead, background_tasks: BackgroundTasks):
         f"Lead '{lead_dict['name']}' has been registered with a value of ₹{lead_dict.get('value', 0)}."
     ))
     
+    # Trigger WhatsApp Welcome Message Automation
+    try:
+        from app.whatsapp.services.automation_service import trigger_welcome_message
+        asyncio.create_task(trigger_welcome_message(lead_dict))
+    except Exception as wa_e:
+        print(f"[WhatsApp] Welcome message trigger error: {wa_e}")
+    
     # 1. Send Employee Assignment Email (Keep employee email workflow unchanged)
     employee_sent = False
     try:
