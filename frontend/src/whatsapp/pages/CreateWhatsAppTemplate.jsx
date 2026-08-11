@@ -2,6 +2,7 @@ import { useState, useRef, useMemo } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { createWhatsAppTemplate } from "../services/whatsappApi";
 import { useToast } from "../../context/ToastContext";
+import WhatsAppAiAssistant from "../components/WhatsAppAiAssistant";
 import {
     FiArrowLeft, FiSave, FiFileText, FiPlus, FiSmile, FiBold, FiItalic,
     FiCornerDownLeft, FiPaperclip, FiImage, FiFile, FiVideo, FiMapPin,
@@ -518,6 +519,12 @@ function CreateWhatsAppTemplate() {
                             )}
                         </div>
                     </div>
+
+                    {/* Section 2.5: AI Writing Assistant */}
+                    <WhatsAppAiAssistant
+                        content={content}
+                        onApplySuggestion={(suggested) => setContent(suggested)}
+                    />
 
                     {/* Section 3: Attachments */}
                     <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-[0_2px_8px_rgba(15,23,42,0.01)] space-y-4">

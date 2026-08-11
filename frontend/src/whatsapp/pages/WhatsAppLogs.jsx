@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import WhatsAppHeader from "../components/WhatsAppHeader";
 import { getAutomationLogs } from "../services/whatsappApi";
 import { useWebSockets } from "../../context/WebSocketContext";
 import { FiSearch, FiFilter, FiClock, FiCheckCircle, FiXCircle, FiActivity, FiRefreshCw } from "react-icons/fi";
@@ -73,71 +74,50 @@ function WhatsAppLogs() {
     if (loading) {
         return (
             <div className="space-y-4 animate-pulse mt-2">
-                <div className="h-8 w-48 bg-slate-200 rounded-xl"></div>
-                <div className="h-96 bg-slate-100 border border-slate-200 rounded-2xl"></div>
+                <div className="h-20 bg-slate-200/60 rounded-2xl"></div>
+                <div className="h-96 bg-slate-100 border border-slate-200/80 rounded-2xl"></div>
             </div>
         );
     }
 
     return (
-        <div className="space-y-6 mt-2">
-            {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl font-bold font-display text-slate-900 tracking-tight flex items-center gap-2">
-                        <span className="inline-flex items-center justify-center w-8 h-8 rounded-xl bg-gradient-to-tr from-green-500 to-emerald-600 text-white text-sm shadow-lg shadow-green-500/20">
-                            <FiActivity size={16} />
-                        </span>
-                        Automation Logs
-                    </h1>
-                    <p className="text-slate-500 text-xs mt-1">Complete execution history of all WhatsApp automation workflows.</p>
+        <div className="space-y-6 mt-2 pb-12 animate-fade-in">
+            <WhatsAppHeader activeTab="logs" searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+
+            {/* Filters Bar */}
+            <div className="flex flex-col sm:flex-row gap-3 bg-white p-4 border border-slate-200/80 rounded-2xl shadow-2xs">
+                <div className="flex-1 flex gap-3">
+                    <select
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value)}
+                        className="px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl font-medium cursor-pointer focus:outline-none"
+                    >
+                        <option value="">All Status</option>
+                        <option value="success">Success</option>
+                        <option value="failed">Failed</option>
+                        <option value="pending">Pending</option>
+                        <option value="skipped">Skipped</option>
+                    </select>
+                    <select
+                        value={workflowFilter}
+                        onChange={(e) => setWorkflowFilter(e.target.value)}
+                        className="px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl font-medium cursor-pointer focus:outline-none"
+                    >
+                        <option value="">All Workflows</option>
+                        {uniqueWorkflows.map(wf => <option key={wf} value={wf}>{wf}</option>)}
+                    </select>
                 </div>
-                <button onClick={fetchLogs} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl text-xs font-semibold shadow-lg shadow-indigo-600/15 transition cursor-pointer">
-                    <FiRefreshCw size={14} /> Refresh
-                </button>
-            </div>
 
-            {/* Filters */}
-            <div className="flex flex-col sm:flex-row gap-3">
-                <div className="relative flex-1">
-                    <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-                    <input
-                        type="text"
-                        placeholder="Search logs..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full pl-9 pr-4 py-2.5 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-300 transition"
-                    />
+                <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-xl">Total: {total}</span>
+                    <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-100">Success: {logs.filter(l => l.status === "success").length}</span>
+                    <button onClick={fetchLogs} className="p-2 text-slate-500 hover:text-emerald-600 rounded-xl hover:bg-emerald-50 transition cursor-pointer">
+                        <FiRefreshCw size={14} />
+                    </button>
                 </div>
-                <select
-                    value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value)}
-                    className="px-3 py-2.5 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500/20 cursor-pointer"
-                >
-                    <option value="">All Statuses</option>
-                    <option value="success">Success</option>
-                    <option value="failed">Failed</option>
-                    <option value="pending">Pending</option>
-                    <option value="skipped">Skipped</option>
-                </select>
-                <select
-                    value={workflowFilter}
-                    onChange={(e) => setWorkflowFilter(e.target.value)}
-                    className="px-3 py-2.5 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500/20 cursor-pointer"
-                >
-                    <option value="">All Workflows</option>
-                    {uniqueWorkflows.map(wf => <option key={wf} value={wf}>{wf}</option>)}
-                </select>
             </div>
 
-            {/* Stats Summary */}
-            <div className="flex flex-wrap gap-3">
-                <span className="text-[10px] font-bold text-slate-500 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100">Total: {total}</span>
-                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-100">Success: {logs.filter(l => l.status === "success").length}</span>
-                <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-3 py-1.5 rounded-lg border border-rose-100">Failed: {logs.filter(l => l.status === "failed").length}</span>
-            </div>
-
-            {/* Logs Table */}
+            {/* Logs Audit Table */}
             <div className="bg-white border border-slate-200/80 rounded-2xl shadow-[0_2px_8px_rgba(15,23,42,0.01)] overflow-hidden">
                 <div className="overflow-x-auto">
                     <table className="w-full">
@@ -158,8 +138,8 @@ function WhatsAppLogs() {
                                 const colorClass = statusColors[log.status] || statusColors.pending;
                                 return (
                                     <tr key={log._id || idx} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
-                                        <td className="px-4 py-3">
-                                            <span className={`inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-md border ${colorClass}`}>
+                                        <td className="px-4 py-3.5">
+                                            <span className={`inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-md border uppercase ${colorClass}`}>
                                                 <StatusIcon size={10} /> {log.status}
                                             </span>
                                         </td>

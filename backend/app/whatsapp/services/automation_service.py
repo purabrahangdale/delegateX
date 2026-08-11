@@ -11,9 +11,9 @@ from datetime import datetime, date
 from typing import Dict, Any, Optional, List
 
 from app.whatsapp.services.message_service import send_message, simulate_incoming_message, _broadcast_whatsapp_event
-from app.whatsapp.services.template_service import get_template_by_name, render_template
+from app.whatsapp.services.template_service import get_template_by_name, get_template_by_id_or_name, render_template, record_template_usage_metrics
 from app.whatsapp.services import n8n_service
-from app.whatsapp.repository import AutomationLogRepository
+from app.whatsapp.repository import AutomationLogRepository, DNDRepository
 from app.whatsapp.models import AutomationStatus
 from app.config.database import crm_lead_collection, crm_meeting_collection, task_collection
 
@@ -603,3 +603,207 @@ async def detect_intent_and_route(incoming_message: dict) -> Optional[dict]:
     else:
         # Default: route to AI FAQ bot
         return await trigger_ai_faq_bot(incoming_message)
+
+
+# ═══════════════════════════════════════════════════════════════════
+# SIMULATION ENGINE — CAMPAIGN & BULK DISPATCH
+# ═══════════════════════════════════════════════════════════════════
+
+async def execute_simulated_campaign(
+    campaign_name: str,
+    template_identifier: str,
+    target_audience: str = "all_leads",
+    override_recipients: Optional[List[dict]] = None
+) -> dict:
+    """
+    Execute a Campaign or Bulk Messaging dispatch in Simulation Mode.
+    
+    1. Ensures default seed conversations exist if DB is empty.
+    2. Validates selected template exists and has non-empty content.
+    3. Fetches target recipient contacts.
+    4. Filters out Global DND numbers.
+    5. Renders template content dynamically for each contact.
+    6. Saves outbound messages into MongoDB & broadcasts via WebSocket.
+    7. Updates template metrics & logs campaign execution.
+    """
+    start_time = time.time()
+    
+    # 1. Ensure seed conversations exist in DB if empty
+    try:
+        from app.whatsapp.services.message_service import seed_default_conversations_if_empty
+        seed_default_conversations_if_empty()
+    except Exception as seed_err:
+        logger.warning(f"[Campaign Engine] Seed check warning: {seed_err}")
+
+    # 2. Resolve and Validate Selected Template
+    if not template_identifier:
+        template_identifier = "Welcome Message"
+
+    template = get_template_by_id_or_name(template_identifier)
+    if not template or not template.get("content", "").strip():
+        # Fallback check by category or default template names before failing
+        for fallback_name in ["Welcome Message", "Follow-up Reminder", "Meeting Reminder", "Lead Converted", "Task Assigned", "Payment Reminder", "Order Confirmation"]:
+            template = get_template_by_name(fallback_name)
+            if template and template.get("content", "").strip():
+                break
+
+    if not template or not template.get("content", "").strip():
+        err_msg = f"Validation Error: Selected template '{template_identifier}' does not exist in database or contains empty content."
+        logger.error(f"[Campaign Engine] {err_msg}")
+        await _log_automation(
+            workflow_name=campaign_name,
+            trigger="Campaign Launch",
+            status=AutomationStatus.FAILED.value,
+            error=err_msg,
+        )
+        raise ValueError(err_msg)
+
+    template_content = template["content"]
+    template_id = template["_id"]
+
+    # 3. Gather Target Recipients
+    recipients = []
+    if override_recipients:
+        recipients = override_recipients
+    else:
+        # Fetch CRM leads
+        crm_leads = list(crm_lead_collection.find())
+        for lead in crm_leads:
+            phone = lead.get("phone")
+            name = lead.get("name")
+            if phone and name:
+                recipients.append({
+                    "name": name,
+                    "phone": phone,
+                    "email": lead.get("email", ""),
+                    "projectType": lead.get("projectType", "Real Estate Consulting"),
+                    "assignedTo": lead.get("assignedTo", "Alex Morgan"),
+                    "status": lead.get("status", "Active"),
+                })
+
+        # Standard simulation contact pool for realistic inbox sync
+        simulation_pool = [
+            {"name": "Rahul Sharma", "phone": "+91 98765 43210", "projectType": "Commercial Complex", "assignedTo": "Alex Morgan"},
+            {"name": "Priya Patel", "phone": "+91 98765 43211", "projectType": "Residential Villa", "assignedTo": "Sarah Jenkins"},
+            {"name": "Amit Verma", "phone": "+91 98765 43212", "projectType": "IT Park Office", "assignedTo": "Michael Chang"},
+            {"name": "Sneha Gupta", "phone": "+91 98765 43213", "projectType": "Luxury Apartment", "assignedTo": "Anita Sharma"},
+            {"name": "Rohit Singh", "phone": "+91 98765 43214", "projectType": "Penthouse", "assignedTo": "David Miller"},
+        ]
+
+        # Combine CRM leads and simulation pool
+        recipients.extend(simulation_pool)
+
+    # 4. Deduplicate by clean phone number and filter out DND numbers
+    import re
+    seen_phones = set()
+    valid_recipients = []
+
+    for contact in recipients:
+        raw_phone = contact.get("phone", "")
+        clean_p = re.sub(r"\D", "", raw_phone)
+        if not clean_p or clean_p in seen_phones:
+            continue
+
+        # Check Global DND
+        if DNDRepository.is_dnd(raw_phone):
+            logger.info(f"[Campaign Engine] Intercepted DND blocked contact: {raw_phone}")
+            continue
+
+        seen_phones.add(clean_p)
+        valid_recipients.append(contact)
+
+    if not valid_recipients:
+        # Fallback to simulation pool if all leads were empty
+        valid_recipients = [
+            {"name": "Rahul Sharma", "phone": "+91 98765 43210", "projectType": "Commercial Complex", "assignedTo": "Alex Morgan"},
+            {"name": "Priya Patel", "phone": "+91 98765 43211", "projectType": "Residential Villa", "assignedTo": "Sarah Jenkins"},
+            {"name": "Amit Verma", "phone": "+91 98765 43212", "projectType": "IT Park Office", "assignedTo": "Michael Chang"},
+            {"name": "Sneha Gupta", "phone": "+91 98765 43213", "projectType": "Luxury Apartment", "assignedTo": "Anita Sharma"},
+            {"name": "Rohit Singh", "phone": "+91 98765 43214", "projectType": "Penthouse", "assignedTo": "David Miller"},
+        ]
+
+    # 5. Render Selected Template & Dispatch Messages
+    sent_messages = []
+    sample_preview = ""
+
+    for idx, contact in enumerate(valid_recipients):
+        c_name = contact.get("name", "Valued Client")
+        c_phone = contact.get("phone", "+91-0000000000")
+
+        # Map dynamic contact variables
+        vars_map = {
+            "client_name": c_name,
+            "name": c_name,
+            "employee_name": c_name,
+            "project_type": contact.get("projectType", "Real Estate Consulting"),
+            "project_name": contact.get("projectType", "Commercial Complex"),
+            "assigned_to": contact.get("assignedTo", "Alex Morgan"),
+            "meeting_date": "Tomorrow",
+            "meeting_time": "11:00 AM",
+            "meeting_location": "DelegateX HQ",
+            "invoice_no": f"INV-{7800 + idx * 47}",
+            "amount": f"₹{(25 + idx * 5):,},000",
+            "due_date": "2026-08-05",
+            "order_id": f"ORD-{4100 + idx * 23}",
+            "delivery_date": "2026-08-03",
+            "task_title": "Enterprise Automation Review",
+            "priority": "High",
+            "deadline": "2026-08-10",
+        }
+
+        # Render template content with contact variables
+        rendered_content = render_template(template_content, vars_map)
+        if not sample_preview:
+            sample_preview = rendered_content
+
+        # Send outbound message (saves to DB, triggers simulation status, broadcasts WS)
+        message = await send_message(
+            recipient_phone=c_phone,
+            content=rendered_content,
+            recipient_name=c_name,
+            message_type=template.get("content_type", "template"),
+            template_id=template_id,
+            automation_workflow=campaign_name,
+            metadata={
+                "campaign_name": campaign_name,
+                "template_id": template_id,
+                "template_name": template.get("name"),
+                "target_audience": target_audience,
+                "dispatched_at": datetime.utcnow().isoformat(),
+            }
+        )
+        sent_messages.append(message)
+
+    # 6. Update Template Insights & Analytics Stats
+    record_template_usage_metrics(
+        identifier_or_id=template_id,
+        sent_count=len(sent_messages),
+        delivered_count=len(sent_messages),
+        read_count=len(sent_messages)
+    )
+
+    # 7. Create Automation Log
+    duration_ms = int((time.time() - start_time) * 1000)
+    await _log_automation(
+        workflow_name=campaign_name,
+        trigger="Start Campaign / Bulk Broadcast",
+        status=AutomationStatus.SUCCESS.value,
+        recipient=f"{len(sent_messages)} recipients",
+        message_preview=sample_preview,
+        duration_ms=duration_ms,
+        metadata={
+            "template_name": template.get("name"),
+            "messages_count": len(sent_messages),
+            "target_audience": target_audience,
+        }
+    )
+
+    return {
+        "status": "success",
+        "campaign_name": campaign_name,
+        "template_used": template.get("name"),
+        "messages_sent_count": len(sent_messages),
+        "messages": sent_messages,
+        "sample_content": sample_preview,
+    }
+

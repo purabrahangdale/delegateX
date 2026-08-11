@@ -17,9 +17,86 @@ from app.whatsapp.providers.simulation import SimulationProvider
 logger = logging.getLogger("whatsapp.message_service")
 
 
+import re
+
+
 def _generate_conversation_id(phone: str) -> str:
-    """Generate a deterministic conversation ID from a phone number."""
-    return hashlib.md5(phone.strip().encode()).hexdigest()[:16]
+    """Generate a deterministic conversation ID from a phone number by normalizing non-digits."""
+    if not phone:
+        return "conv-default"
+    cleaned = re.sub(r"\D", "", phone.strip())
+    raw = cleaned if cleaned else phone.strip()
+    return hashlib.md5(raw.encode()).hexdigest()[:16]
+
+
+def seed_default_conversations_if_empty():
+    """Seed initial simulation conversation messages if database collection is empty."""
+    from app.config.database import whatsapp_message_collection
+    if whatsapp_message_collection.count_documents({}) > 0:
+        return
+
+    now_iso = datetime.utcnow().isoformat()
+    seed_conversations = [
+        {
+            "recipient": "Rahul Sharma",
+            "recipient_phone": "+91 98765 43210",
+            "messages": [
+                {"direction": "outbound", "sender": "DelegateX", "content": "Hello Rahul, thank you for your enquiry.", "status": "read", "created_at": new_iso},
+                {"direction": "inbound", "sender": "Rahul Sharma", "content": "Thank you! Can we schedule a meeting tomorrow?", "status": "read", "created_at": new_iso}
+            ]
+        },
+        {
+            "recipient": "Priya Patel",
+            "recipient_phone": "+91 98765 43211",
+            "messages": [
+                {"direction": "outbound", "sender": "DelegateX", "content": "Your site visit has been scheduled.", "status": "read", "created_at": new_iso},
+                {"direction": "inbound", "sender": "Priya Patel", "content": "Please change the timing to 4 PM.", "status": "read", "created_at": new_iso}
+            ]
+        },
+        {
+            "recipient": "Amit Verma",
+            "recipient_phone": "+91 98765 43212",
+            "messages": [
+                {"direction": "outbound", "sender": "DelegateX", "content": "Your quotation has been shared.", "status": "read", "created_at": new_iso},
+                {"direction": "inbound", "sender": "Amit Verma", "content": "Can you send me the updated price?", "status": "read", "created_at": new_iso}
+            ]
+        },
+        {
+            "recipient": "Sneha Gupta",
+            "recipient_phone": "+91 98765 43213",
+            "messages": [
+                {"direction": "outbound", "sender": "DelegateX", "content": "Welcome to DelegateX.", "status": "read", "created_at": new_iso},
+                {"direction": "inbound", "sender": "Sneha Gupta", "content": "Thanks. I would like to know more about your services.", "status": "read", "created_at": new_iso}
+            ]
+        },
+        {
+            "recipient": "Rohit Singh",
+            "recipient_phone": "+91 98765 43214",
+            "messages": [
+                {"direction": "outbound", "sender": "DelegateX", "content": "Reminder for tomorrow's meeting.", "status": "read", "created_at": new_iso},
+                {"direction": "inbound", "sender": "Rohit Singh", "content": "Confirmed. See you tomorrow.", "status": "read", "created_at": new_iso}
+            ]
+        }
+    ]
+
+    for seed in seed_conversations:
+        conv_id = _generate_conversation_id(seed["recipient_phone"])
+        for msg in seed["messages"]:
+            msg_doc = {
+                "conversation_id": conv_id,
+                "direction": msg["direction"],
+                "sender": msg["sender"],
+                "sender_phone": "+91-DELEGATEX" if msg["direction"] == "outbound" else seed["recipient_phone"],
+                "recipient": seed["recipient"] if msg["direction"] == "outbound" else "DelegateX",
+                "recipient_phone": seed["recipient_phone"] if msg["direction"] == "outbound" else "+91-DELEGATEX",
+                "content": msg["content"],
+                "message_type": "text",
+                "status": msg["status"],
+                "created_at": msg["created_at"],
+                "updated_at": msg["created_at"],
+            }
+            whatsapp_message_collection.insert_one(msg_doc)
+
 
 
 async def _broadcast_whatsapp_event(event_type: str, data: dict):
@@ -62,12 +139,38 @@ async def send_message(
     """
     Send a WhatsApp message through the configured provider.
     
-    1. Save message to MongoDB (status: queued)
-    2. Invoke provider to send
-    3. Schedule status transitions (simulation)
-    4. Broadcast via WebSocket
-    5. Return the saved message document
+    1. Pre-check Global DND / Blocklist
+    2. Save message to MongoDB (status: queued)
+    3. Invoke provider to send
+    4. Schedule status transitions (simulation)
+    5. Broadcast via WebSocket
     """
+    from app.whatsapp.repository import DNDRepository
+
+    # 1. Global DND / Blocklist Auto-Exclusion Pre-check
+    if DNDRepository.is_dnd(recipient_phone):
+        logger.info(f"[DND Auto-Exclusion] Intercepted message to blocked number: {recipient_phone}")
+        
+        # Log skipped event
+        AutomationLogRepository.create({
+            "workflow_name": automation_workflow or "Campaign / Broadcast",
+            "trigger_event": "outbound_dispatch",
+            "status": "skipped",
+            "recipient": recipient_phone,
+            "message_preview": content[:100] if content else "",
+            "execution_duration_ms": 0,
+            "error_message": "Recipient phone number is blocked in Global DND list",
+            "metadata": {"reason": "DND_BLOCKED", "phone": recipient_phone},
+        })
+        
+        return {
+            "_id": None,
+            "status": "skipped",
+            "reason": "DND_BLOCKED",
+            "recipient_phone": recipient_phone,
+            "message": f"Message to {recipient_phone} skipped — recipient is listed in Global DND / Blocklist.",
+        }
+
     conversation_id = _generate_conversation_id(recipient_phone)
     
     # Build message document
@@ -136,8 +239,10 @@ async def simulate_incoming_message(
 ) -> dict:
     """
     Simulate an incoming WhatsApp message (for demo/testing).
-    Used to test auto-reply, AI FAQ bot, and intent detection.
+    Includes automatic opt-out listener for STOP / UNSUBSCRIBE / DND keywords.
     """
+    from app.whatsapp.repository import DNDRepository
+
     conversation_id = _generate_conversation_id(sender_phone)
     
     message_data = {
@@ -157,6 +262,40 @@ async def simulate_incoming_message(
     
     saved_message = MessageRepository.create(message_data)
     await _broadcast_whatsapp_event("new_message", saved_message)
+    
+    # Auto Opt-Out Listener Check
+    clean_text = content.strip().upper()
+    opt_out_keywords = ["STOP", "UNSUBSCRIBE", "REMOVE", "QUIT", "DND"]
+    
+    if any(clean_text == kw or clean_text.startswith(kw + " ") for kw in opt_out_keywords):
+        logger.info(f"[Inbound Opt-Out] Auto-registering DND for {sender_phone} keyword '{clean_text}'")
+        DNDRepository.add_dnd_number({
+            "phone_number": sender_phone,
+            "reason": "User Opt-out",
+            "source": "Inbox Keyword",
+            "notes": f"Triggered by keyword '{content}'",
+        })
+        
+        # Send confirmation opt-out message
+        asyncio.create_task(
+            send_message(
+                recipient_phone=sender_phone,
+                recipient_name=sender_name,
+                content="🚫 You have been successfully unsubscribed and added to our Global DND list. You will not receive further campaign messages.",
+                automation_workflow="opt-out-confirmation"
+            )
+        )
+    elif clean_text == "START" or clean_text == "UNBLOCK":
+        logger.info(f"[Inbound Opt-In] Removing DND for {sender_phone}")
+        DNDRepository.remove_dnd(sender_phone)
+        asyncio.create_task(
+            send_message(
+                recipient_phone=sender_phone,
+                recipient_name=sender_name,
+                content="✅ You have been opted back in and removed from the DND list. Welcome back!",
+                automation_workflow="opt-in-confirmation"
+            )
+        )
     
     return saved_message
 

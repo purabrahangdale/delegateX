@@ -57,13 +57,53 @@ export const simulateReply = async (data) => {
 };
 
 // ── Templates ──────────────────────────────────────────────────
-export const getWhatsAppTemplates = async () => {
+export const getWhatsAppTemplates = async (params = {}) => {
     try {
-        const response = await API.get("/api/whatsapp/templates");
+        const response = await API.get("/api/whatsapp/templates", { params });
         return response.data.templates || [];
     } catch (error) {
         console.error("WhatsApp templates error:", error);
         return [];
+    }
+};
+
+export const getWhatsAppTemplateNames = async () => {
+    try {
+        const response = await API.get("/api/whatsapp/templates/names");
+        return response.data.names || [];
+    } catch (error) {
+        console.error("WhatsApp template names error:", error);
+        return [];
+    }
+};
+
+export const getWhatsAppTemplateInsights = async () => {
+    try {
+        const response = await API.get("/api/whatsapp/templates/insights");
+        return response.data;
+    } catch (error) {
+        console.error("WhatsApp template insights error:", error);
+        return null;
+    }
+};
+
+export const toggleWhatsAppTemplateFavorite = async (templateId) => {
+    try {
+        const response = await API.post(`/api/whatsapp/templates/${templateId}/favorite`);
+        return response.data;
+    } catch (error) {
+        console.error("WhatsApp toggle favorite error:", error);
+        throw error;
+    }
+};
+
+export const incrementWhatsAppTemplateView = async (templateId) => {
+    try {
+        const response = await API.post(`/api/whatsapp/templates/${templateId}/view`);
+        return response.data;
+    } catch (error) {
+        console.error("WhatsApp increment view error:", error);
+        return null;
     }
 };
 
@@ -146,6 +186,68 @@ export const triggerAutomation = async (workflowName, payload = {}) => {
         return response.data;
     } catch (error) {
         console.error("WhatsApp trigger error:", error);
+        throw error;
+    }
+};
+
+// ── AI Writing Assistant ───────────────────────────────────────
+export const processWhatsAppAiAssistant = async (payload) => {
+    try {
+        const response = await API.post("/api/whatsapp/ai-assistant", payload);
+        return response.data;
+    } catch (error) {
+        console.error("WhatsApp AI assistant error:", error);
+        throw error;
+    }
+};
+
+// ── Global DND / Blocklist ─────────────────────────────────────
+export const getWhatsAppDNDList = async (params = {}) => {
+    try {
+        const response = await API.get("/api/whatsapp/dnd", { params });
+        return response.data;
+    } catch (error) {
+        console.error("WhatsApp DND fetch error:", error);
+        return { items: [], total: 0, summary: {} };
+    }
+};
+
+export const addWhatsAppDNDNumber = async (data) => {
+    try {
+        const response = await API.post("/api/whatsapp/dnd", data);
+        return response.data;
+    } catch (error) {
+        console.error("WhatsApp DND add error:", error);
+        throw error;
+    }
+};
+
+export const addWhatsAppDNDBulk = async (items) => {
+    try {
+        const response = await API.post("/api/whatsapp/dnd/bulk", { items });
+        return response.data;
+    } catch (error) {
+        console.error("WhatsApp DND bulk add error:", error);
+        throw error;
+    }
+};
+
+export const deleteWhatsAppDNDNumber = async (phone) => {
+    try {
+        const response = await API.delete(`/api/whatsapp/dnd/${encodeURIComponent(phone)}`);
+        return response.data;
+    } catch (error) {
+        console.error("WhatsApp DND delete error:", error);
+        throw error;
+    }
+};
+
+export const checkWhatsAppDNDBatch = async (phoneNumbers) => {
+    try {
+        const response = await API.post("/api/whatsapp/dnd/check-batch", { phone_numbers: phoneNumbers });
+        return response.data;
+    } catch (error) {
+        console.error("WhatsApp DND check batch error:", error);
         throw error;
     }
 };

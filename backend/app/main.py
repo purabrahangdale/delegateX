@@ -114,7 +114,11 @@ async def startup_whatsapp_automation():
         start_schedulers()
         print("[WhatsApp] Templates seeded and schedulers started.")
     except Exception as e:
-        print(f"[WhatsApp] Startup initialization error: {e}")
+        err_msg = str(e)
+        if "bad auth" in err_msg or "8000" in err_msg:
+            print(f"[WhatsApp] Startup Error: MongoDB Atlas authentication failed. Please check DATABASE_URL in backend/.env. Details: {e}")
+        else:
+            print(f"[WhatsApp] Startup initialization error: {e}")
 
 
 @app.get("/")

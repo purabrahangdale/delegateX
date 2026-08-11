@@ -25,6 +25,12 @@ import WhatsAppTemplates from "../whatsapp/pages/WhatsAppTemplates";
 import CreateWhatsAppTemplate from "../whatsapp/pages/CreateWhatsAppTemplate";
 import WhatsAppLogs from "../whatsapp/pages/WhatsAppLogs";
 import WhatsAppSettings from "../whatsapp/pages/WhatsAppSettings";
+import WhatsAppCampaigns from "../whatsapp/pages/WhatsAppCampaigns";
+import WhatsAppContacts from "../whatsapp/pages/WhatsAppContacts";
+import WhatsAppAutomation from "../whatsapp/pages/WhatsAppAutomation";
+import WhatsAppReports from "../whatsapp/pages/WhatsAppReports";
+import WhatsAppTemplateInsights from "../whatsapp/pages/WhatsAppTemplateInsights";
+import WhatsAppDND from "../whatsapp/pages/WhatsAppDND";
 
 function AppRoutes() {
     return (
@@ -52,11 +58,18 @@ function AppRoutes() {
 
                     {/* WhatsApp Automation */}
                     <Route path="/whatsapp/dashboard" element={<WhatsAppDashboard />} />
+                    <Route path="/whatsapp/campaigns" element={<WhatsAppCampaigns />} />
+                    <Route path="/whatsapp/bulk-send" element={<WhatsAppCampaigns isWizardOnly={true} />} />
                     <Route path="/whatsapp/inbox" element={<WhatsAppInbox />} />
                     <Route path="/whatsapp/templates" element={<WhatsAppTemplates />} />
+                    <Route path="/whatsapp/templates/insights" element={<WhatsAppTemplateInsights />} />
                     <Route path="/whatsapp/templates/create" element={<CreateWhatsAppTemplate />} />
                     <Route path="/whatsapp/templates/new" element={<CreateWhatsAppTemplate />} />
                     <Route path="/whatsapp/create-template" element={<CreateWhatsAppTemplate />} />
+                    <Route path="/whatsapp/contacts" element={<WhatsAppContacts />} />
+                    <Route path="/whatsapp/dnd" element={<WhatsAppDND />} />
+                    <Route path="/whatsapp/automation" element={<WhatsAppAutomation />} />
+                    <Route path="/whatsapp/reports" element={<WhatsAppReports />} />
                     <Route path="/whatsapp/logs" element={<WhatsAppLogs />} />
                     <Route path="/whatsapp/settings" element={<WhatsAppSettings />} />
 

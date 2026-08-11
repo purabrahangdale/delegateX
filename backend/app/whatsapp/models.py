@@ -83,29 +83,46 @@ class WhatsAppTemplateCreate(BaseModel):
     """Payload for creating a new WhatsApp template."""
     name: str
     category: str = "utility"
+    content_type: Optional[str] = "text"
     content: str
     variables: Optional[List[str]] = []
     description: Optional[str] = ""
+    is_favorite: Optional[bool] = False
 
 
 class WhatsAppTemplateUpdate(BaseModel):
     """Payload for updating an existing template."""
     name: Optional[str] = None
     category: Optional[str] = None
+    content_type: Optional[str] = None
     content: Optional[str] = None
     variables: Optional[List[str]] = None
     is_active: Optional[bool] = None
     description: Optional[str] = None
+    is_favorite: Optional[bool] = None
+    views: Optional[int] = None
+    times_used: Optional[int] = None
 
 
 class WhatsAppTemplate(BaseModel):
     """Full template document as stored in MongoDB."""
     name: str
     category: str = "utility"
+    content_type: str = "text"
     content: str
     variables: List[str] = []
     description: str = ""
     is_active: bool = True
+    is_favorite: bool = False
+    views: int = 0
+    times_used: int = 0
+    campaigns_count: int = 0
+    messages_sent: int = 0
+    delivered_count: int = 0
+    read_count: int = 0
+    failed_count: int = 0
+    reply_count: int = 0
+    last_used_at: Optional[str] = None
     created_at: str = ""
     updated_at: str = ""
 
@@ -151,3 +168,32 @@ class AutomationSettings(BaseModel):
     is_active: bool = True
     configured_at: str = ""
     updated_at: str = ""
+
+
+# ── Global DND Models ─────────────────────────────────────────────
+
+class WhatsAppDNDCreate(BaseModel):
+    """Payload for adding a number to Global DND."""
+    phone_number: str
+    country_code: Optional[str] = "+91"
+    reason: Optional[str] = "User Opt-out"  # "User Opt-out", "Manual Block", "Invalid Number", "Spam Complaint"
+    source: Optional[str] = "Manual Entry"  # "Inbox Keyword", "CSV Upload", "Manual Entry"
+    notes: Optional[str] = None
+
+
+class WhatsAppDND(BaseModel):
+    """Full Global DND document stored in MongoDB."""
+    phone_number: str
+    country_code: str = "+91"
+    reason: str = "User Opt-out"
+    source: str = "Manual Entry"
+    notes: Optional[str] = None
+    is_active: bool = True
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class WhatsAppDNDBatchCheck(BaseModel):
+    """Payload for batch checking phone numbers against DND blocklist."""
+    phone_numbers: List[str]
+

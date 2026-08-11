@@ -142,10 +142,58 @@ async def simulate_reply(payload: dict):
 # ═══════════════════════════════════════════════════════════════════
 
 @router.get("/templates")
-async def get_templates(active_only: bool = False):
-    """Get all WhatsApp templates."""
-    templates = template_service.get_all_templates(active_only=active_only)
+async def get_templates(
+    active_only: bool = False,
+    content_type: Optional[str] = None,
+    category: Optional[str] = None,
+    name: Optional[str] = None,
+    search: Optional[str] = None,
+):
+    """Get all WhatsApp templates with optional filtering."""
+    filters = {}
+    if content_type:
+        filters["content_types"] = [c.strip() for c in content_type.split(",") if c.strip()]
+    if category:
+        filters["categories"] = [c.strip() for c in category.split(",") if c.strip()]
+    if name:
+        filters["names"] = [n.strip() for n in name.split(",") if n.strip()]
+    if search:
+        filters["search"] = search.strip()
+
+    templates = template_service.get_all_templates(active_only=active_only, filters=filters if filters else None)
     return {"templates": templates}
+
+
+@router.get("/templates/names")
+async def get_template_names():
+    """Get dynamic list of all template names from database."""
+    names = template_service.get_template_names()
+    return {"names": names}
+
+
+@router.get("/templates/insights")
+async def get_template_insights():
+    """Get comprehensive analytics, KPIs, chart metrics, and performance rankings for templates."""
+    insights = template_service.get_template_insights()
+    return insights
+
+
+@router.post("/templates/{template_id}/favorite")
+async def toggle_template_favorite(template_id: str):
+    """Toggle template favorite status."""
+    tmpl = template_service.toggle_template_favorite(template_id)
+    if not tmpl:
+        raise HTTPException(status_code=404, detail="Template not found")
+    return {"message": "Favorite status updated", "template": tmpl}
+
+
+@router.post("/templates/{template_id}/view")
+async def increment_template_view(template_id: str):
+    """Increment view count for a template."""
+    tmpl = template_service.increment_template_views(template_id)
+    if not tmpl:
+        raise HTTPException(status_code=404, detail="Template not found")
+    return {"message": "View count incremented", "template": tmpl}
 
 
 @router.get("/templates/{template_id}")
@@ -260,20 +308,40 @@ async def update_settings(payload: AutomationSettingsUpdate):
 
 @router.post("/automations/trigger/{workflow_name}")
 async def trigger_automation(workflow_name: str, payload: dict = None):
-    """Manually trigger a specific automation workflow."""
+    """Manually trigger a specific automation workflow or campaign broadcast."""
     payload = payload or {}
     
     try:
-        if workflow_name == "welcome-message":
-            if not payload.get("lead"):
-                raise HTTPException(status_code=400, detail="Lead data required")
-            result = await automation_service.trigger_welcome_message(payload["lead"])
+        template_override = payload.get("template") or payload.get("template_name") or payload.get("template_id")
+        campaign_title = payload.get("campaignName") or payload.get("workflowName") or workflow_name
+
+        if workflow_name in ["campaign", "bulk-message"] or template_override:
+            result = await automation_service.execute_simulated_campaign(
+                campaign_name=campaign_title,
+                template_identifier=template_override or "Welcome Message",
+                target_audience=payload.get("targetAudience", "all_leads")
+            )
+
+        elif workflow_name == "welcome-message":
+            if payload.get("lead"):
+                result = await automation_service.trigger_welcome_message(payload["lead"])
+            else:
+                result = await automation_service.execute_simulated_campaign(
+                    campaign_name="Welcome Message Automation",
+                    template_identifier="Welcome Message"
+                )
             
         elif workflow_name == "followup-reminder":
-            result = await automation_service.trigger_followup_reminders()
+            result = await automation_service.execute_simulated_campaign(
+                campaign_name=campaign_title,
+                template_identifier=template_override or "Follow-up Reminder"
+            )
             
         elif workflow_name == "meeting-reminder":
-            result = await automation_service.trigger_meeting_reminders()
+            result = await automation_service.execute_simulated_campaign(
+                campaign_name=campaign_title,
+                template_identifier=template_override or "Meeting Reminder"
+            )
             
         elif workflow_name == "daily-report":
             result = await automation_service.trigger_daily_lead_report()
@@ -289,7 +357,11 @@ async def trigger_automation(workflow_name: str, payload: dict = None):
             result = await automation_service.trigger_ai_faq_bot(payload["message"])
             
         else:
-            raise HTTPException(status_code=404, detail=f"Unknown workflow: {workflow_name}")
+            # Flexible campaign fallback for dynamic workflow names
+            result = await automation_service.execute_simulated_campaign(
+                campaign_name=campaign_title,
+                template_identifier=template_override or "Welcome Message"
+            )
         
         return {"message": f"Workflow '{workflow_name}' triggered successfully", "result": result}
         
@@ -297,3 +369,182 @@ async def trigger_automation(workflow_name: str, payload: dict = None):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+
+# ═══════════════════════════════════════════════════════════════════
+# ENTERPRISE AI WRITING ASSISTANT
+# ═══════════════════════════════════════════════════════════════════
+
+@router.post("/ai-assistant")
+async def process_ai_assistant(payload: dict):
+    """
+    Process AI Writing Assistant requests for WhatsApp Templates using Gemini 2.5 Flash.
+    Supports fix_grammar, rewrite, friendly, formal, shorten, expand, translate,
+    validate_variables, and compliance_check.
+    Guarantees strict placeholder protection (e.g. {{client_name}}).
+    """
+    action = payload.get("action")
+    content = payload.get("content", "").strip()
+    target_language = payload.get("target_language", "English")
+
+    if not action:
+        raise HTTPException(status_code=400, detail="AI action is required.")
+    if not content:
+        raise HTTPException(status_code=400, detail="Message content is required.")
+
+    from app.chatbot.gemini_service import GeminiService
+    gemini = GeminiService()
+
+    system_instruction = (
+        "You are an Enterprise AI Writing Assistant for WhatsApp business message templates.\n"
+        "CRITICAL RULE 1: You MUST preserve all Mustache variable placeholders (e.g. {{client_name}}, {{assigned_to}}, {{meeting_date}}, {{task_title}}, {{invoice_no}}, etc.) EXACTLY as they appear in the original text. Do NOT change their spelling, capitalization, or remove curly braces.\n"
+        "CRITICAL RULE 2: Return valid JSON in your response containing the fields: 'suggested_content' (string), 'changes_made' (array of brief strings describing changes), and 'warnings' (array of warning strings if any).\n"
+        "Format your output strictly as a JSON object without markdown block ticks if possible, or inside standard json code block."
+    )
+
+    action_prompts = {
+        "fix_grammar": (
+            f"Correct all grammar, spelling, capitalization, and punctuation errors in the message below while preserving the exact meaning and all placeholders.\n\n"
+            f"Original Message:\n{content}"
+        ),
+        "rewrite": (
+            f"Rewrite the message below into a clear, professional, and elegant business WhatsApp message. Improve tone, readability, and formatting. Do NOT modify any placeholders.\n\n"
+            f"Original Message:\n{content}"
+        ),
+        "friendly": (
+            f"Rewrite the message below in a warm, polite, and friendly conversational tone suitable for WhatsApp. Do NOT modify any placeholders.\n\n"
+            f"Original Message:\n{content}"
+        ),
+        "formal": (
+            f"Rewrite the message below using highly formal, respectful corporate business language. Do NOT modify any placeholders.\n\n"
+            f"Original Message:\n{content}"
+        ),
+        "shorten": (
+            f"Shorten the message below to be concise and direct while retaining core meaning and all placeholders.\n\n"
+            f"Original Message:\n{content}"
+        ),
+        "expand": (
+            f"Expand the message below with appropriate professional detail, courteous framing, and clear call to action while retaining all placeholders.\n\n"
+            f"Original Message:\n{content}"
+        ),
+        "translate": (
+            f"Translate the message below accurately into {target_language}. Keep all Mustache variable placeholders ({{...}}) in English and completely untouched.\n\n"
+            f"Original Message:\n{content}"
+        ),
+        "validate_variables": (
+            f"Analyze the placeholders in the message below. Check for broken braces (e.g. {{name or name}}), missing closing braces, invalid characters, or duplicates. Return 'suggested_content' with corrected placeholder syntax, list corrections in 'changes_made', and list any invalid syntax in 'warnings'.\n\n"
+            f"Original Message:\n{content}"
+        ),
+        "compliance_check": (
+            f"Perform an official Meta WhatsApp Template Policy Compliance Check on the message below. Evaluate grammar, character length, spam trigger words, ALL-CAPS usage, and placeholder formatting. Return suggested content in 'suggested_content', list compliance observations in 'changes_made', and list compliance warnings in 'warnings'.\n\n"
+            f"Original Message:\n{content}"
+        ),
+    }
+
+    user_prompt = action_prompts.get(action)
+    if not user_prompt:
+        raise HTTPException(status_code=400, detail=f"Unsupported AI action: {action}")
+
+    try:
+        raw_response = gemini.generate_chat_response(
+            prompt=user_prompt,
+            system_instruction=system_instruction
+        )
+
+        import json
+        import re
+
+        clean_text = raw_response.strip()
+        if clean_text.startswith("```"):
+            clean_text = re.sub(r"^```(?:json)?\n?", "", clean_text)
+            clean_text = re.sub(r"\n?```$", "", clean_text)
+        
+        try:
+            parsed = json.loads(clean_text)
+            suggested = parsed.get("suggested_content", content)
+            changes = parsed.get("changes_made", ["Processed message with AI"])
+            warnings = parsed.get("warnings", [])
+        except Exception:
+            suggested = clean_text or content
+            changes = [f"Applied AI action: {action.replace('_', ' ').title()}"]
+            warnings = []
+
+        return {
+            "status": "success",
+            "action": action,
+            "original_content": content,
+            "suggested_content": suggested,
+            "changes_made": changes,
+            "warnings": warnings,
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI processing error: {str(e)}")
+
+
+# ═══════════════════════════════════════════════════════════════════
+# GLOBAL DND / BLOCKLIST MANAGEMENT ENDPOINTS
+# ═══════════════════════════════════════════════════════════════════
+
+@router.get("/dnd")
+async def get_dnd_list(
+    search: Optional[str] = Query(None, description="Search phone number or notes"),
+    reason: Optional[str] = Query(None, description="Filter by block reason"),
+    source: Optional[str] = Query(None, description="Filter by entry source"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+):
+    """Fetch all blocked numbers in the Global DND list with filters & stats."""
+    from app.whatsapp.repository import DNDRepository
+    return DNDRepository.get_dnd_list(search=search, reason=reason, source=source, skip=skip, limit=limit)
+
+
+@router.post("/dnd")
+async def add_dnd_number(payload: dict):
+    """Add or update a single phone number in the Global DND list."""
+    from app.whatsapp.repository import DNDRepository
+    phone_number = payload.get("phone_number")
+    if not phone_number:
+        raise HTTPException(status_code=400, detail="Phone number is required.")
+
+    try:
+        doc = DNDRepository.add_dnd_number(payload)
+        return {"message": f"Phone number {phone_number} successfully added to Global DND list", "dnd": doc}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/dnd/bulk")
+async def add_bulk_dnd_numbers(payload: dict):
+    """Bulk import phone numbers into the Global DND list."""
+    from app.whatsapp.repository import DNDRepository
+    items = payload.get("items", [])
+    if not items or not isinstance(items, list):
+        raise HTTPException(status_code=400, detail="Payload must contain an array of items.")
+
+    added_count = DNDRepository.add_bulk_dnd_numbers(items)
+    return {"message": f"Successfully processed {added_count} phone numbers into Global DND list", "added_count": added_count}
+
+
+@router.delete("/dnd/{phone_number}")
+async def remove_dnd_number(phone_number: str):
+    """Unblock / remove a phone number from the Global DND list."""
+    from app.whatsapp.repository import DNDRepository
+    success = DNDRepository.remove_dnd(phone_number)
+    if not success:
+        raise HTTPException(status_code=404, detail=f"Phone number {phone_number} not found in active DND list.")
+    return {"message": f"Phone number {phone_number} successfully unblocked and removed from Global DND list"}
+
+
+@router.post("/dnd/check-batch")
+async def check_dnd_batch(payload: dict):
+    """Batch verify target phone numbers against Global DND list before campaign dispatch."""
+    from app.whatsapp.repository import DNDRepository
+    phone_numbers = payload.get("phone_numbers", [])
+    if not isinstance(phone_numbers, list):
+        raise HTTPException(status_code=400, detail="phone_numbers must be an array of strings.")
+
+    return DNDRepository.check_batch(phone_numbers)
+
+

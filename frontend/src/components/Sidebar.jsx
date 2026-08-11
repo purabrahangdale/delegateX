@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { FiPieChart, FiUsers, FiBriefcase, FiCheckSquare, FiChevronLeft, FiChevronRight, FiGrid, FiPlusSquare, FiLayers, FiChevronDown, FiCalendar, FiX, FiBarChart2, FiFileText, FiSettings, FiMail, FiClipboard, FiMessageCircle } from "react-icons/fi";
+import { FiPieChart, FiUsers, FiBriefcase, FiCheckSquare, FiChevronLeft, FiChevronRight, FiGrid, FiPlusSquare, FiLayers, FiChevronDown, FiCalendar, FiX, FiBarChart2, FiFileText, FiSettings, FiMail, FiClipboard, FiMessageCircle, FiSend, FiZap, FiSlash } from "react-icons/fi";
 
 function Sidebar({ isCollapsed, setIsCollapsed, onClose }) {
     const location = useLocation();
@@ -197,12 +197,23 @@ function Sidebar({ isCollapsed, setIsCollapsed, onClose }) {
         {
             title: "WhatsApp Automation",
             icon: FiMessageCircle,
+            isWhatsapp: true,
             isDropdown: true,
             children: [
                 {
-                    title: "WA Dashboard",
+                    title: "Dashboard",
                     path: "/whatsapp/dashboard",
                     icon: FiGrid,
+                },
+                {
+                    title: "Campaigns",
+                    path: "/whatsapp/campaigns",
+                    icon: FiSend,
+                },
+                {
+                    title: "Bulk Messaging",
+                    path: "/whatsapp/bulk-send",
+                    icon: FiPlusSquare,
                 },
                 {
                     title: "Inbox",
@@ -210,17 +221,42 @@ function Sidebar({ isCollapsed, setIsCollapsed, onClose }) {
                     icon: FiMessageCircle,
                 },
                 {
-                    title: "WA Templates",
+                    title: "Templates",
                     path: "/whatsapp/templates",
                     icon: FiFileText,
                 },
                 {
-                    title: "Automation Logs",
-                    path: "/whatsapp/logs",
+                    title: "Template Insights",
+                    path: "/whatsapp/templates/insights",
                     icon: FiBarChart2,
                 },
                 {
-                    title: "WA Settings",
+                    title: "Contacts",
+                    path: "/whatsapp/contacts",
+                    icon: FiUsers,
+                },
+                {
+                    title: "Global DND List",
+                    path: "/whatsapp/dnd",
+                    icon: FiSlash,
+                },
+                {
+                    title: "Automation",
+                    path: "/whatsapp/automation",
+                    icon: FiZap,
+                },
+                {
+                    title: "Reports",
+                    path: "/whatsapp/reports",
+                    icon: FiBarChart2,
+                },
+                {
+                    title: "Logs",
+                    path: "/whatsapp/logs",
+                    icon: FiClipboard,
+                },
+                {
+                    title: "Settings",
                     path: "/whatsapp/settings",
                     icon: FiSettings,
                 },
@@ -350,7 +386,7 @@ function Sidebar({ isCollapsed, setIsCollapsed, onClose }) {
 
                                 {/* Child Items Submenu - Indented with smaller spacing and height transition */}
                                 <div
-                                    className={`transition-all duration-300 ease-in-out overflow-hidden space-y-1 ${isOpen ? "max-h-96 opacity-100" : "max-h-0 opacity-0 pointer-events-none"
+                                    className={`transition-all duration-300 ease-in-out overflow-hidden space-y-1 ${isOpen ? "max-h-[1000px] opacity-100" : "max-h-0 opacity-0 pointer-events-none"
                                         }`}
                                 >
                                     {item.children.map((child, cIdx) => {
@@ -363,11 +399,13 @@ function Sidebar({ isCollapsed, setIsCollapsed, onClose }) {
                                                 onClick={() => onClose && onClose()}
                                                 className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition-all duration-200 group relative ${isCollapsed ? "" : "pl-8"
                                                     } ${childActive
-                                                        ? "bg-slate-900 text-white font-medium border-l-2 border-indigo-500 rounded-l-none"
+                                                        ? item.isWhatsapp
+                                                            ? "bg-emerald-950/40 text-white font-medium border-l-2 border-[#25D366] rounded-l-none"
+                                                            : "bg-slate-900 text-white font-medium border-l-2 border-indigo-500 rounded-l-none"
                                                         : "hover:bg-slate-900/40 hover:text-slate-200 text-slate-400"
                                                     }`}
                                             >
-                                                <ChildIcon size={14} className={childActive ? "text-indigo-400" : "text-slate-500 group-hover:text-slate-350 transition"} />
+                                                <ChildIcon size={14} className={childActive ? (item.isWhatsapp ? "text-[#25D366]" : "text-indigo-400") : "text-slate-500 group-hover:text-slate-350 transition"} />
 
                                                 {!isCollapsed && (
                                                     <span className="text-[11px] font-medium tracking-wide font-sans">{child.title}</span>
