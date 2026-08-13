@@ -396,6 +396,49 @@ async def trigger_daily_lead_report() -> Optional[dict]:
     return message
 
 
+async def trigger_daily_reply_report() -> Optional[dict]:
+    """
+    Daily Customer Reply Summary Automation (Runs daily via scheduler).
+    Logs daily reply statistics and makes report data snapshot available.
+    """
+    from app.whatsapp.repository import MessageRepository
+    start_time = time.time()
+    today_str = date.today().isoformat()
+    
+    stats = MessageRepository.get_reply_stats()
+    
+    report_content = (
+        f"📩 *Daily WhatsApp Customer Reply Report — {today_str}*\n\n"
+        f"💬 Total Replies (All-Time): *{stats.get('total_replies', 0)}*\n"
+        f"🆕 Replies Received Today: *{stats.get('today_replies', 0)}*\n"
+        f"👥 Unique Customer Contacts: *{stats.get('unique_customers', 0)}*\n"
+        f"⏳ Unread / Pending Replies: *{stats.get('unread_replies', 0)}*\n"
+        f"📝 Text / Media Ratio: *{stats.get('text_replies', 0)} / {stats.get('media_replies', 0)}*\n\n"
+        f"📥 Admin can download full Excel report from WhatsApp Automation → Export Report."
+    )
+    
+    message = await send_message(
+        recipient_phone="+91-ADMIN",
+        content=report_content,
+        recipient_name="Admin",
+        automation_workflow="Daily Customer Reply Report",
+        metadata={"trigger": "daily_reply_report", "date": today_str, **stats},
+    )
+    
+    duration_ms = int((time.time() - start_time) * 1000)
+    await _log_automation(
+        workflow_name="Daily Customer Reply Report",
+        trigger="Scheduled Daily (11:59 PM)",
+        status=AutomationStatus.SUCCESS.value,
+        recipient="Admin",
+        message_preview=report_content,
+        duration_ms=duration_ms,
+    )
+    
+    return message
+
+
+
 async def trigger_task_assignment_notification(task_data: dict) -> Optional[dict]:
     """
     Phase 2 — Employee Task Assignment Notification

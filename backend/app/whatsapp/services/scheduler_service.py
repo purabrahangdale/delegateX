@@ -43,6 +43,7 @@ def start_schedulers():
         trigger_followup_reminders,
         trigger_meeting_reminders,
         trigger_daily_lead_report,
+        trigger_daily_reply_report,
     )
     
     # Follow-up reminders every 6 hours
@@ -59,6 +60,12 @@ def start_schedulers():
     _scheduler_tasks["daily_report"] = asyncio.create_task(
         _run_periodic("Daily Lead Report", trigger_daily_lead_report, 24 * 3600)
     )
+
+    # Daily customer reply report every 24 hours
+    _scheduler_tasks["daily_reply_report"] = asyncio.create_task(
+        _run_periodic("Daily Reply Report", trigger_daily_reply_report, 24 * 3600)
+    )
+
     
     _scheduler_running = True
     logger.info("[Scheduler] All periodic automation tasks started.")

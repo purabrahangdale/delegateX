@@ -8,12 +8,34 @@ import {
 function WhatsAppHeader({ activeTab = "dashboard", onSearchChange, searchQuery = "", filterComponent = null }) {
     const navigate = useNavigate();
     const [localSearch, setLocalSearch] = useState(searchQuery);
+    const [isExporting, setIsExporting] = useState(false);
 
     const handleSearch = (e) => {
         const val = e.target.value;
         setLocalSearch(val);
         if (onSearchChange) onSearchChange(val);
     };
+
+    const handleQuickExport = async () => {
+        if (isExporting) return;
+        setIsExporting(true);
+        try {
+            if (activeTab === "access-history") {
+                const { exportChatAccessLogsExcel } = await import("../services/whatsappApi");
+                await exportChatAccessLogsExcel();
+            } else {
+                const { exportCustomerRepliesExcel } = await import("../services/whatsappApi");
+                await exportCustomerRepliesExcel();
+            }
+        } catch (err) {
+            console.error("Export report error:", err);
+            navigate("/whatsapp/reports");
+        } finally {
+            setIsExporting(false);
+        }
+    };
+
+
 
     return (
         <div className="space-y-4 mb-6 animate-fade-in">
@@ -68,12 +90,16 @@ function WhatsAppHeader({ activeTab = "dashboard", onSearchChange, searchQuery =
                     </button>
 
                     <button
-                        onClick={() => navigate("/whatsapp/reports")}
-                        className="flex items-center gap-1.5 bg-white border border-slate-200/90 text-slate-700 hover:bg-slate-50 px-3 py-2 rounded-xl text-xs font-semibold shadow-xs transition duration-200 cursor-pointer hidden sm:flex"
+                        onClick={handleQuickExport}
+                        disabled={isExporting}
+                        className="flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200/80 text-emerald-700 px-3.5 py-2 rounded-xl text-xs font-bold shadow-xs transition duration-200 cursor-pointer hidden sm:flex disabled:opacity-60"
+                        title="1-Click Instant Excel Export for all Customer Replies"
                     >
-                        <FiDownload size={13} className="text-slate-500" />
-                        <span>Export Report</span>
+                        <FiDownload size={13} className={`text-emerald-600 ${isExporting ? "animate-bounce" : ""}`} />
+                        <span>{isExporting ? "Downloading..." : "Export Report (.xlsx)"}</span>
                     </button>
+
+
                 </div>
             </div>
 

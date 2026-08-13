@@ -3,9 +3,12 @@ WhatsApp Automation — FastAPI Routes
 All WhatsApp API endpoints for dashboard, inbox, templates, logs, and settings.
 """
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request, Response, Body
+
+from fastapi.responses import StreamingResponse
 from typing import Optional
 from datetime import datetime
+
 
 from app.whatsapp.models import (
     WhatsAppMessageCreate,
@@ -546,5 +549,314 @@ async def check_dnd_batch(payload: dict):
         raise HTTPException(status_code=400, detail="phone_numbers must be an array of strings.")
 
     return DNDRepository.check_batch(phone_numbers)
+
+
+# ═══════════════════════════════════════════════════════════════════
+# CUSTOMER REPLIES & REPORT EXPORT
+# ═══════════════════════════════════════════════════════════════════
+
+@router.get("/replies")
+async def get_customer_replies(
+    from_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
+    to_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD)"),
+    campaign: Optional[str] = Query(None, description="Campaign filter"),
+    template: Optional[str] = Query(None, description="Template filter"),
+    contact: Optional[str] = Query(None, description="Contact filter"),
+    assigned_agent: Optional[str] = Query(None, description="Assigned agent filter"),
+    reply_type: Optional[str] = Query(None, description="Reply type filter"),
+    source: Optional[str] = Query(None, description="Source filter (simulation/meta_webhook)"),
+    mode: Optional[str] = Query(None, description="Mode filter"),
+    status: Optional[str] = Query(None, description="Read/Unread status filter"),
+    search: Optional[str] = Query(None, description="Global search text"),
+    limit: int = Query(200, ge=1, le=1000),
+    skip: int = Query(0, ge=0),
+):
+    """Get filterable customer replies with total count and stats."""
+    filters = {
+        "from_date": from_date,
+        "to_date": to_date,
+        "campaign": campaign,
+        "template": template,
+        "contact": contact,
+        "assigned_agent": assigned_agent,
+        "reply_type": reply_type,
+        "source": source,
+        "mode": mode,
+        "status": status,
+        "search": search,
+    }
+    # Remove None values
+    clean_filters = {k: v for k, v in filters.items() if v is not None}
+
+    replies = MessageRepository.get_customer_replies(filters=clean_filters, limit=limit, skip=skip)
+    total = MessageRepository.count_customer_replies(filters=clean_filters)
+    stats = MessageRepository.get_reply_stats()
+
+    return {
+        "replies": replies,
+        "total": total,
+        "stats": stats,
+        "limit": limit,
+        "skip": skip,
+    }
+
+
+@router.get("/replies/stats")
+async def get_customer_reply_stats():
+    """Get aggregated statistics for customer replies."""
+    return MessageRepository.get_reply_stats()
+
+
+@router.get("/replies/export")
+async def export_customer_replies(
+    from_date: Optional[str] = Query(None),
+    to_date: Optional[str] = Query(None),
+    campaign: Optional[str] = Query(None),
+    template: Optional[str] = Query(None),
+    contact: Optional[str] = Query(None),
+    assigned_agent: Optional[str] = Query(None),
+    reply_type: Optional[str] = Query(None),
+    source: Optional[str] = Query(None),
+    mode: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+):
+    """
+    Generate and download Excel (.xlsx) report for customer replies based on filters.
+    File name: Customer_Replies_YYYY-MM-DD.xlsx
+    """
+    filters = {
+        "from_date": from_date,
+        "to_date": to_date,
+        "campaign": campaign,
+        "template": template,
+        "contact": contact,
+        "assigned_agent": assigned_agent,
+        "reply_type": reply_type,
+        "source": source,
+        "mode": mode,
+        "status": status,
+        "search": search,
+    }
+    clean_filters = {k: v for k, v in filters.items() if v is not None}
+
+    replies = MessageRepository.get_customer_replies(filters=clean_filters, limit=5000, skip=0)
+
+    from app.whatsapp.services.report_service import generate_customer_replies_excel
+    excel_stream = generate_customer_replies_excel(replies)
+    excel_bytes = excel_stream.getvalue()
+
+    today_str = datetime.utcnow().strftime("%Y-%m-%d")
+    filename = f"Customer_Replies_{today_str}.xlsx"
+
+    headers = {
+        "Content-Disposition": f'attachment; filename="{filename}"',
+        "Content-Length": str(len(excel_bytes)),
+        "Access-Control-Expose-Headers": "Content-Disposition, Content-Length",
+    }
+
+    return Response(
+        content=excel_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers=headers,
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════
+# CHAT ACCESS AUDIT ROUTES
+# ═══════════════════════════════════════════════════════════════════
+
+@router.post("/conversations/{conversation_id}/access")
+async def log_chat_access_event(
+    conversation_id: str,
+    request: Request,
+    payload: Optional[dict] = Body(None),
+):
+    """
+    Log an audit record whenever a manager opens a customer conversation.
+    Identifies authenticated manager from headers/session.
+    """
+    from app.whatsapp.services.chat_access_service import record_chat_access
+    access_log = record_chat_access(conversation_id=conversation_id, payload=payload, request=request)
+    return {"success": True, "access_log": access_log}
+
+
+@router.get("/access-logs")
+async def get_chat_access_logs(
+    manager: Optional[str] = Query(None),
+    customer: Optional[str] = Query(None),
+    phone: Optional[str] = Query(None),
+    replied: Optional[str] = Query(None),
+    from_date: Optional[str] = Query(None),
+    to_date: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    limit: int = Query(200, ge=1, le=5000),
+    skip: int = Query(0, ge=0),
+):
+    """Fetch filterable chat access audit logs with pagination."""
+    from app.whatsapp.repository import ChatAccessLogRepository
+    filters = {
+        "manager": manager,
+        "customer": customer,
+        "phone": phone,
+        "replied": replied,
+        "from_date": from_date,
+        "to_date": to_date,
+        "search": search,
+    }
+    clean_filters = {k: v for k, v in filters.items() if v is not None}
+
+    logs = ChatAccessLogRepository.get_all(filters=clean_filters, limit=limit, skip=skip)
+    total = ChatAccessLogRepository.count(filters=clean_filters)
+
+    return {
+        "access_logs": logs,
+        "total": total,
+        "limit": limit,
+        "skip": skip,
+    }
+
+
+@router.get("/access-logs/stats")
+async def get_chat_access_stats():
+    """Get aggregated metrics for chat access history audit."""
+    from app.whatsapp.repository import ChatAccessLogRepository
+    return ChatAccessLogRepository.get_stats()
+
+
+@router.get("/access-logs/export")
+async def export_chat_access_logs(
+    manager: Optional[str] = Query(None),
+    customer: Optional[str] = Query(None),
+    phone: Optional[str] = Query(None),
+    replied: Optional[str] = Query(None),
+    from_date: Optional[str] = Query(None),
+    to_date: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+):
+    """Export Chat Access Audit Logs as a formatted Excel (.xlsx) file."""
+    from app.whatsapp.repository import ChatAccessLogRepository
+    from app.whatsapp.services.chat_access_service import generate_access_history_excel
+
+    filters = {
+        "manager": manager,
+        "customer": customer,
+        "phone": phone,
+        "replied": replied,
+        "from_date": from_date,
+        "to_date": to_date,
+        "search": search,
+    }
+    clean_filters = {k: v for k, v in filters.items() if v is not None}
+
+    logs = ChatAccessLogRepository.get_all(filters=clean_filters, limit=5000, skip=0)
+    excel_stream = generate_access_history_excel(logs)
+    excel_bytes = excel_stream.getvalue()
+
+    today_str = datetime.utcnow().strftime("%Y-%m-%d")
+    filename = f"Chat_Access_History_{today_str}.xlsx"
+
+    headers = {
+        "Content-Disposition": f'attachment; filename="{filename}"',
+        "Content-Length": str(len(excel_bytes)),
+        "Access-Control-Expose-Headers": "Content-Disposition, Content-Length",
+    }
+
+    return Response(
+        content=excel_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers=headers,
+    )
+
+
+
+
+# ═══════════════════════════════════════════════════════════════════
+# META WHATSAPP WEBHOOK HANDLER
+# ═══════════════════════════════════════════════════════════════════
+
+@router.get("/webhook")
+async def verify_meta_webhook(request: Request):
+    """
+    Meta Cloud API Webhook Verification Endpoint.
+    Responds to GET request during webhook setup verification.
+    """
+    import os
+    params = request.query_params
+    mode = params.get("hub.mode")
+    token = params.get("hub.verify_token")
+    challenge = params.get("hub.challenge")
+
+    expected_token = os.getenv("META_WHATSAPP_VERIFY_TOKEN", "delegatex_verify_token")
+
+    if mode == "subscribe" and token == expected_token:
+        return Response(content=challenge, media_type="text/plain")
+
+    raise HTTPException(status_code=403, detail="Webhook verification failed")
+
+
+@router.post("/webhook")
+async def receive_meta_webhook(payload: dict):
+    """
+    Process incoming Meta WhatsApp Cloud API webhooks.
+    Stores incoming customer replies, updates inbox, and triggers auto-routing.
+    Includes idempotent duplicate message protection.
+    """
+    try:
+        entries = payload.get("entry", [])
+        processed_messages = []
+
+        for entry in entries:
+            changes = entry.get("changes", [])
+            for change in changes:
+                value = change.get("value", {})
+                contacts_map = {c.get("wa_id"): c.get("profile", {}).get("name") for c in value.get("contacts", [])}
+                messages = value.get("messages", [])
+
+                for msg in messages:
+                    wamid = msg.get("id")
+                    sender_phone = msg.get("from", "")
+                    sender_name = contacts_map.get(sender_phone, "WhatsApp User")
+                    msg_type = msg.get("type", "text")
+                    
+                    # Extract content based on message type
+                    content = ""
+                    if msg_type == "text":
+                        content = msg.get("text", {}).get("body", "")
+                    elif msg_type in ("image", "video", "audio", "document"):
+                        content = msg.get(msg_type, {}).get("caption", f"[{msg_type.upper()} Message]")
+                    elif msg_type == "interactive":
+                        interactive = msg.get("interactive", {})
+                        content = interactive.get("button_reply", {}).get("title") or interactive.get("list_reply", {}).get("title") or "[Interactive Reply]"
+                    elif msg_type == "button":
+                        content = msg.get("button", {}).get("text", "[Button Click]")
+                    else:
+                        content = f"[{msg_type.upper()}]"
+
+                    # Process incoming reply with context association & duplicate protection
+                    saved = await message_service.process_incoming_reply(
+                        sender_phone=sender_phone,
+                        sender_name=sender_name,
+                        content=content,
+                        message_type=msg_type,
+                        reply_type=msg_type,
+                        source="meta_webhook",
+                        mode="meta_cloud",
+                        wamid=wamid,
+                        metadata={"raw_meta_payload": msg}
+                    )
+
+                    # Trigger intent detection / auto response if newly created
+                    if saved:
+                        asyncio.create_task(automation_service.detect_intent_and_route(saved))
+                        processed_messages.append(saved)
+
+        return {"status": "success", "processed_count": len(processed_messages)}
+
+    except Exception as e:
+        # Gracefully handle webhook errors to avoid Meta retries loop
+        print(f"[Meta Webhook Error] Failed to process payload: {e}", flush=True)
+        return {"status": "error", "detail": str(e)}
+
 
 

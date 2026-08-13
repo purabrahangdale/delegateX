@@ -1,11 +1,13 @@
 import { useEffect, useState, useRef } from "react";
 import WhatsAppHeader from "../components/WhatsAppHeader";
-import { getConversations, getConversationMessages, sendWhatsAppMessage, simulateReply } from "../services/whatsappApi";
+import { getConversations, getConversationMessages, sendWhatsAppMessage, simulateReply, logChatAccess } from "../services/whatsappApi";
+
 import { useWebSockets } from "../../context/WebSocketContext";
 import {
     FiSearch, FiSend, FiUser, FiCheck, FiClock, FiMessageCircle, FiChevronLeft,
     FiSmile, FiPhone, FiPaperclip, FiMoreVertical, FiImage, FiFileText, FiX,
-    FiCheckCircle, FiPlus, FiFilter, FiCornerDownLeft, FiRefreshCw
+    FiCheckCircle, FiPlus, FiFilter, FiCornerDownLeft, FiRefreshCw, FiDownload
+
 } from "react-icons/fi";
 
 // Message status tick component
@@ -259,8 +261,16 @@ function WhatsAppInbox() {
     useEffect(() => {
         if (selectedConv) {
             fetchMessages(selectedConv);
+            const convId = selectedConv.conversation_id || selectedConv.id || selectedConv.recipient_phone;
+            if (convId) {
+                logChatAccess(convId, {
+                    contact_phone: selectedConv.recipient_phone,
+                    contact_name: selectedConv.recipient
+                });
+            }
         }
     }, [selectedConv]);
+
 
     useEffect(() => {
         chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -671,6 +681,8 @@ function WhatsAppInbox() {
                                             Simulation Mode
                                         </span>
                                     </div>
+
+
                                 </div>
 
                                 {/* Messages Stream */}

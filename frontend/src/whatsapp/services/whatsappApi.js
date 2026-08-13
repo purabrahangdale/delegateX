@@ -251,3 +251,160 @@ export const checkWhatsAppDNDBatch = async (phoneNumbers) => {
         throw error;
     }
 };
+
+// ── Customer Replies & Reports ─────────────────────────────────
+export const getCustomerReplies = async (params = {}) => {
+    try {
+        const response = await API.get("/api/whatsapp/replies", { params });
+        return response.data;
+    } catch (error) {
+        console.error("WhatsApp customer replies error:", error);
+        return { replies: [], total: 0, stats: {} };
+    }
+};
+
+export const getCustomerReplyStats = async () => {
+    try {
+        const response = await API.get("/api/whatsapp/replies/stats");
+        return response.data;
+    } catch (error) {
+        console.error("WhatsApp reply stats error:", error);
+        return null;
+    }
+};
+
+export const exportCustomerRepliesExcel = async (params = {}) => {
+    try {
+        const response = await API.get("/api/whatsapp/replies/export", {
+            params,
+            responseType: "blob",
+        });
+
+        // Trigger browser file download with explicit Excel MIME type
+        const blob = new Blob([response.data], {
+            type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        });
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+
+
+        // Try to get filename from header
+        let fileName = `Customer_Replies_${new Date().toISOString().slice(0, 10)}.xlsx`;
+        const contentDisposition = response.headers["content-disposition"];
+        if (contentDisposition) {
+            const match = contentDisposition.match(/filename="?([^"]+)"?/);
+            if (match && match[1]) {
+                fileName = match[1];
+            }
+        }
+
+        link.setAttribute("download", fileName);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
+        return true;
+    } catch (error) {
+        console.error("WhatsApp reply export error:", error);
+        throw error;
+    }
+};
+
+
+// ── CHAT ACCESS AUDIT FUNCTIONS ──────────────────────────────────────
+
+export const logChatAccess = async (conversationId, contactInfo = {}) => {
+    if (!conversationId) return null;
+    try {
+        const userEmail = localStorage.getItem("userEmail") || "admin@delegatex.com";
+        const userName = localStorage.getItem("userName") || (userEmail === "admin@delegatex.com" ? "Admin User" : userEmail.split("@")[0]);
+
+        const response = await API.post(
+            `/api/whatsapp/conversations/${encodeURIComponent(conversationId)}/access`,
+            {
+                conversation_id: conversationId,
+                contact_phone: contactInfo.contact_phone || contactInfo.recipient_phone || "",
+                contact_name: contactInfo.contact_name || contactInfo.recipient || "Customer",
+                manager_email: userEmail,
+                manager_name: userName,
+                manager_id: userEmail,
+            },
+            {
+                headers: {
+                    "X-User-Email": userEmail,
+                    "X-Manager-Email": userEmail,
+                    "X-Manager-Name": userName,
+                }
+            }
+        );
+        return response.data;
+    } catch (error) {
+        console.error("Log chat access error:", error);
+        return null;
+    }
+};
+
+export const getChatAccessLogs = async (params = {}) => {
+    try {
+        const response = await API.get("/api/whatsapp/access-logs", { params });
+        return response.data;
+    } catch (error) {
+        console.error("Get chat access logs error:", error);
+        return { access_logs: [], total: 0 };
+    }
+};
+
+export const getChatAccessStats = async () => {
+    try {
+        const response = await API.get("/api/whatsapp/access-logs/stats");
+        return response.data;
+    } catch (error) {
+        console.error("Get chat access stats error:", error);
+        return {
+            total_openings: 0,
+            replied_count: 0,
+            unreplied_count: 0,
+            unique_managers: 0,
+            unique_customers: 0,
+            reply_rate: 0,
+        };
+    }
+};
+
+export const exportChatAccessLogsExcel = async (params = {}) => {
+    try {
+        const response = await API.get("/api/whatsapp/access-logs/export", {
+            params,
+            responseType: "blob",
+        });
+
+        const blob = new Blob([response.data], {
+            type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        });
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+
+        let fileName = `Chat_Access_History_${new Date().toISOString().slice(0, 10)}.xlsx`;
+        const contentDisposition = response.headers["content-disposition"];
+        if (contentDisposition) {
+            const match = contentDisposition.match(/filename="?([^"]+)"?/);
+            if (match && match[1]) {
+                fileName = match[1];
+            }
+        }
+
+        link.setAttribute("download", fileName);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
+        return true;
+    } catch (error) {
+        console.error("Export chat access logs error:", error);
+        throw error;
+    }
+};
+
+

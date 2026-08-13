@@ -44,6 +44,39 @@ class AutomationStatus(str, Enum):
     SKIPPED = "skipped"
 
 
+class ReplySource(str, Enum):
+    SIMULATION = "simulation"
+    META_WEBHOOK = "meta_webhook"
+    MANUAL = "manual"
+
+
+class ReplyType(str, Enum):
+    TEXT = "text"
+    IMAGE = "image"
+    VIDEO = "video"
+    AUDIO = "audio"
+    DOCUMENT = "document"
+    LOCATION = "location"
+    BUTTON = "button"
+    INTERACTIVE = "interactive"
+    REACTION = "reaction"
+    UNKNOWN = "unknown"
+
+
+class WhatsAppReplyFilter(BaseModel):
+    from_date: Optional[str] = None
+    to_date: Optional[str] = None
+    campaign: Optional[str] = None
+    template: Optional[str] = None
+    contact: Optional[str] = None
+    assigned_agent: Optional[str] = None
+    reply_type: Optional[str] = None
+    source: Optional[str] = None
+    mode: Optional[str] = None
+    status: Optional[str] = None
+    search: Optional[str] = None
+
+
 # ── Message Models ────────────────────────────────────────────────
 
 class WhatsAppMessageCreate(BaseModel):
@@ -196,4 +229,47 @@ class WhatsAppDND(BaseModel):
 class WhatsAppDNDBatchCheck(BaseModel):
     """Payload for batch checking phone numbers against DND blocklist."""
     phone_numbers: List[str]
+
+
+# ── Chat Access Audit Models ──────────────────────────────────────
+
+class ChatAccessLogCreate(BaseModel):
+    """Payload sent when a manager opens a conversation."""
+    conversation_id: str
+    contact_phone: Optional[str] = None
+    contact_name: Optional[str] = None
+    manager_name: Optional[str] = None
+    manager_email: Optional[str] = None
+    manager_id: Optional[str] = None
+
+
+class ChatAccessLog(BaseModel):
+    """Full Chat Access Audit Log document as stored in MongoDB."""
+    conversation_id: str
+    contact_id: Optional[str] = None
+    contact_name: str = "Customer"
+    contact_phone: str = ""
+    manager_id: str = "admin"
+    manager_name: str = "Admin User"
+    manager_email: str = "admin@delegatex.com"
+    chat_opened_at: str = ""
+    replied_to_customer: bool = False
+    reply_time: Optional[str] = None
+    reply_message_id: Optional[str] = None
+    campaign_id: Optional[str] = None
+    campaign_name: Optional[str] = None
+    template_id: Optional[str] = None
+    template_name: Optional[str] = None
+    created_at: str = ""
+
+
+class ChatAccessLogFilter(BaseModel):
+    manager: Optional[str] = None
+    customer: Optional[str] = None
+    phone: Optional[str] = None
+    replied: Optional[bool] = None
+    from_date: Optional[str] = None
+    to_date: Optional[str] = None
+    search: Optional[str] = None
+
 

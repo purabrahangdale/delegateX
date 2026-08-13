@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { FiPieChart, FiUsers, FiBriefcase, FiCheckSquare, FiChevronLeft, FiChevronRight, FiGrid, FiPlusSquare, FiLayers, FiChevronDown, FiCalendar, FiX, FiBarChart2, FiFileText, FiSettings, FiMail, FiClipboard, FiMessageCircle, FiSend, FiZap, FiSlash } from "react-icons/fi";
+import { FiPieChart, FiUsers, FiBriefcase, FiCheckSquare, FiChevronLeft, FiChevronRight, FiGrid, FiPlusSquare, FiLayers, FiChevronDown, FiCalendar, FiX, FiBarChart2, FiFileText, FiSettings, FiMail, FiClipboard, FiMessageCircle, FiSend, FiZap, FiSlash, FiEye } from "react-icons/fi";
+
 
 function Sidebar({ isCollapsed, setIsCollapsed, onClose }) {
     const location = useLocation();
@@ -251,10 +252,16 @@ function Sidebar({ isCollapsed, setIsCollapsed, onClose }) {
                     icon: FiBarChart2,
                 },
                 {
+                    title: "Chat Access History",
+                    path: "/whatsapp/access-history",
+                    icon: FiEye,
+                },
+                {
                     title: "Logs",
                     path: "/whatsapp/logs",
                     icon: FiClipboard,
                 },
+
                 {
                     title: "Settings",
                     path: "/whatsapp/settings",

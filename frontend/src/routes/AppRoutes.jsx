@@ -31,6 +31,7 @@ import WhatsAppAutomation from "../whatsapp/pages/WhatsAppAutomation";
 import WhatsAppReports from "../whatsapp/pages/WhatsAppReports";
 import WhatsAppTemplateInsights from "../whatsapp/pages/WhatsAppTemplateInsights";
 import WhatsAppDND from "../whatsapp/pages/WhatsAppDND";
+import ChatAccessHistory from "../whatsapp/pages/ChatAccessHistory";
 
 function AppRoutes() {
     return (
@@ -70,8 +71,10 @@ function AppRoutes() {
                     <Route path="/whatsapp/dnd" element={<WhatsAppDND />} />
                     <Route path="/whatsapp/automation" element={<WhatsAppAutomation />} />
                     <Route path="/whatsapp/reports" element={<WhatsAppReports />} />
+                    <Route path="/whatsapp/access-history" element={<ChatAccessHistory />} />
                     <Route path="/whatsapp/logs" element={<WhatsAppLogs />} />
                     <Route path="/whatsapp/settings" element={<WhatsAppSettings />} />
+
 
                     <Route path="/settings/users" element={<UserManagement />} />
                     <Route path="/templates/form-templates" element={<FormTemplatesView />} />

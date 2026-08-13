@@ -82,20 +82,27 @@ def seed_default_conversations_if_empty():
     for seed in seed_conversations:
         conv_id = _generate_conversation_id(seed["recipient_phone"])
         for msg in seed["messages"]:
+            isInbound = msg["direction"] == "inbound"
             msg_doc = {
                 "conversation_id": conv_id,
                 "direction": msg["direction"],
                 "sender": msg["sender"],
-                "sender_phone": "+91-DELEGATEX" if msg["direction"] == "outbound" else seed["recipient_phone"],
-                "recipient": seed["recipient"] if msg["direction"] == "outbound" else "DelegateX",
-                "recipient_phone": seed["recipient_phone"] if msg["direction"] == "outbound" else "+91-DELEGATEX",
+                "sender_phone": "+91-DELEGATEX" if not isInbound else seed["recipient_phone"],
+                "recipient": seed["recipient"] if not isInbound else "DelegateX",
+                "recipient_phone": seed["recipient_phone"] if not isInbound else "+91-DELEGATEX",
                 "content": msg["content"],
                 "message_type": "text",
+                "reply_type": "text",
                 "status": msg["status"],
+                "source": "simulation",
+                "mode": "simulation",
+                "campaign_name": "Welcome & Onboarding Campaign",
+                "template_name": "Welcome Message",
                 "created_at": msg["created_at"],
                 "updated_at": msg["created_at"],
             }
             whatsapp_message_collection.insert_one(msg_doc)
+
 
 
 
@@ -208,6 +215,20 @@ async def send_message(
     )
     
     if result.get("success"):
+        # Audit: Mark manager reply in chat_access_logs if sent by a manager
+        try:
+            from app.whatsapp.services.chat_access_service import record_manager_reply
+            mgr_id = (metadata or {}).get("manager_email") or (metadata or {}).get("manager_name") or (metadata or {}).get("manager_id") or "admin@delegatex.com"
+            record_manager_reply(
+                conversation_id=conversation_id,
+                manager_identifier=mgr_id,
+                reply_message_id=message_id,
+                contact_phone=recipient_phone
+            )
+        except Exception as ex:
+            logger.warning(f"[Chat Access Audit] Reply record linking error: {ex}")
+
+
         # For simulation provider, schedule status transitions
         if isinstance(provider, SimulationProvider):
             asyncio.create_task(
@@ -219,6 +240,7 @@ async def send_message(
         else:
             # For real providers, mark as sent immediately
             await _update_message_status_and_broadcast(message_id, MessageStatus.SENT)
+
     else:
         # Mark as failed
         MessageRepository.update_status(message_id, MessageStatus.FAILED.value)
@@ -231,20 +253,92 @@ async def send_message(
     return saved_message
 
 
-async def simulate_incoming_message(
+def _associate_context_with_inbound_reply(sender_phone: str, conversation_id: str) -> dict:
+    """
+    Locate previous outbound message in the same conversation to extract campaign and template details,
+    and query CRM lead for assigned agent details.
+    NEVER fabricates or guesses data.
+    """
+    context = {
+        "campaign_id": "",
+        "campaign_name": "",
+        "template_id": "",
+        "template_name": "",
+        "assigned_agent": "",
+    }
+    
+    # 1. Look up recent outbound message in the same conversation
+    try:
+        messages = MessageRepository.find_by_conversation(conversation_id)
+        outbound = [m for m in messages if m.get("direction") == "outbound"]
+        if outbound:
+            last_outbound = outbound[-1]
+            meta = last_outbound.get("metadata", {}) or {}
+            
+            context["campaign_id"] = meta.get("campaign_id", "") or meta.get("campaignId", "") or ""
+            context["campaign_name"] = meta.get("campaign_name", "") or meta.get("campaignName", "") or last_outbound.get("automation_workflow", "") or ""
+            context["template_id"] = last_outbound.get("template_id", "") or meta.get("template_id", "") or meta.get("templateId", "") or ""
+            context["template_name"] = meta.get("template_name", "") or meta.get("templateName", "") or ""
+    except Exception as e:
+        logger.warning(f"[Reply Context Lookup] Message context failed: {e}")
+
+    # 2. Look up CRM lead for assigned agent
+    try:
+        from app.config.database import crm_lead_collection
+        import re
+        clean_phone = re.sub(r"\D", "", sender_phone or "")
+        if clean_phone:
+            lead = crm_lead_collection.find_one({"phone": {"$regex": clean_phone}})
+            if lead:
+                context["assigned_agent"] = lead.get("assignedTo", "") or lead.get("assigned_agent", "") or ""
+    except Exception as e:
+        logger.warning(f"[Reply Context Lookup] Lead lookup failed: {e}")
+
+    return context
+
+
+async def process_incoming_reply(
     sender_phone: str,
-    sender_name: str,
-    content: str,
+    sender_name: str = "Customer",
+    content: str = "",
+    message_type: str = "text",
+    reply_type: str = "text",
+    source: str = "simulation",
+    mode: str = "simulation",
+    wamid: Optional[str] = None,
     metadata: Optional[Dict[str, Any]] = None,
 ) -> dict:
     """
-    Simulate an incoming WhatsApp message (for demo/testing).
-    Includes automatic opt-out listener for STOP / UNSUBSCRIBE / DND keywords.
+    Unified entry point for saving incoming customer replies (Simulation Mode & Meta Webhooks).
+    Enforces duplicate protection, resolves campaign/template context, saves to DB, and broadcasts via WS.
     """
     from app.whatsapp.repository import DNDRepository
 
+    # 1. Duplicate Protection Check
+    if wamid or (sender_phone and content):
+        existing = MessageRepository.find_duplicate_message(wamid_or_id=wamid, sender_phone=sender_phone, content=content)
+        if existing:
+            logger.info(f"[Duplicate Protection] Intercepted duplicate incoming message wamid={wamid} from {sender_phone}")
+            return existing
+
     conversation_id = _generate_conversation_id(sender_phone)
     
+    # 2. Context Association (Campaign, Template, Assigned Agent)
+    context = _associate_context_with_inbound_reply(sender_phone, conversation_id)
+    
+    meta = metadata or {}
+    meta.update({
+        "source": source,
+        "mode": mode,
+        "wamid": wamid or "",
+        "reply_type": reply_type,
+        "campaign_id": context.get("campaign_id", ""),
+        "campaign_name": context.get("campaign_name", ""),
+        "template_id": context.get("template_id", ""),
+        "template_name": context.get("template_name", ""),
+        "assigned_agent": context.get("assigned_agent", ""),
+    })
+
     message_data = {
         "conversation_id": conversation_id,
         "direction": MessageDirection.INBOUND.value,
@@ -253,9 +347,18 @@ async def simulate_incoming_message(
         "recipient": "DelegateX",
         "recipient_phone": "+91-DELEGATEX",
         "content": content,
-        "message_type": MessageType.TEXT.value,
+        "message_type": message_type,
+        "reply_type": reply_type,
         "status": MessageStatus.READ.value,
-        "metadata": metadata or {},
+        "source": source,
+        "mode": mode,
+        "wamid": wamid or "",
+        "campaign_id": context.get("campaign_id", ""),
+        "campaign_name": context.get("campaign_name", ""),
+        "template_id": context.get("template_id", ""),
+        "template_name": context.get("template_name", ""),
+        "assigned_agent": context.get("assigned_agent", ""),
+        "metadata": meta,
         "created_at": datetime.utcnow().isoformat(),
         "updated_at": datetime.utcnow().isoformat(),
     }
@@ -276,7 +379,6 @@ async def simulate_incoming_message(
             "notes": f"Triggered by keyword '{content}'",
         })
         
-        # Send confirmation opt-out message
         asyncio.create_task(
             send_message(
                 recipient_phone=sender_phone,
@@ -298,6 +400,29 @@ async def simulate_incoming_message(
         )
     
     return saved_message
+
+
+async def simulate_incoming_message(
+    sender_phone: str,
+    sender_name: str,
+    content: str,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> dict:
+    """
+    Simulate an incoming WhatsApp message (for demo/testing).
+    Uses process_incoming_reply with source='simulation' and mode='simulation'.
+    """
+    return await process_incoming_reply(
+        sender_phone=sender_phone,
+        sender_name=sender_name,
+        content=content,
+        message_type="text",
+        reply_type="text",
+        source="simulation",
+        mode="simulation",
+        metadata=metadata,
+    )
+
 
 
 def get_dashboard_stats() -> dict:
