@@ -31,6 +31,7 @@ def generate_customer_replies_excel(replies: list) -> BytesIO:
         "Template Name",
         "Template ID",
         "Customer Reply",
+        "Button Option Color",
         "Reply Type",
         "Conversation ID",
         "Assigned Agent",
@@ -92,6 +93,7 @@ def generate_customer_replies_excel(replies: list) -> BytesIO:
         tmpl_name = reply.get("template_name") or meta.get("template_name") or meta.get("templateName") or ""
         tmpl_id = reply.get("template_id") or meta.get("template_id") or meta.get("templateId") or ""
         content = reply.get("content") or ""
+        btn_color = (meta.get("button_color") or reply.get("button_color") or "Standard").upper()
         msg_type = (reply.get("reply_type") or reply.get("message_type") or "text").title()
         conv_id = reply.get("conversation_id") or ""
         assigned = reply.get("assigned_agent") or meta.get("assigned_agent") or ""
@@ -111,6 +113,7 @@ def generate_customer_replies_excel(replies: list) -> BytesIO:
             str(tmpl_name),
             str(tmpl_id),
             str(content),
+            str(btn_color),
             str(msg_type),
             str(conv_id),
             str(assigned),

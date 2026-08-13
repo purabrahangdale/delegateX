@@ -175,10 +175,14 @@ function WhatsAppReports() {
                         </div>
 
                         <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-2xs hover:shadow-md transition">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Replies Received Today</span>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Green vs. Red Button Clicks</span>
                             <div className="flex items-baseline justify-between mt-2">
-                                <span className="text-2xl font-extrabold font-display text-emerald-600">{stats.today_replies || 0}</span>
-                                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">Today</span>
+                                <div className="flex items-center gap-1.5">
+                                    <span className="text-lg font-extrabold font-display text-emerald-600">🟢 {replies.filter(r => (r.metadata?.button_color === "green" || r.button_color === "green" || ["YES", "ACCEPT", "INTERESTED", "CONFIRM", "AGREE"].some(t => (r.content || "").toUpperCase().includes(t)))).length}</span>
+                                    <span className="text-slate-300 text-xs">/</span>
+                                    <span className="text-lg font-extrabold font-display text-rose-600">🔴 {replies.filter(r => (r.metadata?.button_color === "red" || r.button_color === "red" || ["NO", "DECLINE", "NOT INTERESTED", "CANCEL", "REJECT"].some(t => (r.content || "").toUpperCase().includes(t)))).length}</span>
+                                </div>
+                                <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-md border border-emerald-100">Buttons</span>
                             </div>
                         </div>
 
@@ -411,6 +415,11 @@ function WhatsAppReports() {
                                             const modeVal = r.mode || meta.mode || "simulation";
                                             const replyTypeVal = (r.reply_type || r.message_type || "text").toLowerCase();
 
+                                            const btnColor = meta.button_color || r.button_color;
+                                            const contentUpper = (r.content || "").toUpperCase();
+                                            const isGreenResponse = btnColor === "green" || ["YES", "ACCEPT", "INTERESTED", "CONFIRM", "AGREE", "POSITIVE"].some(term => contentUpper.includes(term));
+                                            const isRedResponse = btnColor === "red" || ["NO", "DECLINE", "NOT INTERESTED", "CANCEL", "REJECT", "NEGATIVE"].some(term => contentUpper.includes(term));
+
                                             return (
                                                 <tr key={r._id || i} className="hover:bg-slate-50/80 transition duration-150">
                                                     <td className="py-3 px-4 text-slate-400 font-mono text-[11px]">{i + 1}</td>
@@ -445,18 +454,50 @@ function WhatsAppReports() {
                                                         )}
                                                     </td>
                                                     <td className="py-3 px-4 max-w-xs">
-                                                        <p className="text-slate-800 font-medium leading-relaxed line-clamp-2">
-                                                            "{r.content}"
-                                                        </p>
+                                                        {isGreenResponse ? (
+                                                            <div className="space-y-1">
+                                                                <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold px-2 py-0.5 rounded-md text-[9px] shadow-2xs">
+                                                                    <FiCheckCircle size={10} className="text-emerald-600 shrink-0" />
+                                                                    <span>GREEN RESPONSE OPTION</span>
+                                                                </span>
+                                                                <p className="text-emerald-950 font-semibold text-xs leading-relaxed">
+                                                                    "{r.content}"
+                                                                </p>
+                                                            </div>
+                                                        ) : isRedResponse ? (
+                                                            <div className="space-y-1">
+                                                                <span className="inline-flex items-center gap-1 bg-rose-100 text-rose-800 border border-rose-300 font-bold px-2 py-0.5 rounded-md text-[9px] shadow-2xs">
+                                                                    <FiAlertCircle size={10} className="text-rose-600 shrink-0" />
+                                                                    <span>RED RESPONSE OPTION</span>
+                                                                </span>
+                                                                <p className="text-rose-950 font-semibold text-xs leading-relaxed">
+                                                                    "{r.content}"
+                                                                </p>
+                                                            </div>
+                                                        ) : (
+                                                            <p className="text-slate-800 font-medium leading-relaxed line-clamp-2">
+                                                                "{r.content}"
+                                                            </p>
+                                                        )}
                                                     </td>
                                                     <td className="py-3 px-4 whitespace-nowrap">
-                                                        <span className={`inline-block text-[10px] font-bold uppercase px-2 py-0.5 rounded-md border ${
-                                                            replyTypeVal === "text"
-                                                                ? "bg-slate-100 text-slate-700 border-slate-200"
-                                                                : "bg-blue-50 text-blue-700 border-blue-100"
-                                                        }`}>
-                                                            {replyTypeVal}
-                                                        </span>
+                                                        {isGreenResponse ? (
+                                                            <span className="inline-block text-[10px] font-bold uppercase px-2 py-0.5 rounded-md border bg-emerald-50 text-emerald-700 border-emerald-200">
+                                                                Green Button
+                                                            </span>
+                                                        ) : isRedResponse ? (
+                                                            <span className="inline-block text-[10px] font-bold uppercase px-2 py-0.5 rounded-md border bg-rose-50 text-rose-700 border-rose-200">
+                                                                Red Button
+                                                            </span>
+                                                        ) : (
+                                                            <span className={`inline-block text-[10px] font-bold uppercase px-2 py-0.5 rounded-md border ${
+                                                                replyTypeVal === "text"
+                                                                    ? "bg-slate-100 text-slate-700 border-slate-200"
+                                                                    : "bg-blue-50 text-blue-700 border-blue-100"
+                                                            }`}>
+                                                                {replyTypeVal}
+                                                            </span>
+                                                        )}
                                                     </td>
                                                     <td className="py-3 px-4 whitespace-nowrap">
                                                         <div className="flex flex-col gap-1">

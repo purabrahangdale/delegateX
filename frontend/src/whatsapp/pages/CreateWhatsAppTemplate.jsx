@@ -107,6 +107,11 @@ function CreateWhatsAppTemplate() {
     const [attachmentFile, setAttachmentFile] = useState(null);
     const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
+    // Interactive Response Buttons State
+    const [showResponseButtons, setShowResponseButtons] = useState(false);
+    const [greenButtonText, setGreenButtonText] = useState("YES / Interested");
+    const [redButtonText, setRedButtonText] = useState("NO / Not Interested");
+
     // Settings Checkboxes
     const [isActive, setIsActive] = useState(true);
     const [allowAi, setAllowAi] = useState(true);
@@ -236,6 +241,11 @@ function CreateWhatsAppTemplate() {
         const variableMatches = content.match(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g) || [];
         const extractedVars = [...new Set(variableMatches.map(v => v.replace(/[\{\}\s]/g, "")))];
 
+        const responseButtons = showResponseButtons ? [
+            { id: "opt_green", text: greenButtonText.trim(), color: "green", type: "quick_reply" },
+            { id: "opt_red", text: redButtonText.trim(), color: "red", type: "quick_reply" }
+        ].filter(b => b.text) : [];
+
         try {
             await createWhatsAppTemplate({
                 name: name.trim(),
@@ -244,6 +254,7 @@ function CreateWhatsAppTemplate() {
                 variables: extractedVars,
                 description: description.trim(),
                 is_active: isActive,
+                response_buttons: responseButtons,
             });
 
             showToast("WhatsApp Template Created Successfully", "success");
@@ -520,6 +531,97 @@ function CreateWhatsAppTemplate() {
                         </div>
                     </div>
 
+                    {/* Section 2.4: Interactive Response Buttons Builder */}
+                    <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-[0_2px_8px_rgba(15,23,42,0.01)] space-y-4">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <span className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-100">
+                                    <FiCheckCircle size={15} />
+                                </span>
+                                <div>
+                                    <h3 className="text-sm font-bold text-slate-900 font-display">Interactive Response Buttons</h3>
+                                    <p className="text-[11px] text-slate-400">Add customizable green & red quick response buttons for your customers.</p>
+                                </div>
+                            </div>
+                            
+                            <button
+                                type="button"
+                                onClick={() => setShowResponseButtons(!showResponseButtons)}
+                                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition cursor-pointer border ${
+                                    showResponseButtons
+                                        ? "bg-emerald-50 border-emerald-300 text-emerald-700 shadow-2xs"
+                                        : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                                }`}
+                            >
+                                <FiPlus size={14} className={showResponseButtons ? "rotate-45 transition-transform" : "transition-transform"} />
+                                <span>{showResponseButtons ? "Remove Buttons" : "Add Button Option"}</span>
+                            </button>
+                        </div>
+
+                        {/* Small Message Builder Card for Response Buttons */}
+                        {showResponseButtons && (
+                            <div className="mt-3 p-4 bg-slate-50/80 border border-slate-200/90 rounded-xl space-y-4 animate-fade-in">
+                                <div className="flex items-center justify-between border-b border-slate-200/60 pb-2.5">
+                                    <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                                        <FiEdit3 size={13} className="text-emerald-600" />
+                                        Response Button Builder Card
+                                    </span>
+                                    <span className="text-[10px] font-medium text-slate-400">
+                                        Customize positive (Green) and negative (Red) option labels
+                                    </span>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    {/* GREEN BUTTON OPTION */}
+                                    <div className="bg-white p-3.5 border-2 border-emerald-200 rounded-xl space-y-2 shadow-2xs">
+                                        <div className="flex items-center justify-between">
+                                            <label className="text-[11px] font-bold text-emerald-700 flex items-center gap-1.5 uppercase tracking-wider">
+                                                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block shadow-2xs"></span>
+                                                Green Option #1 (Positive)
+                                            </label>
+                                            <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">
+                                                Green Button
+                                            </span>
+                                        </div>
+                                        <input
+                                            type="text"
+                                            value={greenButtonText}
+                                            onChange={(e) => setGreenButtonText(e.target.value)}
+                                            placeholder="e.g. YES / Interested / Accept"
+                                            className="w-full px-3 py-2 text-xs font-medium bg-emerald-50/30 border border-emerald-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 text-emerald-900"
+                                        />
+                                        <p className="text-[10px] text-slate-400">
+                                            Client will see this green response button option in WhatsApp.
+                                        </p>
+                                    </div>
+
+                                    {/* RED BUTTON OPTION */}
+                                    <div className="bg-white p-3.5 border-2 border-rose-200 rounded-xl space-y-2 shadow-2xs">
+                                        <div className="flex items-center justify-between">
+                                            <label className="text-[11px] font-bold text-rose-700 flex items-center gap-1.5 uppercase tracking-wider">
+                                                <span className="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block shadow-2xs"></span>
+                                                Red Option #2 (Negative)
+                                            </label>
+                                            <span className="text-[9px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-100">
+                                                Red Button
+                                            </span>
+                                        </div>
+                                        <input
+                                            type="text"
+                                            value={redButtonText}
+                                            onChange={(e) => setRedButtonText(e.target.value)}
+                                            placeholder="e.g. NO / Not Interested / Decline"
+                                            className="w-full px-3 py-2 text-xs font-medium bg-rose-50/30 border border-rose-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-400 text-rose-900"
+                                        />
+                                        <p className="text-[10px] text-slate-400">
+                                            Client will see this red response button option in WhatsApp.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
                     {/* Section 2.5: AI Writing Assistant */}
                     <WhatsAppAiAssistant
                         content={content}
@@ -747,6 +849,24 @@ function CreateWhatsAppTemplate() {
                                             className="text-[11px] leading-relaxed whitespace-pre-wrap font-sans text-slate-900"
                                             dangerouslySetInnerHTML={{ __html: formatPreviewHtml(resolvedPreview) }}
                                         />
+
+                                        {/* Optional Interactive Response Buttons Preview */}
+                                        {showResponseButtons && (greenButtonText.trim() || redButtonText.trim()) && (
+                                            <div className="mt-2.5 pt-2 border-t border-emerald-200/70 flex flex-col gap-1.5">
+                                                {greenButtonText.trim() && (
+                                                    <div className="w-full bg-white/95 hover:bg-emerald-50 text-emerald-800 border border-emerald-300 font-bold text-[10px] py-1.5 px-3 rounded-xl flex items-center justify-center gap-1.5 shadow-2xs text-center transition">
+                                                        <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+                                                        <span className="truncate">{greenButtonText}</span>
+                                                    </div>
+                                                )}
+                                                {redButtonText.trim() && (
+                                                    <div className="w-full bg-white/95 hover:bg-rose-50 text-rose-800 border border-rose-300 font-bold text-[10px] py-1.5 px-3 rounded-xl flex items-center justify-center gap-1.5 shadow-2xs text-center transition">
+                                                        <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0"></span>
+                                                        <span className="truncate">{redButtonText}</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
 
                                         {/* Meta info / Double tick */}
                                         <div className="flex items-center justify-end gap-1 mt-1 text-[8px] text-slate-400">

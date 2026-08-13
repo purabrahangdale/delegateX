@@ -327,6 +327,21 @@ async def process_incoming_reply(
     context = _associate_context_with_inbound_reply(sender_phone, conversation_id)
     
     meta = metadata or {}
+
+    # Detect Button Response Color (Green vs Red)
+    button_color = meta.get("button_color")
+    if not button_color:
+        clean_c = (content or "").strip().upper()
+        green_terms = ["YES", "ACCEPT", "INTERESTED", "CONFIRM", "AGREE", "POSITIVE", "APPROVED"]
+        red_terms = ["NO", "DECLINE", "NOT INTERESTED", "CANCEL", "REJECT", "NEGATIVE", "UNSUBSCRIBE"]
+        if any(term in clean_c for term in green_terms):
+            button_color = "green"
+        elif any(term in clean_c for term in red_terms):
+            button_color = "red"
+
+    if button_color:
+        meta["button_color"] = button_color
+
     meta.update({
         "source": source,
         "mode": mode,

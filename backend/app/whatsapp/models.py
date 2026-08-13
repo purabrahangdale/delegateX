@@ -121,6 +121,7 @@ class WhatsAppTemplateCreate(BaseModel):
     variables: Optional[List[str]] = []
     description: Optional[str] = ""
     is_favorite: Optional[bool] = False
+    response_buttons: Optional[List[Dict[str, Any]]] = []
 
 
 class WhatsAppTemplateUpdate(BaseModel):
@@ -135,6 +136,7 @@ class WhatsAppTemplateUpdate(BaseModel):
     is_favorite: Optional[bool] = None
     views: Optional[int] = None
     times_used: Optional[int] = None
+    response_buttons: Optional[List[Dict[str, Any]]] = None
 
 
 class WhatsAppTemplate(BaseModel):
@@ -147,6 +149,7 @@ class WhatsAppTemplate(BaseModel):
     description: str = ""
     is_active: bool = True
     is_favorite: bool = False
+    response_buttons: List[Dict[str, Any]] = []
     views: int = 0
     times_used: int = 0
     campaigns_count: int = 0
