@@ -335,6 +335,25 @@ function WhatsAppTemplates() {
                         </div>
                         <div className="bg-[#DCF8C6] text-slate-900 rounded-2xl rounded-tr-none p-4 shadow-xs border border-emerald-200">
                             <p className="text-xs leading-relaxed whitespace-pre-wrap font-mono">{previewTemplate.content}</p>
+                            
+                            {previewTemplate.response_buttons?.length > 0 && (
+                                <div className="mt-3 pt-2 border-t border-emerald-200/70 flex flex-col gap-1.5">
+                                    {previewTemplate.response_buttons.map((btn, idx) => (
+                                        <div
+                                            key={btn.id || idx}
+                                            className="w-full bg-white/95 text-slate-800 border border-slate-200 font-bold text-[10px] py-1.5 px-3 rounded-xl flex items-center justify-center gap-1.5 shadow-2xs text-center"
+                                        >
+                                            <span className="truncate">{btn.text || btn.label}</span>
+                                            {btn.offer_code && (
+                                                <span className="ml-auto font-mono text-[9px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded border border-amber-200">
+                                                    {btn.offer_code}
+                                                </span>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
                             <div className="flex items-center justify-end gap-1 mt-2 text-[8px] text-slate-400">
                                 <span>10:42 AM</span>
                                 <span className="flex -space-x-1 text-blue-500"><FiCheck size={10} /><FiCheck size={10} /></span>

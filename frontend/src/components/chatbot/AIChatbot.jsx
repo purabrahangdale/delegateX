@@ -13,7 +13,7 @@ import {
     FiCornerDownLeft 
 } from "react-icons/fi";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+const API_BASE = "https://delegatex-1-back.onrender.com"
 
 function AIChatbot() {
     const [isOpen, setIsOpen] = useState(false);
