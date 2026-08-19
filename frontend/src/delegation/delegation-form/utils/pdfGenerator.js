@@ -1,9 +1,9 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || "https://delegatex.onrender.com";
+const API_BASE_URL = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || "https://delegatex-1-backend2.onrender.com";
 
 export const downloadPDF = (pdfPath, fileName = "delegation_response.pdf") => {
     if (!pdfPath) return;
     const fullUrl = pdfPath.startsWith("http") ? pdfPath : `${API_BASE_URL}${pdfPath}`;
-    
+
     const link = document.createElement("a");
     link.href = fullUrl;
     link.download = fileName;
@@ -16,7 +16,7 @@ export const downloadPDF = (pdfPath, fileName = "delegation_response.pdf") => {
 export const printPDF = (pdfPath) => {
     if (!pdfPath) return;
     const fullUrl = pdfPath.startsWith("http") ? pdfPath : `${API_BASE_URL}${pdfPath}`;
-    
+
     const w = window.open(fullUrl);
     if (w) {
         w.focus();

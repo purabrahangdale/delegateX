@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const API = axios.create({
-    baseURL: import.meta.env.VITE_API_BASE_URL || "https://delegatex.onrender.com",
+    baseURL: import.meta.env.VITE_API_BASE_URL || "https://delegatex-1-backend2.onrender.com",
 });
 
 // ── Dashboard ──────────────────────────────────────────────────

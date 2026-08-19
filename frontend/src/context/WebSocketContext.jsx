@@ -7,7 +7,7 @@ import { createWhatsappSocket } from "../websocket/whatsappSocket";
 
 const WebSocketContext = createContext(null);
 
-const API = import.meta.env.VITE_API_BASE_URL || "https://delegatex.onrender.com";
+const API = import.meta.env.VITE_API_BASE_URL || "https://delegatex-1-backend2.onrender.com";
 
 export const WebSocketProvider = ({ children }) => {
     const [delegationSocket, setDelegationSocket] = useState(null);

@@ -5,7 +5,7 @@ import { downloadPDF, printPDF } from "../utils/pdfGenerator";
 export default function DelegationPDFViewer({ response, onClose }) {
     if (!response) return null;
 
-    const API_BASE_URL = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || "https://delegatex.onrender.com";
+    const API_BASE_URL = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || "https://delegatex-1-backend2.onrender.com";
     const fullUrl = response.pdfPath ? (response.pdfPath.startsWith("http") ? response.pdfPath : `${API_BASE_URL}${response.pdfPath}`) : "";
 
     return (
@@ -17,7 +17,7 @@ export default function DelegationPDFViewer({ response, onClose }) {
                         <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">PDF Response Document</span>
                         <h3 className="text-xs font-bold text-slate-950 font-display">{response.formTitle}</h3>
                     </div>
-                    
+
                     <div className="flex items-center gap-2">
                         <button
                             onClick={() => downloadPDF(response.pdfPath, `response_${response.id}.pdf`)}

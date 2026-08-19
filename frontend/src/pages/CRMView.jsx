@@ -55,7 +55,7 @@ export default function CRMView() {
     const { showToast } = useToast();
     const navigate = useNavigate();
     const { crmSocket } = useWebSockets();
-    const API = import.meta.env.VITE_API_BASE_URL || "https://delegatex.onrender.com";
+    const API = import.meta.env.VITE_API_BASE_URL || "https://delegatex-1-backend2.onrender.com";
     const [isLoading, setIsLoading] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [emailError, setEmailError] = useState("");
@@ -249,7 +249,7 @@ export default function CRMView() {
                 ]);
                 if (leadsRes.data && leadsRes.data.length > 0) {
                     setLeads(leadsRes.data);
-                    
+
                     // Map to allLeadsRegistry format
                     const formattedRegistry = leadsRes.data.map(l => ({
                         id: l.id ? (typeof l.id === "string" && l.id.startsWith("CLI-") ? l.id : `CLI-2026-${l.id.toString().slice(-4)}`) : `CLI-2026-${Math.floor(Math.random() * 9000 + 1000)}`,
@@ -497,7 +497,7 @@ export default function CRMView() {
         // Search filter
         if (lostSearchQuery.trim()) {
             const q = lostSearchQuery.toLowerCase();
-            list = list.filter(l => 
+            list = list.filter(l =>
                 l.name.toLowerCase().includes(q) ||
                 l.phone.includes(q) ||
                 l.projectType.toLowerCase().includes(q) ||
@@ -518,7 +518,7 @@ export default function CRMView() {
                 const leadDate = new Date(l.date);
                 const diffTime = Math.abs(today - leadDate);
                 const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                
+
                 if (lostDatePreset === "7-days") return diffDays <= 7;
                 if (lostDatePreset === "30-days") return diffDays <= 30;
                 if (lostDatePreset === "90-days") return diffDays <= 90;
@@ -618,7 +618,7 @@ export default function CRMView() {
         // Search match (name, phone, email, location, id)
         if (leadsSearchQuery.trim()) {
             const q = leadsSearchQuery.toLowerCase();
-            list = list.filter(l => 
+            list = list.filter(l =>
                 l.name.toLowerCase().includes(q) ||
                 l.phone.includes(q) ||
                 l.email.toLowerCase().includes(q) ||
@@ -659,7 +659,7 @@ export default function CRMView() {
                 const leadDate = new Date(l.date);
                 const diffTime = Math.abs(today - leadDate);
                 const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                
+
                 if (leadsDatePresetFilter === "7-days") return diffDays <= 7;
                 if (leadsDatePresetFilter === "30-days") return diffDays <= 30;
                 if (leadsDatePresetFilter === "90-days") return diffDays <= 90;
@@ -693,7 +693,7 @@ export default function CRMView() {
         // Search filter
         if (convertedSearchQuery.trim()) {
             const q = convertedSearchQuery.toLowerCase();
-            list = list.filter(l => 
+            list = list.filter(l =>
                 l.name.toLowerCase().includes(q) ||
                 l.phone.includes(q) ||
                 l.projectType.toLowerCase().includes(q) ||
@@ -714,7 +714,7 @@ export default function CRMView() {
                 const leadDate = new Date(l.date);
                 const diffTime = Math.abs(today - leadDate);
                 const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                
+
                 if (convertedDatePreset === "7-days") return diffDays <= 7;
                 if (convertedDatePreset === "30-days") return diffDays <= 30;
                 if (convertedDatePreset === "90-days") return diffDays <= 90;
@@ -1259,133 +1259,133 @@ export default function CRMView() {
             {/* Metrics Row (only shown on dashboard view) */}
             {view === "dashboard" && (
                 /* Redesigned 5-Column Main KPI Grid */
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-                        {/* 1. Total Leads */}
-                        <div 
-                            className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-sm hover:shadow-md hover:scale-[1.02] cursor-pointer transition-all duration-200 flex flex-col justify-between h-[120px] relative overflow-hidden group"
-                            onClick={() => navigate('/crm/leads')}
-                        >
-                            <div className="flex justify-between items-start">
-                                <div className="space-y-0.5">
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Leads</span>
-                                    <p className="text-2xl font-extrabold text-slate-800 tracking-tight font-display">{totalLeads}</p>
-                                </div>
-                                <div className="p-2.5 bg-indigo-50 border border-indigo-100/50 rounded-xl text-indigo-600">
-                                    <FiUser size={16} />
-                                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                    {/* 1. Total Leads */}
+                    <div
+                        className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-sm hover:shadow-md hover:scale-[1.02] cursor-pointer transition-all duration-200 flex flex-col justify-between h-[120px] relative overflow-hidden group"
+                        onClick={() => navigate('/crm/leads')}
+                    >
+                        <div className="flex justify-between items-start">
+                            <div className="space-y-0.5">
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Leads</span>
+                                <p className="text-2xl font-extrabold text-slate-800 tracking-tight font-display">{totalLeads}</p>
                             </div>
-                            <div className="flex items-center justify-between mt-2.5">
-                                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-lg flex items-center gap-0.5">
-                                    <FiTrendingUp size={11} />
-                                    <span>+8.4%</span>
-                                </span>
-                                <svg className="w-16 h-8 text-indigo-500 stroke-2 opacity-80 group-hover:opacity-100 transition-opacity" viewBox="0 0 100 30" fill="none">
-                                    <path d="M0,25 Q15,5 30,20 T60,10 T90,25 T100,5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                </svg>
+                            <div className="p-2.5 bg-indigo-50 border border-indigo-100/50 rounded-xl text-indigo-600">
+                                <FiUser size={16} />
                             </div>
                         </div>
-
-                        {/* 2. Active Pipeline */}
-                        <div 
-                            className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-sm hover:shadow-md hover:scale-[1.02] cursor-pointer transition-all duration-200 flex flex-col justify-between h-[120px] relative overflow-hidden group"
-                            onClick={() => navigate('/crm/create-lead')}
-                        >
-                            <div className="flex justify-between items-start">
-                                <div className="space-y-0.5">
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Active Pipeline</span>
-                                    <p className="text-2xl font-extrabold text-slate-800 tracking-tight font-display">${activePipelineValue.toLocaleString()}</p>
-                                </div>
-                                <div className="p-2.5 bg-purple-50 border border-purple-100/50 rounded-xl text-purple-600">
-                                    <FiDollarSign size={16} />
-                                </div>
-                            </div>
-                            <div className="flex items-center justify-between mt-2.5">
-                                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-lg flex items-center gap-0.5">
-                                    <FiTrendingUp size={11} />
-                                    <span>+12.1%</span>
-                                </span>
-                                <svg className="w-16 h-8 text-purple-500 stroke-2 opacity-80 group-hover:opacity-100 transition-opacity" viewBox="0 0 100 30" fill="none">
-                                    <path d="M0,20 Q15,25 30,10 T60,25 T90,5 T100,15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                </svg>
-                            </div>
-                        </div>
-
-                        {/* 3. Conversion Rate */}
-                        <div 
-                            className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-sm hover:shadow-md hover:scale-[1.02] cursor-pointer transition-all duration-200 flex flex-col justify-between h-[120px] relative overflow-hidden group"
-                            onClick={() => navigate('/crm/converted')}
-                        >
-                            <div className="flex justify-between items-start">
-                                <div className="space-y-0.5">
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Conversion Rate</span>
-                                    <p className="text-2xl font-extrabold text-slate-800 tracking-tight font-display">
-                                        {totalLeads > 0 ? ((convertedCount / totalLeads) * 100).toFixed(1) : 0}%
-                                    </p>
-                                </div>
-                                <div className="p-2.5 bg-emerald-50 border border-emerald-100/50 rounded-xl text-emerald-600">
-                                    <FiCheckCircle size={16} />
-                                </div>
-                            </div>
-                            <div className="flex items-center justify-between mt-2.5">
-                                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-lg flex items-center gap-0.5">
-                                    <FiTrendingUp size={11} />
-                                    <span>+2.1%</span>
-                                </span>
-                                <svg className="w-16 h-8 text-emerald-500 stroke-2 opacity-80 group-hover:opacity-100 transition-opacity" viewBox="0 0 100 30" fill="none">
-                                    <path d="M0,25 Q15,20 30,5 T60,15 T90,5 T100,2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                </svg>
-                            </div>
-                        </div>
-
-                        {/* 4. Lost Rate */}
-                        <div 
-                            className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-sm hover:shadow-md hover:scale-[1.02] cursor-pointer transition-all duration-200 flex flex-col justify-between h-[120px] relative overflow-hidden group"
-                            onClick={() => navigate('/crm/lost')}
-                        >
-                            <div className="flex justify-between items-start">
-                                <div className="space-y-0.5">
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Lost Rate</span>
-                                    <p className="text-2xl font-extrabold text-slate-800 tracking-tight font-display">
-                                        {totalLeads > 0 ? ((lostCount / totalLeads) * 100).toFixed(1) : 0}%
-                                    </p>
-                                </div>
-                                <div className="p-2.5 bg-rose-50 border border-rose-100/50 rounded-xl text-rose-600">
-                                    <FiXCircle size={16} />
-                                </div>
-                            </div>
-                            <div className="flex items-center justify-between mt-2.5">
-                                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-lg flex items-center gap-0.5">
-                                    <FiTrendingDown size={11} className="rotate-180" />
-                                    <span>-0.5%</span>
-                                </span>
-                                <svg className="w-16 h-8 text-rose-500 stroke-2 opacity-80 group-hover:opacity-100 transition-opacity" viewBox="0 0 100 30" fill="none">
-                                    <path d="M0,5 Q15,10 30,25 T60,5 T90,20 T100,25" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                </svg>
-                            </div>
-                        </div>
-
-                        {/* 5. Avg Deal Cycle */}
-                        <div className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between h-[120px] relative overflow-hidden group">
-                            <div className="flex justify-between items-start">
-                                <div className="space-y-0.5">
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Avg Deal Cycle</span>
-                                    <p className="text-2xl font-extrabold text-slate-800 tracking-tight font-display">18.4 Days</p>
-                                </div>
-                                <div className="p-2.5 bg-sky-50 border border-sky-100/50 rounded-xl text-sky-600">
-                                    <FiClock size={16} />
-                                </div>
-                            </div>
-                            <div className="flex items-center justify-between mt-2.5">
-                                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-lg flex items-center gap-0.5">
-                                    <FiTrendingDown size={11} className="rotate-180" />
-                                    <span>-1.2%</span>
-                                </span>
-                                <svg className="w-16 h-8 text-sky-500 stroke-2 opacity-80 group-hover:opacity-100 transition-opacity" viewBox="0 0 100 30" fill="none">
-                                    <path d="M0,20 Q15,10 30,15 T60,25 T90,5 T100,10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                </svg>
-                            </div>
+                        <div className="flex items-center justify-between mt-2.5">
+                            <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-lg flex items-center gap-0.5">
+                                <FiTrendingUp size={11} />
+                                <span>+8.4%</span>
+                            </span>
+                            <svg className="w-16 h-8 text-indigo-500 stroke-2 opacity-80 group-hover:opacity-100 transition-opacity" viewBox="0 0 100 30" fill="none">
+                                <path d="M0,25 Q15,5 30,20 T60,10 T90,25 T100,5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
                         </div>
                     </div>
+
+                    {/* 2. Active Pipeline */}
+                    <div
+                        className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-sm hover:shadow-md hover:scale-[1.02] cursor-pointer transition-all duration-200 flex flex-col justify-between h-[120px] relative overflow-hidden group"
+                        onClick={() => navigate('/crm/create-lead')}
+                    >
+                        <div className="flex justify-between items-start">
+                            <div className="space-y-0.5">
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Active Pipeline</span>
+                                <p className="text-2xl font-extrabold text-slate-800 tracking-tight font-display">${activePipelineValue.toLocaleString()}</p>
+                            </div>
+                            <div className="p-2.5 bg-purple-50 border border-purple-100/50 rounded-xl text-purple-600">
+                                <FiDollarSign size={16} />
+                            </div>
+                        </div>
+                        <div className="flex items-center justify-between mt-2.5">
+                            <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-lg flex items-center gap-0.5">
+                                <FiTrendingUp size={11} />
+                                <span>+12.1%</span>
+                            </span>
+                            <svg className="w-16 h-8 text-purple-500 stroke-2 opacity-80 group-hover:opacity-100 transition-opacity" viewBox="0 0 100 30" fill="none">
+                                <path d="M0,20 Q15,25 30,10 T60,25 T90,5 T100,15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                        </div>
+                    </div>
+
+                    {/* 3. Conversion Rate */}
+                    <div
+                        className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-sm hover:shadow-md hover:scale-[1.02] cursor-pointer transition-all duration-200 flex flex-col justify-between h-[120px] relative overflow-hidden group"
+                        onClick={() => navigate('/crm/converted')}
+                    >
+                        <div className="flex justify-between items-start">
+                            <div className="space-y-0.5">
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Conversion Rate</span>
+                                <p className="text-2xl font-extrabold text-slate-800 tracking-tight font-display">
+                                    {totalLeads > 0 ? ((convertedCount / totalLeads) * 100).toFixed(1) : 0}%
+                                </p>
+                            </div>
+                            <div className="p-2.5 bg-emerald-50 border border-emerald-100/50 rounded-xl text-emerald-600">
+                                <FiCheckCircle size={16} />
+                            </div>
+                        </div>
+                        <div className="flex items-center justify-between mt-2.5">
+                            <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-lg flex items-center gap-0.5">
+                                <FiTrendingUp size={11} />
+                                <span>+2.1%</span>
+                            </span>
+                            <svg className="w-16 h-8 text-emerald-500 stroke-2 opacity-80 group-hover:opacity-100 transition-opacity" viewBox="0 0 100 30" fill="none">
+                                <path d="M0,25 Q15,20 30,5 T60,15 T90,5 T100,2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                        </div>
+                    </div>
+
+                    {/* 4. Lost Rate */}
+                    <div
+                        className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-sm hover:shadow-md hover:scale-[1.02] cursor-pointer transition-all duration-200 flex flex-col justify-between h-[120px] relative overflow-hidden group"
+                        onClick={() => navigate('/crm/lost')}
+                    >
+                        <div className="flex justify-between items-start">
+                            <div className="space-y-0.5">
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Lost Rate</span>
+                                <p className="text-2xl font-extrabold text-slate-800 tracking-tight font-display">
+                                    {totalLeads > 0 ? ((lostCount / totalLeads) * 100).toFixed(1) : 0}%
+                                </p>
+                            </div>
+                            <div className="p-2.5 bg-rose-50 border border-rose-100/50 rounded-xl text-rose-600">
+                                <FiXCircle size={16} />
+                            </div>
+                        </div>
+                        <div className="flex items-center justify-between mt-2.5">
+                            <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-lg flex items-center gap-0.5">
+                                <FiTrendingDown size={11} className="rotate-180" />
+                                <span>-0.5%</span>
+                            </span>
+                            <svg className="w-16 h-8 text-rose-500 stroke-2 opacity-80 group-hover:opacity-100 transition-opacity" viewBox="0 0 100 30" fill="none">
+                                <path d="M0,5 Q15,10 30,25 T60,5 T90,20 T100,25" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                        </div>
+                    </div>
+
+                    {/* 5. Avg Deal Cycle */}
+                    <div className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between h-[120px] relative overflow-hidden group">
+                        <div className="flex justify-between items-start">
+                            <div className="space-y-0.5">
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Avg Deal Cycle</span>
+                                <p className="text-2xl font-extrabold text-slate-800 tracking-tight font-display">18.4 Days</p>
+                            </div>
+                            <div className="p-2.5 bg-sky-50 border border-sky-100/50 rounded-xl text-sky-600">
+                                <FiClock size={16} />
+                            </div>
+                        </div>
+                        <div className="flex items-center justify-between mt-2.5">
+                            <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-lg flex items-center gap-0.5">
+                                <FiTrendingDown size={11} className="rotate-180" />
+                                <span>-1.2%</span>
+                            </span>
+                            <svg className="w-16 h-8 text-sky-500 stroke-2 opacity-80 group-hover:opacity-100 transition-opacity" viewBox="0 0 100 30" fill="none">
+                                <path d="M0,20 Q15,10 30,15 T60,25 T90,5 T100,10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                        </div>
+                    </div>
+                </div>
             )}
 
             {/* Main Interactive Views */}
@@ -1430,11 +1430,10 @@ export default function CRMView() {
                                             setLeadForm({ ...leadForm, phone: val });
                                             setPhoneError(validatePhone(val));
                                         }}
-                                        className={`w-full h-12 rounded-xl border bg-white pl-20 pr-4 text-xs text-slate-800 placeholder:text-slate-350 focus:outline-none focus:ring-4 transition-all font-sans ${
-                                            phoneError 
-                                                ? "border-rose-500 focus:border-rose-500 focus:ring-rose-100/50" 
+                                        className={`w-full h-12 rounded-xl border bg-white pl-20 pr-4 text-xs text-slate-800 placeholder:text-slate-350 focus:outline-none focus:ring-4 transition-all font-sans ${phoneError
+                                                ? "border-rose-500 focus:border-rose-500 focus:ring-rose-100/50"
                                                 : "border-slate-200 focus:border-indigo-400 focus:ring-indigo-100/50"
-                                        }`}
+                                            }`}
                                     />
                                 </div>
                                 {phoneError && (
@@ -1456,11 +1455,10 @@ export default function CRMView() {
                                             setLeadForm({ ...leadForm, email: val });
                                             setEmailError(validateEmail(val));
                                         }}
-                                        className={`w-full h-12 rounded-xl border bg-white pl-11 pr-4 text-xs text-slate-800 placeholder:text-slate-350 focus:outline-none focus:ring-4 transition-all font-sans ${
-                                            emailError 
-                                                ? "border-rose-500 focus:border-rose-500 focus:ring-rose-100/50" 
+                                        className={`w-full h-12 rounded-xl border bg-white pl-11 pr-4 text-xs text-slate-800 placeholder:text-slate-350 focus:outline-none focus:ring-4 transition-all font-sans ${emailError
+                                                ? "border-rose-500 focus:border-rose-500 focus:ring-rose-100/50"
                                                 : "border-slate-200 focus:border-indigo-400 focus:ring-indigo-100/50"
-                                        }`}
+                                            }`}
                                     />
                                 </div>
                                 {emailError && (
@@ -1502,11 +1500,10 @@ export default function CRMView() {
                                             setLeadForm({ ...leadForm, spouseMobile: val });
                                             setSpouseMobileError(validateSpousePhone(val));
                                         }}
-                                        className={`w-full h-12 rounded-xl border bg-white pl-20 pr-4 text-xs text-slate-800 placeholder:text-slate-350 focus:outline-none focus:ring-4 transition-all font-sans ${
-                                            spouseMobileError 
-                                                ? "border-rose-500 focus:border-rose-500 focus:ring-rose-100/50" 
+                                        className={`w-full h-12 rounded-xl border bg-white pl-20 pr-4 text-xs text-slate-800 placeholder:text-slate-350 focus:outline-none focus:ring-4 transition-all font-sans ${spouseMobileError
+                                                ? "border-rose-500 focus:border-rose-500 focus:ring-rose-100/50"
                                                 : "border-slate-200 focus:border-indigo-400 focus:ring-indigo-100/50"
-                                        }`}
+                                            }`}
                                     />
                                 </div>
                                 {spouseMobileError && (
@@ -1682,7 +1679,7 @@ export default function CRMView() {
                     {/* Second Analytics Row: CRM Stage Cards (Moved here to align with Row 1 Metrics) */}
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
                         {/* 1. In Progress */}
-                        <div 
+                        <div
                             className="bg-white border border-slate-200/80 p-4 rounded-2xl shadow-sm hover:shadow-md hover:scale-[1.02] cursor-pointer transition-all duration-200 flex flex-col justify-between"
                             onClick={() => navigate('/crm/leads')}
                         >
@@ -1696,7 +1693,7 @@ export default function CRMView() {
                         </div>
 
                         {/* 2. Interested */}
-                        <div 
+                        <div
                             className="bg-white border border-slate-200/80 p-4 rounded-2xl shadow-sm hover:shadow-md hover:scale-[1.02] cursor-pointer transition-all duration-200 flex flex-col justify-between"
                             onClick={() => navigate('/crm/leads')}
                         >
@@ -1710,7 +1707,7 @@ export default function CRMView() {
                         </div>
 
                         {/* 3. Follow-Ups */}
-                        <div 
+                        <div
                             className="bg-white border border-slate-200/80 p-4 rounded-2xl shadow-sm hover:shadow-md hover:scale-[1.02] cursor-pointer transition-all duration-200 flex flex-col justify-between"
                             onClick={() => navigate('/crm/leads')}
                         >
@@ -1724,7 +1721,7 @@ export default function CRMView() {
                         </div>
 
                         {/* 4. Converted */}
-                        <div 
+                        <div
                             className="bg-white border border-slate-200/80 p-4 rounded-2xl shadow-sm hover:shadow-md hover:scale-[1.02] cursor-pointer transition-all duration-200 flex flex-col justify-between"
                             onClick={() => navigate('/crm/converted')}
                         >
@@ -1738,7 +1735,7 @@ export default function CRMView() {
                         </div>
 
                         {/* 5. Lost Leads */}
-                        <div 
+                        <div
                             className="bg-white border border-slate-200/80 p-4 rounded-2xl shadow-sm hover:shadow-md hover:scale-[1.02] cursor-pointer transition-all duration-200 flex flex-col justify-between"
                             onClick={() => navigate('/crm/lost')}
                         >
@@ -1913,7 +1910,7 @@ export default function CRMView() {
                                     </div>
                                     <p className="text-[10px] text-slate-400 font-sans mt-0.5">High potential customers requiring attention</p>
                                 </div>
-                            <button
+                                <button
                                     type="button"
                                     onClick={() => navigate('/crm/leads', { state: { preHotLeadsFilter: true } })}
                                     className="text-[11px] font-bold text-indigo-655 hover:text-indigo-800 transition cursor-pointer border-0 bg-transparent"
@@ -2053,7 +2050,7 @@ export default function CRMView() {
                                                     {task.date && <span className="text-[9px] font-semibold">{task.date}</span>}
                                                 </button>
                                             </div>
-                                    </div>
+                                        </div>
                                     );
                                 })}
                             </div>
@@ -2216,7 +2213,7 @@ export default function CRMView() {
                                     <div key={idx} className="flex flex-col gap-1.5 w-full">
                                         <div className="flex items-center justify-between gap-3 w-full">
                                             <div className="flex-1">
-                                                <div 
+                                                <div
                                                     className={`${stage.color} text-white rounded-xl h-10 px-4 flex items-center justify-between shadow-sm hover:scale-[1.002] transition-transform min-w-[120px]`}
                                                     style={{ width: stage.width }}
                                                 >
@@ -2893,7 +2890,7 @@ export default function CRMView() {
                             getFilteredConvertedLeads().map((lead) => {
                                 // Dynamic initials calculations
                                 const initials = lead.name.split(" ").map(n => n[0]).join("").toUpperCase();
-                                
+
                                 // Color helper for priority
                                 const priorityColors = {
                                     High: "bg-rose-50 text-rose-700 border-rose-100/60",
@@ -2946,7 +2943,7 @@ export default function CRMView() {
                                             <span className="text-[11px] text-slate-400 font-semibold font-sans">
                                                 {new Date(lead.date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
                                             </span>
-                                            
+
                                             <span className="bg-emerald-50 text-emerald-700 border border-emerald-100/60 px-3 py-1 rounded-full text-[10px] font-bold tracking-wider uppercase font-sans">
                                                 CONVERTED
                                             </span>
@@ -3076,7 +3073,7 @@ export default function CRMView() {
                             getFilteredLostLeads().map((lead) => {
                                 // Dynamic initials calculations
                                 const initials = lead.name.split(" ").map(n => n[0]).join("").toUpperCase();
-                                
+
                                 // Color helper for priority
                                 const priorityColors = {
                                     High: "bg-rose-50 text-rose-700 border-rose-100/60",
@@ -3129,7 +3126,7 @@ export default function CRMView() {
                                             <span className="text-[11px] text-slate-400 font-semibold font-sans">
                                                 {new Date(lead.date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
                                             </span>
-                                            
+
                                             <span className="bg-rose-50 text-rose-700 border border-rose-100/60 px-3 py-1 rounded-full text-[10px] font-bold tracking-wider uppercase font-sans">
                                                 LOST
                                             </span>
@@ -3393,7 +3390,7 @@ export default function CRMView() {
                                                 <tbody className="divide-y divide-slate-100 text-slate-707 font-medium font-sans">
                                                     {paginatedLeads.map((lead) => {
                                                         const initials = lead.name.split(" ").map(n => n[0]).join("").toUpperCase();
-                                                        
+
                                                         // Status styling helpers
                                                         const statusStyles = {
                                                             Converted: "bg-emerald-50 text-emerald-700 border-emerald-100/60",
@@ -3483,11 +3480,10 @@ export default function CRMView() {
                                                     <button
                                                         key={pageNumber}
                                                         onClick={() => setLeadsPage(pageNumber)}
-                                                        className={`h-8 w-8 rounded-lg font-bold text-xs transition duration-150 flex items-center justify-center cursor-pointer border-0 ${
-                                                            activePage === pageNumber
+                                                        className={`h-8 w-8 rounded-lg font-bold text-xs transition duration-150 flex items-center justify-center cursor-pointer border-0 ${activePage === pageNumber
                                                                 ? "bg-indigo-600 text-white shadow-sm"
                                                                 : "bg-white border border-slate-200 hover:bg-slate-50 text-slate-600"
-                                                        }`}
+                                                            }`}
                                                     >
                                                         {pageNumber}
                                                     </button>
@@ -3515,11 +3511,11 @@ export default function CRMView() {
             {selectedClient && (
                 <div className="fixed inset-0 z-50 flex justify-end font-sans">
                     {/* Backdrop */}
-                    <div 
+                    <div
                         className="absolute inset-0 bg-slate-900/30 backdrop-blur-sm transition-opacity animate-fade-in"
                         onClick={() => setSelectedClient(null)}
                     ></div>
-                    
+
                     {/* Drawer */}
                     <div className="relative w-full max-w-md md:max-w-xl h-full bg-slate-50 shadow-2xl flex flex-col animate-fade-in overflow-hidden border-l border-slate-200">
                         {/* Header */}
@@ -3533,7 +3529,7 @@ export default function CRMView() {
                                     <span className="text-xs font-semibold text-slate-400">{selectedClient.id}</span>
                                 </div>
                             </div>
-                            <button 
+                            <button
                                 onClick={() => setSelectedClient(null)}
                                 className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer border-0 bg-transparent"
                             >
@@ -3543,7 +3539,7 @@ export default function CRMView() {
 
                         {/* Scrollable Content */}
                         <div className="flex-1 overflow-y-auto p-6 space-y-5">
-                            
+
                             {/* 1. Basic Info */}
                             <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
                                 <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 font-sans flex items-center gap-2">
@@ -3709,7 +3705,7 @@ export default function CRMView() {
                             </div>
 
                         </div>
-                        
+
                         {/* Footer Actions */}
                         <div className="p-5 border-t border-slate-200 bg-white grid grid-cols-2 gap-3 shrink-0">
                             <button className="h-11 flex items-center justify-center gap-2 bg-white border border-slate-200 text-slate-700 font-semibold rounded-xl hover:bg-slate-50 transition cursor-pointer text-sm shadow-sm">

@@ -67,7 +67,7 @@ origins = [
     "http://127.0.0.1:5175",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "https://delegatex.onrender.com",
+    "https://delegatex-1-backend2.onrender.com",
     "https://delegatex-backend.onrender.com",
     "https://delegatex-1-y433.onrender.com"
 ]
