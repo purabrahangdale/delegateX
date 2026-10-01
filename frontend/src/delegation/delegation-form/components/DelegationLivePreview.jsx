@@ -1,5 +1,6 @@
 import React from "react";
 import DelegationFieldRenderer from "./DelegationFieldRenderer";
+import dtableLogo from "../../../assets/dtable-logo.png";
 
 export default function DelegationLivePreview({ title, description, fields }) {
     const hasFields = fields && fields.length > 0;
@@ -44,13 +45,13 @@ export default function DelegationLivePreview({ title, description, fields }) {
                     </span>
                 </div>
 
-                {/* DelegateX branding inside portal */}
+                {/* D-Table Analytics branding inside portal */}
                 <div className="px-5 py-3 bg-slate-950 border-b border-slate-850 flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                        <div className="w-5 h-5 rounded-md bg-gradient-to-tr from-indigo-500 to-indigo-600 flex items-center justify-center text-white font-bold text-[9px]">
-                            D
+                        <div className="w-5 h-5 rounded-md bg-white p-0.5 border border-slate-700/50 flex items-center justify-center shrink-0 overflow-hidden">
+                            <img src={dtableLogo} alt="D-Table Analytics Logo" className="w-full h-full object-contain rounded" />
                         </div>
-                        <span className="text-white text-[10px] font-bold font-display tracking-tight">DelegateX</span>
+                        <span className="text-white text-[10px] font-bold font-display tracking-tight">D-TABLE ANALYTICS</span>
                         <span className="text-slate-600 text-[8px] font-semibold uppercase tracking-wider">Client Portal</span>
                     </div>
                     <span className="bg-emerald-950/60 border border-emerald-900/30 text-emerald-400 px-1.5 py-0.5 rounded text-[7px] tracking-wider uppercase font-semibold">
