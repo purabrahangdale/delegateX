@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { FiPieChart, FiUsers, FiBriefcase, FiCheckSquare, FiChevronLeft, FiChevronRight, FiGrid, FiPlusSquare, FiLayers, FiChevronDown, FiCalendar, FiX, FiBarChart2, FiFileText, FiSettings, FiMail, FiClipboard, FiMessageCircle, FiSend, FiZap, FiSlash, FiEye } from "react-icons/fi";
+import dtableLogo from "../assets/dtable-logo.png";
 
 
 function Sidebar({ isCollapsed, setIsCollapsed, onClose }) {
@@ -62,6 +63,7 @@ function Sidebar({ isCollapsed, setIsCollapsed, onClose }) {
     }, [location.pathname, isWhatsappActive]);
 
     const menuItems = [
+        /*
         {
             title: "Dashboard",
             path: "/",
@@ -195,6 +197,7 @@ function Sidebar({ isCollapsed, setIsCollapsed, onClose }) {
                 },
             ]
         },
+        */
         {
             title: "WhatsApp Automation",
             icon: FiMessageCircle,
@@ -269,6 +272,7 @@ function Sidebar({ isCollapsed, setIsCollapsed, onClose }) {
                 },
             ]
         },
+        /*
         {
             title: "Settings",
             icon: FiSettings,
@@ -281,6 +285,7 @@ function Sidebar({ isCollapsed, setIsCollapsed, onClose }) {
                 },
             ]
         }
+        */
     ];
 
     const isActive = (path) => {
@@ -317,18 +322,18 @@ function Sidebar({ isCollapsed, setIsCollapsed, onClose }) {
             <div className="h-16 flex items-center justify-between px-4 border-b border-slate-900">
                 {!isCollapsed && (
                     <div className="flex items-center gap-2.5 animate-fade-in pl-1">
-                        <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-500 to-indigo-600 flex items-center justify-center text-white font-bold text-base shadow-lg shadow-indigo-500/20">
-                            D
+                        <div className="w-[38px] h-[38px] rounded-xl bg-white p-0.5 border border-slate-700/50 flex items-center justify-center shrink-0 shadow-lg shadow-indigo-500/10 overflow-hidden">
+                            <img src={dtableLogo} alt="D-Table Analytics Logo" className="w-full h-full object-contain rounded-lg" />
                         </div>
-                        <div>
-                            <span className="font-display font-bold text-sm tracking-tight text-white leading-none block">DelegateX</span>
-                            <p className="text-[9px] text-slate-500 font-semibold uppercase tracking-wider">Enterprise Console</p>
+                        <div className="flex flex-col justify-center min-w-0">
+                            <span className="font-display font-bold text-sm tracking-tight text-white leading-tight block pt-0.5">D-TABLE ANALYTICS</span>
+                            <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-tight whitespace-nowrap leading-tight mt-0.5">whatsapp automation tool</p>
                         </div>
                     </div>
                 )}
                 {isCollapsed && (
-                    <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-500 to-indigo-600 flex items-center justify-center text-white font-bold text-base mx-auto shadow-lg shadow-indigo-500/20">
-                        D
+                    <div className="w-[38px] h-[38px] rounded-xl bg-white p-0.5 border border-slate-700/50 flex items-center justify-center mx-auto shadow-lg shadow-indigo-500/10 overflow-hidden">
+                        <img src={dtableLogo} alt="D-Table Analytics Logo" className="w-full h-full object-contain rounded-lg" />
                     </div>
                 )}
 
@@ -461,22 +466,42 @@ function Sidebar({ isCollapsed, setIsCollapsed, onClose }) {
                 })}
             </div>
 
-            {/* Footer / User Profile Summary */}
+            {/* Footer / Powered by D-Table Analytics */}
             <div className="p-4 border-t border-slate-900 flex items-center justify-center">
                 {!isCollapsed ? (
-                    <div className="flex items-center gap-3 w-full bg-slate-900/40 p-2 rounded-xl border border-slate-900/50">
-                        <div className="w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 font-bold font-display text-xs">
-                            AD
+                    <a
+                        href="https://www.dtableanalytics.com/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2.5 w-full bg-slate-900/40 hover:bg-slate-900/80 p-2.5 rounded-xl border border-slate-900/50 hover:border-slate-800 transition group cursor-pointer"
+                    >
+                        <div className="w-7 h-7 rounded-lg bg-white p-0.5 border border-slate-700/50 flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform flex-shrink-0 overflow-hidden">
+                            <img
+                                src={dtableLogo}
+                                alt="D-Table Analytics Logo"
+                                className="w-full h-full object-contain rounded-md"
+                            />
                         </div>
                         <div className="flex-1 min-w-0">
-                            <p className="text-[11px] font-semibold text-slate-200 truncate">Admin User</p>
-                            <p className="text-[9px] text-slate-600 truncate">admin@delegatex.com</p>
+                            <p className="text-[10px] font-bold text-slate-300 group-hover:text-white transition truncate font-display tracking-wide">
+                                POWERED BY D-TABLE ANALYTICS
+                            </p>
                         </div>
-                    </div>
+                    </a>
                 ) : (
-                    <div className="w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 font-bold font-display text-xs">
-                        AD
-                    </div>
+                    <a
+                        href="https://www.dtableanalytics.com/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="POWERED BY D-TABLE ANALYTICS"
+                        className="w-8 h-8 rounded-lg bg-white p-0.5 border border-slate-700/50 flex items-center justify-center hover:border-slate-500 transition cursor-pointer overflow-hidden shadow-sm flex-shrink-0 group"
+                    >
+                        <img
+                            src={dtableLogo}
+                            alt="D-Table Analytics Logo"
+                            className="w-full h-full object-contain rounded-md group-hover:scale-105 transition-transform"
+                        />
+                    </a>
                 )}
             </div>
         </div>

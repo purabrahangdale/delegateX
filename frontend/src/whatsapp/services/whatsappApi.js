@@ -1,8 +1,28 @@
 import axios from "axios";
 
+const primaryBaseURL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+
 const API = axios.create({
-    baseURL: import.meta.env.VITE_API_BASE_URL || "https://delegatex-1-backend2.onrender.com",
+    baseURL: primaryBaseURL,
 });
+
+API.interceptors.response.use(
+    (response) => response,
+    async (error) => {
+        const originalRequest = error.config;
+        if (
+            !originalRequest._retry &&
+            primaryBaseURL !== "http://localhost:8000" &&
+            primaryBaseURL !== "http://127.0.0.1:8000" &&
+            (!error.response || [502, 503, 504].includes(error.response.status))
+        ) {
+            originalRequest._retry = true;
+            originalRequest.baseURL = "http://localhost:8000";
+            return API(originalRequest);
+        }
+        return Promise.reject(error);
+    }
+);
 
 // ── Dashboard ──────────────────────────────────────────────────
 export const getWhatsAppDashboardStats = async () => {

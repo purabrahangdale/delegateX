@@ -6,6 +6,7 @@ import DelegationFieldRenderer from "../components/DelegationFieldRenderer";
 import { validateFormAnswers } from "../utils/formValidation";
 import { downloadPDF, printPDF } from "../utils/pdfGenerator";
 import { useToast } from "../../../context/ToastContext";
+import dtableLogo from "../../../assets/dtable-logo.png";
 
 export default function PublicDelegationFormPage() {
     const { formId } = useParams();
@@ -178,11 +179,11 @@ export default function PublicDelegationFormPage() {
         <div className="min-h-screen bg-slate-950 flex flex-col justify-center items-center py-12 px-4 select-none">
             {/* Branding Header */}
             <div className="flex items-center gap-2.5 mb-8">
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-500 to-indigo-600 flex items-center justify-center text-white font-bold text-base shadow-lg shadow-indigo-500/20">
-                    D
+                <div className="w-8 h-8 rounded-xl bg-white p-0.5 border border-slate-700/50 flex items-center justify-center shrink-0 shadow-lg overflow-hidden">
+                    <img src={dtableLogo} alt="D-Table Analytics Logo" className="w-full h-full object-contain rounded-lg" />
                 </div>
                 <div>
-                    <span className="font-display font-bold text-sm tracking-tight text-white leading-none block">DelegateX</span>
+                    <span className="font-display font-bold text-sm tracking-tight text-white leading-none block">D-TABLE ANALYTICS</span>
                     <p className="text-[9px] text-slate-500 font-semibold uppercase tracking-wider">Client Intake Portal</p>
                 </div>
             </div>
