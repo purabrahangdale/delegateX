@@ -215,6 +215,18 @@ async def send_message(
     )
     
     if result.get("success"):
+        meta_msg_id = result.get("message_id")
+        extra_fields = {}
+        if meta_msg_id:
+            extra_fields["wamid"] = meta_msg_id
+            extra_fields["metadata.wamid"] = meta_msg_id
+            extra_fields["metadata.message_id"] = meta_msg_id
+            saved_message["wamid"] = meta_msg_id
+            if "metadata" not in saved_message:
+                saved_message["metadata"] = {}
+            saved_message["metadata"]["wamid"] = meta_msg_id
+            saved_message["metadata"]["message_id"] = meta_msg_id
+
         # Audit: Mark manager reply in chat_access_logs if sent by a manager
         try:
             from app.whatsapp.services.chat_access_service import record_manager_reply
@@ -228,7 +240,6 @@ async def send_message(
         except Exception as ex:
             logger.warning(f"[Chat Access Audit] Reply record linking error: {ex}")
 
-
         # For simulation provider, schedule status transitions
         if isinstance(provider, SimulationProvider):
             asyncio.create_task(
@@ -238,17 +249,33 @@ async def send_message(
                 )
             )
         else:
-            # For real providers, mark as sent immediately
-            await _update_message_status_and_broadcast(message_id, MessageStatus.SENT)
+            # For real providers, mark as sent immediately with real wamid
+            MessageRepository.update_status(message_id, MessageStatus.SENT.value, "sent_at", extra_fields=extra_fields)
+            saved_message["status"] = MessageStatus.SENT.value
+            saved_message["sent_at"] = datetime.utcnow().isoformat()
+            await _broadcast_whatsapp_event("message_status_updated", {
+                "message_id": message_id,
+                "status": MessageStatus.SENT.value,
+                "wamid": meta_msg_id,
+                "updated_at": datetime.utcnow().isoformat(),
+            })
 
     else:
-        # Mark as failed
-        MessageRepository.update_status(message_id, MessageStatus.FAILED.value)
+        # Mark as failed in DB and broadcast
+        err_msg = result.get("error") or result.get("provider_response", {}).get("error", "Unknown WhatsApp dispatch error")
+        MessageRepository.update_status(
+            message_id,
+            MessageStatus.FAILED.value,
+            extra_fields={"error_message": err_msg}
+        )
+        saved_message["status"] = MessageStatus.FAILED.value
+        saved_message["error_message"] = err_msg
         await _broadcast_whatsapp_event("message_status_updated", {
             "message_id": message_id,
             "status": MessageStatus.FAILED.value,
-            "error": result.get("provider_response", {}).get("error", "Unknown error"),
+            "error": err_msg,
         })
+        raise RuntimeError(f"WhatsApp API Error: {err_msg}")
     
     return saved_message
 

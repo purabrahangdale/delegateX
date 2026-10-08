@@ -81,9 +81,11 @@ class WhatsAppReplyFilter(BaseModel):
 
 class WhatsAppMessageCreate(BaseModel):
     """Payload for sending a new WhatsApp message."""
-    recipient_phone: str
+    recipient_phone: Optional[str] = None
+    to: Optional[str] = None
     recipient_name: Optional[str] = "Unknown"
-    content: str
+    content: Optional[str] = None
+    message: Optional[str] = None
     message_type: MessageType = MessageType.TEXT
     template_id: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None

@@ -612,7 +612,31 @@ async def detect_intent_and_route(incoming_message: dict) -> Optional[dict]:
     content = incoming_message.get("content", "").lower().strip()
     
     # Intent detection rules
-    if any(keyword in content for keyword in ["status", "enquiry", "profile", "my details", "lookup"]):
+    if "test" in content:
+        reply = "WhatsApp automation is working."
+        sender_phone = incoming_message.get("sender_phone", "")
+        sender_name = incoming_message.get("sender", "Customer")
+        
+        message = await send_message(
+            recipient_phone=sender_phone,
+            content=reply,
+            recipient_name=sender_name,
+            automation_workflow="Webhook Test Automation",
+            metadata={"trigger": "webhook_test", "original_content": incoming_message.get("content")},
+        )
+        
+        await _log_automation(
+            workflow_name="Webhook Test Automation",
+            trigger="Incoming WhatsApp Message ('TEST')",
+            status=AutomationStatus.SUCCESS.value,
+            recipient=sender_name,
+            recipient_phone=sender_phone,
+            message_preview=reply,
+            duration_ms=10,
+        )
+        return message
+
+    elif any(keyword in content for keyword in ["status", "enquiry", "profile", "my details", "lookup"]):
         return await trigger_crm_lookup(incoming_message)
     
     elif any(keyword in content for keyword in ["meeting", "schedule", "appointment", "book"]):

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import WhatsAppHeader from "../components/WhatsAppHeader";
 import { useToast } from "../../context/ToastContext";
 import {
@@ -6,6 +6,8 @@ import {
     FiUserCheck, FiStar, FiClock, FiSearch, FiCheck, FiX, FiPlus, FiEye,
     FiEdit2, FiTrash2, FiPhone, FiMail, FiTag
 } from "react-icons/fi";
+
+const CONTACTS_STORAGE_KEY = "whatsapp_contacts_list";
 
 const INITIAL_CONTACTS = [
     { id: 1, name: "John Smith", phone: "+91-9876543210", email: "john.smith@example.com", category: "VIP Client", status: "Valid", notes: "Key decision maker", lastContact: "Today 11:20 AM" },
@@ -15,9 +17,32 @@ const INITIAL_CONTACTS = [
     { id: 5, name: "David Miller", phone: "+91-9876543214", email: "david.m@example.com", category: "Recently Contacted", status: "DND", notes: "Do not disturb requested", lastContact: "1 week ago" },
 ];
 
+const getInitialContacts = () => {
+    try {
+        const saved = localStorage.getItem(CONTACTS_STORAGE_KEY);
+        if (saved !== null) {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed)) {
+                return parsed;
+            }
+        }
+    } catch (err) {
+        console.error("Failed to load contacts from localStorage", err);
+    }
+    return INITIAL_CONTACTS;
+};
+
 function WhatsAppContacts() {
     const { showToast } = useToast();
-    const [contacts, setContacts] = useState(INITIAL_CONTACTS);
+    const [contacts, setContacts] = useState(getInitialContacts);
+
+    useEffect(() => {
+        try {
+            localStorage.setItem(CONTACTS_STORAGE_KEY, JSON.stringify(contacts));
+        } catch (err) {
+            console.error("Failed to save contacts to localStorage", err);
+        }
+    }, [contacts]);
     const [searchQuery, setSearchQuery] = useState("");
     const [dragActive, setDragActive] = useState(false);
     const [uploading, setUploading] = useState(false);

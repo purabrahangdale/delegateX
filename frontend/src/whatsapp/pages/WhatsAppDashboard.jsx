@@ -269,7 +269,7 @@ function WhatsAppDashboard() {
                             <div className="flex items-center justify-between p-3.5 bg-slate-50/80 rounded-xl border border-slate-100">
                                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Active Provider</span>
                                 <span className="text-[10px] font-extrabold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-100">
-                                    {stats?.provider?.name || "Simulation Mode"}
+                                    {stats?.provider?.name || "Meta WhatsApp Cloud API"}
                                 </span>
                             </div>
                             <div className="flex items-center justify-between p-3.5 bg-slate-50/80 rounded-xl border border-slate-100">

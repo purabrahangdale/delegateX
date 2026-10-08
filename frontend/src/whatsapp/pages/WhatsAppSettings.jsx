@@ -59,8 +59,8 @@ function WhatsAppSettings() {
     };
 
     const providers = [
-        { value: "simulation", label: "Simulation Mode", desc: "Demo mode — no real WhatsApp API. Messages stored locally.", badge: "Default Active", badgeColor: "text-emerald-600 bg-emerald-50 border-emerald-100" },
-        { value: "meta_cloud", label: "Meta WhatsApp Cloud API", desc: "Official Meta Business Platform API (requires Meta App credentials).", badge: "Production Ready", badgeColor: "text-blue-600 bg-blue-50 border-blue-100" },
+        { value: "meta_cloud", label: "Meta WhatsApp Cloud API", desc: "Official Meta Business Platform API (Meta WhatsApp Cloud API).", badge: "Active Production", badgeColor: "text-emerald-700 bg-emerald-50 border-emerald-200" },
+        { value: "simulation", label: "Simulation Mode", desc: "Demo mode — local sandbox testing without sending real WhatsApp messages.", badge: "Demo / Test", badgeColor: "text-amber-700 bg-amber-50 border-amber-200" },
         { value: "maytapi", label: "Maytapi API", desc: "Third-party WhatsApp Web gateway service (requires Maytapi token).", badge: "Gateway Ready", badgeColor: "text-indigo-600 bg-indigo-50 border-indigo-100" },
     ];
 

@@ -9,6 +9,12 @@ try:
     _custom_resolver.nameservers = ['8.8.8.8', '1.1.1.1']
 
     def patched_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+        if isinstance(host, bytes):
+            try:
+                host = host.decode("utf-8")
+            except Exception:
+                return _original_getaddrinfo(host, port, family, type, proto, flags)
+
         # Loopbacks and local hosts go to original resolver
         if not host or host in ("localhost", "127.0.0.1", "::1"):
             return _original_getaddrinfo(host, port, family, type, proto, flags)
@@ -22,8 +28,8 @@ try:
                 results.append((socket.AddressFamily.AF_INET, socket.SocketKind.SOCK_STREAM, 6, '', (ip, port)))
             if results:
                 return results
-        except Exception as e:
-            print(f"[DNS Patch Error] Resolving {host} failed: {e}", flush=True)
+        except Exception:
+            pass
             
         # Fallback to original resolver
         return _original_getaddrinfo(host, port, family, type, proto, flags)

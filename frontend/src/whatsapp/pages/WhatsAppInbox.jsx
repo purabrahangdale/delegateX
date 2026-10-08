@@ -1,26 +1,38 @@
 import { useEffect, useState, useRef } from "react";
 import WhatsAppHeader from "../components/WhatsAppHeader";
-import { getConversations, getConversationMessages, sendWhatsAppMessage, simulateReply, logChatAccess } from "../services/whatsappApi";
+import { getConversations, getConversationMessages, sendWhatsAppMessage, simulateReply, logChatAccess, getWhatsAppDashboardStats } from "../services/whatsappApi";
 
 import { useWebSockets } from "../../context/WebSocketContext";
 import {
     FiSearch, FiSend, FiUser, FiCheck, FiClock, FiMessageCircle, FiChevronLeft,
     FiSmile, FiPhone, FiPaperclip, FiMoreVertical, FiImage, FiFileText, FiX,
-    FiCheckCircle, FiPlus, FiFilter, FiCornerDownLeft, FiRefreshCw, FiDownload
-
+    FiCheckCircle, FiPlus, FiFilter, FiCornerDownLeft, FiRefreshCw, FiDownload,
+    FiAlertCircle
 } from "react-icons/fi";
 
-// Message status tick component
+// Real message status indicator component (Sending, Sent, Delivered, Read, Failed)
 function MessageStatus({ status }) {
-    if (status === "queued") return <FiClock size={11} className="text-slate-400" />;
-    if (status === "sent") return <FiCheck size={11} className="text-slate-400" />;
+    if (status === "sending" || status === "queued") return (
+        <span className="flex items-center gap-0.5 text-slate-400" title="Sending to WhatsApp...">
+            <FiClock size={11} className="animate-spin text-emerald-500" />
+        </span>
+    );
+    if (status === "sent") return <FiCheck size={11} className="text-slate-400" title="Sent to Meta Cloud API" />;
     if (status === "delivered") return (
-        <span className="flex -space-x-1.5"><FiCheck size={11} className="text-slate-400" /><FiCheck size={11} className="text-slate-400" /></span>
+        <span className="flex -space-x-1.5" title="Delivered to recipient">
+            <FiCheck size={11} className="text-slate-400" /><FiCheck size={11} className="text-slate-400" />
+        </span>
     );
     if (status === "read") return (
-        <span className="flex -space-x-1.5"><FiCheck size={11} className="text-blue-500" /><FiCheck size={11} className="text-blue-500" /></span>
+        <span className="flex -space-x-1.5" title="Read by recipient">
+            <FiCheck size={11} className="text-blue-500" /><FiCheck size={11} className="text-blue-500" />
+        </span>
     );
-    if (status === "failed") return <span className="text-[9px] text-rose-500 font-bold">Failed</span>;
+    if (status === "failed") return (
+        <span className="text-[9px] text-rose-500 font-bold bg-rose-50 border border-rose-200 px-1 py-0.2 rounded" title="Failed to deliver">
+            Failed
+        </span>
+    );
     return null;
 }
 
@@ -132,6 +144,15 @@ function WhatsAppInbox() {
     const [showMobileChat, setShowMobileChat] = useState(false);
     const [showEmojiPicker, setShowEmojiPicker] = useState(false);
     
+    // Real WhatsApp Provider & New Chat States
+    const [providerInfo, setProviderInfo] = useState(null);
+    const [sendError, setSendError] = useState(null);
+    const [showNewChatModal, setShowNewChatModal] = useState(false);
+    const [newChatPhone, setNewChatPhone] = useState("");
+    const [newChatName, setNewChatName] = useState("");
+    const [newChatMessage, setNewChatMessage] = useState("");
+    const [creatingChat, setCreatingChat] = useState(false);
+
     // Enhanced Simulate Modal State
     const [simName, setSimName] = useState("");
     const [simPhone, setSimPhone] = useState("");
@@ -168,24 +189,8 @@ function WhatsAppInbox() {
         try {
             const apiData = await getConversations();
             
-            // Merge API conversations with seeded realistic replies
-            let combined = [...(apiData || [])];
-
-            SEED_REPLIES.forEach(seed => {
-                const seedClean = normalizePhone(seed.recipient_phone);
-                const existingIdx = combined.findIndex(c => 
-                    (c.recipient_phone && normalizePhone(c.recipient_phone) === seedClean) || 
-                    c.conversation_id === seed.conversation_id
-                );
-                if (existingIdx !== -1) {
-                    combined[existingIdx] = {
-                        ...combined[existingIdx],
-                        has_reply: true,
-                    };
-                } else {
-                    combined.push(seed);
-                }
-            });
+            // Prioritize REAL conversations from MongoDB; use seed only if collection is completely empty
+            let combined = (apiData && apiData.length > 0) ? [...apiData] : [...SEED_REPLIES];
 
             // Ensure conversations with inbound messages are marked has_reply = true
             combined = combined.map(c => {
@@ -256,7 +261,14 @@ function WhatsAppInbox() {
         }
     };
 
-    useEffect(() => { fetchConversations(); }, []);
+    useEffect(() => {
+        fetchConversations();
+        getWhatsAppDashboardStats().then(stats => {
+            if (stats?.provider) {
+                setProviderInfo(stats.provider);
+            }
+        }).catch(e => console.warn("Provider fetch error:", e));
+    }, []);
 
     useEffect(() => {
         if (selectedConv) {
@@ -341,7 +353,7 @@ function WhatsAppInbox() {
             }
             if (data.event === "message_status_updated") {
                 const { message_id, status } = data.data;
-                setMessages(prev => prev.map(m => m._id === message_id ? { ...m, status } : m));
+                setMessages(prev => prev.map(m => (m._id === message_id || m.wamid === message_id || m.metadata?.wamid === message_id) ? { ...m, status } : m));
             }
         };
         whatsappSocket.on("message", handleEvent);
@@ -349,34 +361,124 @@ function WhatsAppInbox() {
     }, [whatsappSocket, selectedConv]);
 
     const handleSend = async () => {
-        if (!newMessage.trim() || !selectedConv) return;
-        setSending(true);
+        if (!newMessage.trim() || !selectedConv || sending) return;
         const text = newMessage.trim();
-        const outboundMsg = {
-            _id: `m-out-${Date.now()}`,
+        const recipientPhone = selectedConv.recipient_phone;
+        const recipientName = selectedConv.recipient || "Contact";
+
+        setSending(true);
+        setSendError(null);
+
+        // Optimistic UI state with sending status (clock indicator)
+        const tempId = `temp-${Date.now()}`;
+        const tempMsg = {
+            _id: tempId,
             direction: "outbound",
             sender: "DelegateX",
             content: text,
-            status: "read",
+            status: "sending",
             created_at: new Date().toISOString()
         };
 
+        setMessages(prev => [...prev, tempMsg]);
+        setNewMessage("");
+
         try {
-            await sendWhatsAppMessage({
-                recipient_phone: selectedConv.recipient_phone,
-                recipient_name: selectedConv.recipient,
+            const res = await sendWhatsAppMessage({
+                to: recipientPhone,
+                recipient_phone: recipientPhone,
+                recipient_name: recipientName,
+                message: text,
                 content: text,
             });
+
+            const realMsg = res.data || res;
+            const realId = realMsg._id || res.message_id || tempId;
+            const realStatus = realMsg.status || "sent";
+
+            // Update optimistic message with real message response from backend & Meta Cloud API
+            setMessages(prev => prev.map(m => m._id === tempId ? {
+                ...tempMsg,
+                ...realMsg,
+                _id: realId,
+                status: realStatus,
+                wamid: realMsg.wamid || res.message_id,
+            } : m));
+
+            // Refresh conversations so list shows latest outbound message
+            fetchConversations();
         } catch (err) {
-            console.warn("API offline - rendering outbound locally in simulation mode");
+            const errMsg = err.response?.data?.detail || err.message || "Failed to send message via WhatsApp Cloud API";
+            console.error("[WhatsApp Send Error]", errMsg);
+            // Mark optimistic message as failed
+            setMessages(prev => prev.map(m => m._id === tempId ? {
+                ...tempMsg,
+                status: "failed",
+                error: errMsg
+            } : m));
+            setSendError(errMsg);
+        } finally {
+            setSending(false);
+            setShowEmojiPicker(false);
+        }
+    };
+
+    const handleStartNewChat = async (e) => {
+        e?.preventDefault();
+        const rawPhone = newChatPhone.trim();
+        if (!rawPhone) return;
+        setCreatingChat(true);
+
+        const cleanPhone = rawPhone.replace(/\D/g, "");
+        const formattedPhone = cleanPhone.length === 10 ? `+91 ${cleanPhone}` : rawPhone.startsWith("+") ? rawPhone : `+${cleanPhone}`;
+        const name = newChatName.trim() || `WhatsApp Contact (${formattedPhone})`;
+        const convId = `conv-${Date.now()}`;
+
+        const newConv = {
+            conversation_id: convId,
+            recipient: name,
+            recipient_phone: formattedPhone,
+            unread_count: 0,
+            has_reply: false,
+            updated_at: new Date().toISOString(),
+            messages: [],
+        };
+
+        if (newChatMessage.trim()) {
+            const firstMsgText = newChatMessage.trim();
+            try {
+                const res = await sendWhatsAppMessage({
+                    to: formattedPhone,
+                    recipient_phone: formattedPhone,
+                    recipient_name: name,
+                    message: firstMsgText,
+                    content: firstMsgText,
+                });
+                const realMsg = res.data || res;
+                newConv.last_message = {
+                    ...realMsg,
+                    direction: "outbound",
+                    sender: "DelegateX",
+                    content: firstMsgText,
+                    status: realMsg.status || "sent",
+                    created_at: new Date().toISOString()
+                };
+                newConv.messages = [newConv.last_message];
+            } catch (err) {
+                const errMsg = err.response?.data?.detail || err.message || "Failed to send message";
+                setSendError(errMsg);
+            }
         }
 
-        // Local state update guarantee
-        setMessages(prev => [...prev, outboundMsg]);
-        setConversations(prev => prev.map(c => c.conversation_id === selectedConv.conversation_id ? { ...c, last_message: outboundMsg, updated_at: outboundMsg.created_at } : c));
-        setNewMessage("");
-        setShowEmojiPicker(false);
-        setSending(false);
+        setConversations(prev => [newConv, ...prev.filter(c => c.recipient_phone !== formattedPhone)]);
+        setSelectedConv(newConv);
+        setMessages(newConv.messages || []);
+        setShowMobileChat(true);
+        setShowNewChatModal(false);
+        setNewChatPhone("");
+        setNewChatName("");
+        setNewChatMessage("");
+        setCreatingChat(false);
     };
 
     const handleSimulateReplySubmit = async (e) => {
@@ -525,12 +627,22 @@ function WhatsAppInbox() {
                         <div className="p-3.5 border-b border-slate-100 space-y-2.5 bg-white">
                             <div className="flex items-center justify-between">
                                 <span className="text-xs font-bold text-slate-800 font-display">Conversations</span>
-                                <button
-                                    onClick={() => setShowSimModal(true)}
-                                    className="text-[10px] font-bold text-emerald-600 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-lg transition border border-emerald-100 cursor-pointer flex items-center gap-1 shadow-2xs"
-                                >
-                                    <FiPlus size={11} /> Simulate Reply
-                                </button>
+                                <div className="flex items-center gap-1.5">
+                                    <button
+                                        onClick={() => setShowNewChatModal(true)}
+                                        className="text-[10px] font-bold text-white bg-[#25D366] hover:bg-emerald-600 px-2.5 py-1 rounded-lg transition cursor-pointer flex items-center gap-1 shadow-2xs"
+                                        title="Start a real WhatsApp chat"
+                                    >
+                                        <FiPlus size={11} /> New Chat
+                                    </button>
+                                    <button
+                                        onClick={() => setShowSimModal(true)}
+                                        className="text-[10px] font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded-lg transition border border-slate-200/60 cursor-pointer flex items-center gap-1 shadow-2xs"
+                                        title="Simulate inbound customer reply"
+                                    >
+                                        Simulate
+                                    </button>
+                                </div>
                             </div>
 
                             {/* Filter Tabs (All | Unread | Active | Replies) */}
@@ -677,9 +789,21 @@ function WhatsAppInbox() {
                                     </div>
 
                                     <div className="flex items-center gap-2">
-                                        <span className="text-[9px] font-extrabold bg-emerald-50 text-emerald-600 border border-emerald-100 px-2.5 py-0.5 rounded-md uppercase">
-                                            Simulation Mode
-                                        </span>
+                                        {providerInfo?.type === "meta_cloud" ? (
+                                            <span className="text-[9px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-0.5 rounded-md uppercase flex items-center gap-1.5 shadow-2xs">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                                Meta WhatsApp Cloud API
+                                            </span>
+                                        ) : providerInfo?.type === "simulation" ? (
+                                            <span className="text-[9px] font-extrabold bg-amber-50 text-amber-700 border border-amber-200 px-2.5 py-0.5 rounded-md uppercase flex items-center gap-1.5 shadow-2xs">
+                                                Simulation Mode
+                                            </span>
+                                        ) : (
+                                            <span className="text-[9px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-0.5 rounded-md uppercase flex items-center gap-1.5 shadow-2xs">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                                Meta WhatsApp Cloud API
+                                            </span>
+                                        )}
                                     </div>
 
 
@@ -715,6 +839,22 @@ function WhatsAppInbox() {
                                     ))}
                                     <div ref={chatEndRef} />
                                 </div>
+
+                                {/* Send Error Alert Banner */}
+                                {sendError && (
+                                    <div className="mx-4 mb-2 p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs flex items-center justify-between shadow-xs animate-shake">
+                                        <div className="flex items-center gap-2">
+                                            <FiAlertCircle className="text-rose-600 shrink-0" size={16} />
+                                            <div>
+                                                <span className="font-bold text-[10px] bg-rose-200/80 text-rose-800 px-1.5 py-0.5 rounded uppercase mr-1.5">Meta API Error</span>
+                                                <span className="text-[11px] font-medium">{sendError}</span>
+                                            </div>
+                                        </div>
+                                        <button onClick={() => setSendError(null)} className="text-rose-500 hover:text-rose-700 p-1 cursor-pointer">
+                                            <FiX size={14} />
+                                        </button>
+                                    </div>
+                                )}
 
                                 {/* Footer Input Toolbar */}
                                 <div className="p-3 border-t border-slate-200/70 bg-white/95 backdrop-blur-md relative">
@@ -839,6 +979,69 @@ function WhatsAppInbox() {
                                 <button type="submit" disabled={simulating} className="flex-1 py-2.5 text-xs font-semibold text-white bg-[#25D366] hover:bg-emerald-600 rounded-xl shadow-xs transition cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50">
                                     {simulating ? <FiRefreshCw className="animate-spin" size={13} /> : <FiSend size={13} />}
                                     <span>{simulating ? "Dispatching..." : "Dispatch Reply"}</span>
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* NEW CHAT MODAL */}
+            {showNewChatModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
+                    <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-xs" onClick={() => setShowNewChatModal(false)}></div>
+                    <div className="relative bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md border border-slate-200/90 animate-slide-up space-y-4">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                            <div>
+                                <h3 className="text-sm font-bold text-slate-900 font-display">Start New WhatsApp Chat</h3>
+                                <p className="text-[10px] text-slate-400 mt-0.5">Send a real WhatsApp message to any phone number</p>
+                            </div>
+                            <button onClick={() => setShowNewChatModal(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer"><FiX size={16} /></button>
+                        </div>
+
+                        <form onSubmit={handleStartNewChat} className="space-y-3.5">
+                            <div>
+                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">WhatsApp Phone Number *</label>
+                                <input
+                                    required
+                                    type="text"
+                                    placeholder="e.g. +91 91794 85720 or 9179485720"
+                                    value={newChatPhone}
+                                    onChange={(e) => setNewChatPhone(e.target.value)}
+                                    className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                                />
+                                <p className="text-[9px] text-slate-400 mt-1">Enter with country code or 10-digit Indian number.</p>
+                            </div>
+
+                            <div>
+                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Contact Name (Optional)</label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. My Phone / Purab"
+                                    value={newChatName}
+                                    onChange={(e) => setNewChatName(e.target.value)}
+                                    className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">First Message (Optional)</label>
+                                <textarea
+                                    placeholder="e.g. Hello, testing real WhatsApp automation!"
+                                    value={newChatMessage}
+                                    onChange={(e) => setNewChatMessage(e.target.value)}
+                                    rows={2}
+                                    className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl resize-none font-sans focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                                />
+                            </div>
+
+                            <div className="flex gap-3 pt-2">
+                                <button type="button" onClick={() => setShowNewChatModal(false)} className="flex-1 py-2.5 text-xs font-semibold text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200 transition cursor-pointer">
+                                    Cancel
+                                </button>
+                                <button type="submit" disabled={creatingChat || !newChatPhone.trim()} className="flex-1 py-2.5 text-xs font-semibold text-white bg-[#25D366] hover:bg-emerald-600 rounded-xl shadow-xs transition cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50">
+                                    {creatingChat ? <FiRefreshCw className="animate-spin" size={13} /> : <FiSend size={13} />}
+                                    <span>{creatingChat ? "Starting..." : "Start Chat"}</span>
                                 </button>
                             </div>
                         </form>

@@ -3,8 +3,9 @@ WhatsApp Automation — FastAPI Routes
 All WhatsApp API endpoints for dashboard, inbox, templates, logs, and settings.
 """
 
+import os
+import asyncio
 from fastapi import APIRouter, HTTPException, Query, Request, Response, Body
-
 from fastapi.responses import StreamingResponse
 from typing import Optional
 from datetime import datetime
@@ -98,19 +99,32 @@ async def get_conversation_messages(conversation_id: str):
 
 @router.post("/messages/send")
 async def send_message(payload: WhatsAppMessageCreate):
-    """Send a new WhatsApp message."""
+    """Send a new WhatsApp message via configured WhatsApp Cloud API provider."""
+    recipient_phone = (payload.to or payload.recipient_phone or "").strip()
+    content = (payload.message or payload.content or "").strip()
+
+    if not recipient_phone:
+        raise HTTPException(status_code=400, detail="Recipient phone number ('to' or 'recipient_phone') is required.")
+    if not content:
+        raise HTTPException(status_code=400, detail="Message content ('message' or 'content') is required.")
+
     try:
         message = await message_service.send_message(
-            recipient_phone=payload.recipient_phone,
-            content=payload.content,
-            recipient_name=payload.recipient_name,
+            recipient_phone=recipient_phone,
+            content=content,
+            recipient_name=payload.recipient_name or "Contact",
             message_type=payload.message_type.value,
             template_id=payload.template_id,
             metadata=payload.metadata,
         )
-        return {"message": "Message sent successfully", "data": message}
+        return {
+            "success": True,
+            "message": "Message sent successfully",
+            "message_id": message.get("wamid") or str(message.get("_id")),
+            "data": message
+        }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/messages/simulate-reply")
@@ -778,28 +792,46 @@ async def export_chat_access_logs(
 @router.get("/webhook")
 async def verify_meta_webhook(request: Request):
     """
-    Meta Cloud API Webhook Verification Endpoint.
-    Responds to GET request during webhook setup verification.
+    Meta Cloud API Webhook Verification & Reachability Health Check.
+    - If called with Meta verification parameters (hub.mode, hub.verify_token, hub.challenge),
+      it validates the verify token and returns hub.challenge as plain text.
+    - If called without parameters (e.g. browser, health check, reachability test),
+      it returns a JSON status confirming the webhook handler is active.
     """
-    import os
     params = request.query_params
     mode = params.get("hub.mode")
     token = params.get("hub.verify_token")
     challenge = params.get("hub.challenge")
 
-    expected_token = os.getenv("META_WHATSAPP_VERIFY_TOKEN", "delegatex_verify_token")
+    # Load configured verification token from environment or database settings
+    settings = SettingsRepository.get()
+    expected_token = (
+        os.getenv("META_WHATSAPP_VERIFY_TOKEN")
+        or settings.get("verify_token")
+        or "delegatex_verify_token"
+    )
 
-    if mode == "subscribe" and token == expected_token:
-        return Response(content=challenge, media_type="text/plain")
+    # Meta webhook verification handshake
+    if mode or token:
+        if mode == "subscribe" and token == expected_token:
+            return Response(content=challenge or "", media_type="text/plain")
+        raise HTTPException(status_code=403, detail="Webhook verification failed")
 
-    raise HTTPException(status_code=403, detail="Webhook verification failed")
+    # Reachability & health check response (preserves Meta verification while allowing easy testing)
+    return {
+        "status": "active",
+        "service": "WhatsApp Webhook Handler",
+        "endpoint": "/api/whatsapp/webhook",
+        "verification_token_configured": bool(expected_token),
+        "message": "WhatsApp webhook endpoint is online and listening for Meta verification & events."
+    }
 
 
 @router.post("/webhook")
 async def receive_meta_webhook(payload: dict):
     """
     Process incoming Meta WhatsApp Cloud API webhooks.
-    Stores incoming customer replies, updates inbox, and triggers auto-routing.
+    Stores incoming customer replies, updates inbox, processes status receipts, and triggers auto-routing.
     Includes idempotent duplicate message protection.
     """
     try:
@@ -813,6 +845,7 @@ async def receive_meta_webhook(payload: dict):
                 contacts_map = {c.get("wa_id"): c.get("profile", {}).get("name") for c in value.get("contacts", [])}
                 messages = value.get("messages", [])
 
+                # 1. Process incoming messages
                 for msg in messages:
                     wamid = msg.get("id")
                     sender_phone = msg.get("from", "")
@@ -850,6 +883,33 @@ async def receive_meta_webhook(payload: dict):
                     if saved:
                         asyncio.create_task(automation_service.detect_intent_and_route(saved))
                         processed_messages.append(saved)
+
+                # 2. Process message status delivery/read receipts from Meta
+                statuses = value.get("statuses", [])
+                for st in statuses:
+                    meta_wamid = st.get("id")
+                    meta_status = st.get("status")
+                    if meta_wamid and meta_status:
+                        from app.whatsapp.models import MessageStatus
+                        from app.config.database import whatsapp_message_collection
+
+                        doc = whatsapp_message_collection.find_one({
+                            "$or": [
+                                {"wamid": meta_wamid},
+                                {"metadata.wamid": meta_wamid},
+                                {"metadata.message_id": meta_wamid}
+                            ]
+                        })
+                        if doc:
+                            status_map = {
+                                "sent": MessageStatus.SENT,
+                                "delivered": MessageStatus.DELIVERED,
+                                "read": MessageStatus.READ,
+                                "failed": MessageStatus.FAILED
+                            }
+                            mapped = status_map.get(meta_status.lower())
+                            if mapped:
+                                await message_service._update_message_status_and_broadcast(str(doc["_id"]), mapped)
 
         return {"status": "success", "processed_count": len(processed_messages)}
 

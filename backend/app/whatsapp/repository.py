@@ -101,13 +101,24 @@ class MessageRepository:
             for r in results:
                 msg = r["last_message"]
                 msg["_id"] = str(msg["_id"])
+                
+                # Accurately identify the external contact phone and name
+                is_inbound = msg.get("direction") == "inbound"
+                contact_name = msg.get("sender") if is_inbound else msg.get("recipient")
+                contact_phone = msg.get("sender_phone") if is_inbound else msg.get("recipient_phone")
+                
+                if contact_name == "DelegateX":
+                    contact_name = msg.get("recipient") if is_inbound else (msg.get("sender") or "Customer")
+                if contact_phone == "+91-DELEGATEX":
+                    contact_phone = msg.get("recipient_phone") if is_inbound else (msg.get("sender_phone") or "")
+
                 conversations.append({
                     "conversation_id": r["_id"],
                     "last_message": msg,
                     "unread_count": r["unread_count"],
                     "message_count": r["message_count"],
-                    "recipient": msg.get("recipient", "Unknown"),
-                    "recipient_phone": msg.get("recipient_phone", ""),
+                    "recipient": contact_name or "Unknown",
+                    "recipient_phone": contact_phone or "",
                     "updated_at": msg.get("created_at", ""),
                 })
             return conversations
@@ -116,13 +127,15 @@ class MessageRepository:
             return []
 
     @staticmethod
-    def update_status(message_id: str, status: str, timestamp_field: str = None) -> bool:
+    def update_status(message_id: str, status: str, timestamp_field: str = None, extra_fields: dict = None) -> bool:
         update_data = {
             "status": status,
             "updated_at": datetime.utcnow().isoformat(),
         }
         if timestamp_field:
             update_data[timestamp_field] = datetime.utcnow().isoformat()
+        if extra_fields:
+            update_data.update(extra_fields)
 
         result = whatsapp_message_collection.update_one(
             {"_id": ObjectId(message_id)},
