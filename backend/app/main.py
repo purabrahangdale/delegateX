@@ -39,8 +39,11 @@ try:
 except Exception as e:
     print("[DNS Patch] Failed to apply socket monkey-patch:", e)
 
-from fastapi import FastAPI
+import logging
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.routes.employee_routes import router as employee_router
 from app.routes.project_routes import router as project_router
@@ -75,20 +78,33 @@ origins = [
     "http://127.0.0.1:3000",
     "https://delegatex-1-backend2.onrender.com",
     "https://delegatex-backend.onrender.com",
-    "https://delegatex-1-y433.onrender.com"
+    "https://delegatex-1-y433.onrender.com",
+    "https://delegatex-12341234.onrender.com",
 ]
 
+# FRONTEND_URL may hold one origin or a comma-separated list of extra origins.
 frontend_env = os.getenv("FRONTEND_URL") or os.getenv("VITE_FRONTEND_URL")
 if frontend_env:
-    origins.append(frontend_env)
-    origins.append(frontend_env.rstrip("/"))
+    origins.extend(o.strip().rstrip("/") for o in frontend_env.split(",") if o.strip())
 
 origins = list(set(origins))
+
+
+# Unhandled exceptions otherwise surface from Starlette's outermost error middleware without CORS
+# headers, which browsers report as a misleading CORS failure. Registered before CORSMiddleware so
+# CORS wraps it and the 500 response carries the usual Access-Control-Allow-Origin header.
+@app.middleware("http")
+async def unhandled_errors_as_json(request: Request, call_next):
+    try:
+        return await call_next(request)
+    except Exception:
+        logging.exception("Unhandled error on %s %s", request.method, request.url.path)
+        return JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
+
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_origin_regex=r"https?://.*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
