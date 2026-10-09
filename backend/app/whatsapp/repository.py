@@ -49,7 +49,7 @@ class MessageRepository:
         return _serialize_doc(doc) if doc else None
 
     @staticmethod
-    def find_by_conversation(conversation_id: str) -> List[dict]:
+    def find_by_conversation(conversation_id: str, scope: Optional[dict] = None) -> List[dict]:
         try:
             import hashlib, re
             cleaned_phone = re.sub(r"\D", "", conversation_id or "")
@@ -61,23 +61,38 @@ class MessageRepository:
                 or_conditions.append({"recipient_phone": {"$regex": cleaned_phone}})
                 or_conditions.append({"sender_phone": {"$regex": cleaned_phone}})
                 
-            docs = whatsapp_message_collection.find({"$or": or_conditions}).sort("created_at", 1)
+            query = {
+                "$and": [
+                    {"$or": or_conditions},
+                    scope or {},
+                    {
+                        "mode": {"$ne": "simulation"},
+                        "source": {"$ne": "simulation"},
+                        "recipient": {"$nin": ["Rahul Sharma", "Priya Patel", "Amit Verma", "Sneha Gupta", "Rohit Singh", "Customer"]},
+                        "recipient_phone": {"$nin": ["+91 98765 43210", "+91 98765 43211", "+91 98765 43212", "+91 98765 43213", "+91 98765 43214", "+91-0000000000", "1234"]}
+                    }
+                ]
+            }
+            docs = whatsapp_message_collection.find(query).sort("created_at", 1)
             return [_serialize_doc(d) for d in docs]
         except Exception as e:
             print(f"[MongoDB Error] find_by_conversation failed: {e}", flush=True)
             return []
 
     @staticmethod
-    def get_conversations() -> List[dict]:
-        """Get the latest message per conversation for the sidebar list."""
-        try:
-            from app.whatsapp.services.message_service import seed_default_conversations_if_empty
-            seed_default_conversations_if_empty()
-        except Exception:
-            pass
-
+    def get_conversations(scope: Optional[dict] = None) -> List[dict]:
+        """Get the latest real message per conversation for the sidebar list."""
         try:
             pipeline = [
+                {"$match": {
+                    **(scope or {}),
+                    "mode": {"$ne": "simulation"},
+                    "source": {"$ne": "simulation"},
+                    "recipient": {"$nin": ["Rahul Sharma", "Priya Patel", "Amit Verma", "Sneha Gupta", "Rohit Singh", "Customer"]},
+                    "sender": {"$nin": ["Rahul Sharma", "Priya Patel", "Amit Verma", "Sneha Gupta", "Rohit Singh", "Customer"]},
+                    "recipient_phone": {"$nin": ["+91 98765 43210", "+91 98765 43211", "+91 98765 43212", "+91 98765 43213", "+91 98765 43214", "+91-9876543210", "+91-9876543211", "+91-9876543212", "+91-9876543213", "+91-9876543214", "+91-0000000000", "1234"]},
+                    "sender_phone": {"$nin": ["+91 98765 43210", "+91 98765 43211", "+91 98765 43212", "+91 98765 43213", "+91 98765 43214", "+91-9876543210", "+91-9876543211", "+91-9876543212", "+91-9876543213", "+91-9876543214", "+91-0000000000", "1234"]},
+                }},
                 {"$sort": {"created_at": -1}},
                 {"$group": {
                     "_id": "$conversation_id",
@@ -120,6 +135,7 @@ class MessageRepository:
                     "recipient": contact_name or "Unknown",
                     "recipient_phone": contact_phone or "",
                     "updated_at": msg.get("created_at", ""),
+                    "number_id": msg.get("number_id"),
                 })
             return conversations
         except Exception as e:
@@ -154,19 +170,20 @@ class MessageRepository:
         return whatsapp_message_collection.count_documents(filters or {})
 
     @staticmethod
-    def count_today() -> int:
+    def count_today(scope: Optional[dict] = None) -> int:
         today = datetime.utcnow().strftime("%Y-%m-%d")
         return whatsapp_message_collection.count_documents({
+            **(scope or {}),
             "created_at": {"$regex": f"^{today}"},
             "direction": "outbound"
         })
 
     @staticmethod
-    def count_by_status(status: str) -> int:
-        return whatsapp_message_collection.count_documents({"status": status})
+    def count_by_status(status: str, scope: Optional[dict] = None) -> int:
+        return whatsapp_message_collection.count_documents({"status": status, **(scope or {})})
 
     @staticmethod
-    def find_duplicate_message(wamid_or_id: str, sender_phone: str = None, content: str = None) -> Optional[dict]:
+    def find_duplicate_message(wamid_or_id: str, sender_phone: str = None, content: str = None, scope: Optional[dict] = None) -> Optional[dict]:
         """Check for duplicate message using wamid, message ID, or sender+content+timestamp."""
         if not wamid_or_id and not (sender_phone and content):
             return None
@@ -192,13 +209,14 @@ class MessageRepository:
                 "direction": "inbound",
             })
 
-        doc = whatsapp_message_collection.find_one({"$or": queries})
+        query = {"$and": [{"$or": queries}, scope]} if scope else {"$or": queries}
+        doc = whatsapp_message_collection.find_one(query)
         return _serialize_doc(doc) if doc else None
 
     @staticmethod
-    def _build_replies_query(filters: dict = None) -> dict:
+    def _build_replies_query(filters: dict = None, scope: Optional[dict] = None) -> dict:
         """Construct MongoDB query dictionary for customer replies."""
-        query = {"direction": "inbound"}
+        query = {"direction": "inbound", **(scope or {})}
         if not filters:
             return query
 
@@ -317,39 +335,40 @@ class MessageRepository:
         return query
 
     @staticmethod
-    def get_customer_replies(filters: dict = None, limit: int = 500, skip: int = 0) -> List[dict]:
+    def get_customer_replies(filters: dict = None, limit: int = 500, skip: int = 0, scope: Optional[dict] = None) -> List[dict]:
         """Fetch customer replies matching filters."""
-        query = MessageRepository._build_replies_query(filters)
+        query = MessageRepository._build_replies_query(filters, scope)
         docs = whatsapp_message_collection.find(query).sort("created_at", -1).skip(skip).limit(limit)
         return [_serialize_doc(d) for d in docs]
 
     @staticmethod
-    def count_customer_replies(filters: dict = None) -> int:
+    def count_customer_replies(filters: dict = None, scope: Optional[dict] = None) -> int:
         """Count customer replies matching filters."""
-        query = MessageRepository._build_replies_query(filters)
+        query = MessageRepository._build_replies_query(filters, scope)
         return whatsapp_message_collection.count_documents(query)
 
     @staticmethod
-    def get_reply_stats() -> dict:
+    def get_reply_stats(scope: Optional[dict] = None) -> dict:
         """Calculate summary KPIs for customer replies."""
         today_str = datetime.utcnow().strftime("%Y-%m-%d")
-        total_replies = whatsapp_message_collection.count_documents({"direction": "inbound"})
+        inbound = {"direction": "inbound", **(scope or {})}
+        total_replies = whatsapp_message_collection.count_documents(inbound)
         today_replies = whatsapp_message_collection.count_documents({
-            "direction": "inbound",
+            **inbound,
             "created_at": {"$regex": f"^{today_str}"}
         })
         unread_replies = whatsapp_message_collection.count_documents({
-            "direction": "inbound",
+            **inbound,
             "status": {"$ne": "read"}
         })
         text_replies = whatsapp_message_collection.count_documents({
-            "direction": "inbound",
+            **inbound,
             "message_type": "text"
         })
         media_replies = total_replies - text_replies
 
         # Unique customer count
-        distinct_senders = whatsapp_message_collection.distinct("sender_phone", {"direction": "inbound"})
+        distinct_senders = whatsapp_message_collection.distinct("sender_phone", inbound)
 
         return {
             "total_replies": total_replies,
@@ -395,9 +414,10 @@ class TemplateRepository:
             return None
 
     @staticmethod
-    def get_all(active_only: bool = False, filters: dict = None) -> List[dict]:
+    def get_all(active_only: bool = False, filters: dict = None, scope: Optional[dict] = None) -> List[dict]:
         try:
             query = {"is_active": True} if active_only else {}
+            query.update(scope or {})
             if filters:
                 if "content_types" in filters and filters["content_types"]:
                     query["content_type"] = {"$in": filters["content_types"]}
@@ -419,9 +439,9 @@ class TemplateRepository:
             return []
 
     @staticmethod
-    def get_template_names() -> List[str]:
+    def get_template_names(scope: Optional[dict] = None) -> List[str]:
         try:
-            names = whatsapp_template_collection.distinct("name")
+            names = whatsapp_template_collection.distinct("name", scope or {})
             return sorted([n for n in names if n])
         except Exception:
             return []
@@ -471,13 +491,13 @@ class AutomationLogRepository:
         return automation_log_collection.count_documents(filters or {})
 
     @staticmethod
-    def get_latest(n: int = 10) -> List[dict]:
-        docs = automation_log_collection.find().sort("execution_time", -1).limit(n)
+    def get_latest(n: int = 10, scope: Optional[dict] = None) -> List[dict]:
+        docs = automation_log_collection.find(scope or {}).sort("execution_time", -1).limit(n)
         return [_serialize_doc(d) for d in docs]
 
     @staticmethod
-    def count_by_status(status: str) -> int:
-        return automation_log_collection.count_documents({"status": status})
+    def count_by_status(status: str, scope: Optional[dict] = None) -> int:
+        return automation_log_collection.count_documents({"status": status, **(scope or {})})
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -579,10 +599,16 @@ class DNDRepository:
     @staticmethod
     def is_dnd(phone_number: str) -> bool:
         """Check if a phone number is currently in DND list."""
-        clean_phone = DNDRepository._normalize_phone(phone_number)
+        clean_phone = DNDRepository._normalize_phone(phone_number or "")
         if not clean_phone:
             return False
-        doc = whatsapp_dnd_collection.find_one({"clean_phone": clean_phone, "is_active": True})
+        # Match regardless of whether the number was stored with or without the country code.
+        candidates = {clean_phone}
+        if len(clean_phone) >= 10:
+            import os
+            local = clean_phone[-10:]
+            candidates.update({local, os.getenv("WHATSAPP_DEFAULT_COUNTRY_CODE", "91") + local})
+        doc = whatsapp_dnd_collection.find_one({"clean_phone": {"$in": list(candidates)}, "is_active": True})
         return doc is not None
 
     @staticmethod
@@ -673,7 +699,7 @@ class ChatAccessLogRepository:
         return access_data
 
     @staticmethod
-    def find_latest_unreplied(manager_id_or_email: str, conversation_id: str, contact_phone: str = None) -> Optional[dict]:
+    def find_latest_unreplied(manager_id_or_email: str, conversation_id: str, contact_phone: str = None, scope: Optional[dict] = None) -> Optional[dict]:
         """
         Find the most recent unreplied access record for a specific manager and conversation/phone.
         Used to mark replied_to_customer = True when that manager sends an outbound message.
@@ -690,6 +716,7 @@ class ChatAccessLogRepository:
             conv_cond.append({"contact_phone": {"$regex": re.escape(contact_phone.strip()), "$options": "i"}})
 
         query = {
+            **(scope or {}),
             "replied_to_customer": False,
             "$or": conv_cond,
             "$and": [
@@ -728,9 +755,9 @@ class ChatAccessLogRepository:
         return result.modified_count > 0
 
     @staticmethod
-    def _build_query(filters: dict = None) -> dict:
+    def _build_query(filters: dict = None, scope: Optional[dict] = None) -> dict:
         """Build MongoDB query for Chat Access Audit Logs."""
-        query = {}
+        query = dict(scope or {})
         if not filters:
             return query
 
@@ -801,27 +828,28 @@ class ChatAccessLogRepository:
         return query
 
     @staticmethod
-    def get_all(filters: dict = None, limit: int = 200, skip: int = 0) -> List[dict]:
+    def get_all(filters: dict = None, limit: int = 200, skip: int = 0, scope: Optional[dict] = None) -> List[dict]:
         """Fetch audit logs with filters and pagination."""
-        query = ChatAccessLogRepository._build_query(filters)
+        query = ChatAccessLogRepository._build_query(filters, scope)
         docs = chat_access_log_collection.find(query).sort("chat_opened_at", -1).skip(skip).limit(limit)
         return [_serialize_doc(d) for d in docs]
 
     @staticmethod
-    def count(filters: dict = None) -> int:
+    def count(filters: dict = None, scope: Optional[dict] = None) -> int:
         """Count audit logs with filters."""
-        query = ChatAccessLogRepository._build_query(filters)
+        query = ChatAccessLogRepository._build_query(filters, scope)
         return chat_access_log_collection.count_documents(query)
 
     @staticmethod
-    def get_stats() -> dict:
+    def get_stats(scope: Optional[dict] = None) -> dict:
         """Calculate aggregated KPI metrics for Chat Access History."""
-        total_openings = chat_access_log_collection.count_documents({})
-        replied_count = chat_access_log_collection.count_documents({"replied_to_customer": True})
-        unreplied_count = chat_access_log_collection.count_documents({"replied_to_customer": False})
+        base = dict(scope or {})
+        total_openings = chat_access_log_collection.count_documents(base)
+        replied_count = chat_access_log_collection.count_documents({**base, "replied_to_customer": True})
+        unreplied_count = chat_access_log_collection.count_documents({**base, "replied_to_customer": False})
         
-        distinct_managers = chat_access_log_collection.distinct("manager_email")
-        distinct_customers = chat_access_log_collection.distinct("contact_phone")
+        distinct_managers = chat_access_log_collection.distinct("manager_email", base)
+        distinct_customers = chat_access_log_collection.distinct("contact_phone", base)
         
         reply_rate = round((replied_count / total_openings * 100), 1) if total_openings > 0 else 0.0
 

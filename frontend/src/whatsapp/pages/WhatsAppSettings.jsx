@@ -1,20 +1,25 @@
 import { useEffect, useState } from "react";
 import WhatsAppHeader from "../components/WhatsAppHeader";
-import { getWhatsAppSettings, updateWhatsAppSettings } from "../services/whatsappApi";
-import { FiSettings, FiSave, FiCheckCircle, FiAlertCircle, FiWifi, FiServer, FiKey, FiPhone, FiHash } from "react-icons/fi";
+import WhatsAppDiagnostics from "../components/WhatsAppDiagnostics";
+import WhatsAppNumberManager, { ConnectionBadge } from "../components/WhatsAppNumberManager";
+import { useWhatsAppNumber } from "../context/WhatsAppNumberContext";
+import { useToast } from "../../context/ToastContext";
+import { apiErrorMessage, getWhatsAppSettings, updateWhatsAppSettings } from "../services/whatsappApi";
+import { FiSave, FiCheckCircle, FiWifi, FiServer, FiKey, FiPhone, FiEdit2 } from "react-icons/fi";
 
 function WhatsAppSettings() {
+    const { showToast } = useToast();
+    const numberCtx = useWhatsAppNumber();
+    const selected = numberCtx?.selected || null;
     const [settings, setSettings] = useState(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false);
+    const [editRequest, setEditRequest] = useState(null);
+    // Global settings only — Meta credentials belong to each business number.
     const [formData, setFormData] = useState({
         provider: "simulation",
         webhook_url: "",
-        api_url: "",
-        api_key: "",
-        phone_number_id: "",
-        business_account_id: "",
         is_active: true,
     });
 
@@ -26,10 +31,6 @@ function WhatsAppSettings() {
                 setFormData({
                     provider: data.provider || "simulation",
                     webhook_url: data.webhook_url || "",
-                    api_url: data.api_url || "",
-                    api_key: data.api_key || "",
-                    phone_number_id: data.phone_number_id || "",
-                    business_account_id: data.business_account_id || "",
                     is_active: data.is_active !== false,
                 });
             }
@@ -52,7 +53,7 @@ function WhatsAppSettings() {
             setTimeout(() => setSaved(false), 3000);
             await fetchSettings();
         } catch (err) {
-            console.error("Save error:", err);
+            showToast(apiErrorMessage(err, "Could not save settings"), "error");
         } finally {
             setSaving(false);
         }
@@ -65,6 +66,8 @@ function WhatsAppSettings() {
     ];
 
     const isSimulation = formData.provider === "simulation";
+    const status = selected?.connection?.status;
+    const callbackUrl = formData.webhook_url || `${(import.meta.env.VITE_API_BASE_URL || "http://localhost:8000").replace(/\/$/, "")}/api/whatsapp/webhook`;
 
     if (loading) {
         return (
@@ -79,7 +82,8 @@ function WhatsAppSettings() {
         <div className="space-y-6 mt-2 pb-12 animate-fade-in">
             <WhatsAppHeader activeTab="settings" />
 
-            <form onSubmit={handleSave} className="space-y-6">
+            {/* Not a <form>: the number editor below is a form of its own and forms cannot be nested. */}
+            <div className="space-y-6">
                 {/* Messaging Provider Selector */}
                 <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-2xs space-y-4">
                     <h3 className="text-sm font-bold text-slate-900 font-display">Messaging Provider Abstraction</h3>
@@ -111,49 +115,72 @@ function WhatsAppSettings() {
                     </div>
                 </div>
 
-                {/* Connection Status Card */}
+                {/* Business numbers (multi-number / multi-WABA) */}
+                <WhatsAppNumberManager callbackUrl={callbackUrl} editRequest={editRequest} />
+
+                {/* Connection Status Card — selected number */}
                 <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-2xs space-y-3">
                     <h3 className="text-sm font-bold text-slate-900 font-display">Connection & Health Status</h3>
                     <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-xl border border-slate-100">
-                        <div className={`w-3.5 h-3.5 rounded-full ${settings?.is_active ? "bg-emerald-500 shadow-sm shadow-emerald-500/50" : "bg-rose-500"} animate-pulse`}></div>
-                        <div>
-                            <p className="text-xs font-bold text-slate-800">{settings?.provider_info?.name || "Simulation Mode"}</p>
+                        <div className={`w-3.5 h-3.5 rounded-full ${isSimulation ? "bg-amber-400" : status === "connected" ? "bg-emerald-500 shadow-sm shadow-emerald-500/50" : status === "error" ? "bg-rose-500" : "bg-amber-400"} animate-pulse`}></div>
+                        <div className="min-w-0 flex-1">
+                            <p className="text-xs font-bold text-slate-800">
+                                {settings?.provider_info?.name || "Simulation Mode"}
+                                {selected && <span className="font-normal text-slate-500"> · {selected.display_name} ({selected.phone_number || selected.phone_number_id})</span>}
+                            </p>
                             <p className="text-[10px] text-slate-400">
                                 {isSimulation
                                     ? "Active — 100% simulated response cycles for local testing"
-                                    : settings?.is_active ? "Connected to Meta Graph API" : "Disconnected — configure credentials below"}
+                                    : !selected
+                                        ? "No WhatsApp business number selected — add or select a number above"
+                                        : !selected.is_active
+                                            ? "This number is deactivated — it cannot send messages"
+                                            : selected.connection?.message || "Connection not tested yet — use Test connection above"}
                             </p>
                         </div>
+                        {!isSimulation && selected && <ConnectionBadge number={selected} />}
                     </div>
                 </div>
 
-                {/* API Credentials */}
+                {/* API Credentials — of the selected number */}
                 <div className={`bg-white border border-slate-200/80 rounded-2xl p-6 shadow-2xs space-y-4 transition-opacity ${isSimulation ? "opacity-60" : ""}`}>
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                        <h3 className="text-sm font-bold text-slate-900 font-display">API Credentials & Endpoints</h3>
-                        {isSimulation && (
-                            <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-100 uppercase">
-                                Not required in Simulation Mode
-                            </span>
-                        )}
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-3 gap-2">
+                        <div>
+                            <h3 className="text-sm font-bold text-slate-900 font-display">API Credentials & Endpoints</h3>
+                            {selected && <p className="text-[10px] text-slate-400">Showing the selected number: {selected.display_name}</p>}
+                        </div>
+                        <div className="flex items-center gap-2">
+                            {isSimulation && (
+                                <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-100 uppercase">
+                                    Not required in Simulation Mode
+                                </span>
+                            )}
+                            {selected && numberCtx?.canManage && (
+                                <button type="button" onClick={() => setEditRequest({ id: selected.id, at: Date.now() })}
+                                    className="flex items-center gap-1 text-[11px] font-semibold text-slate-600 px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer">
+                                    <FiEdit2 size={11} /> Edit configuration
+                                </button>
+                            )}
+                        </div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                             <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1"><FiWifi size={11} /> Webhook Callback URL</label>
                             <input type="text" value={formData.webhook_url} onChange={(e) => setFormData({ ...formData, webhook_url: e.target.value })} disabled={isSimulation} className="w-full px-3.5 py-2.5 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 disabled:bg-slate-50 disabled:text-slate-400 font-mono" placeholder="https://your-domain.com/api/whatsapp/webhook" />
+                            <p className="text-[10px] text-slate-400 mt-1">One callback URL serves every number; events are routed by Phone Number ID.</p>
                         </div>
                         <div>
                             <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1"><FiServer size={11} /> Meta Graph API URL</label>
-                            <input type="text" value={formData.api_url} onChange={(e) => setFormData({ ...formData, api_url: e.target.value })} disabled={isSimulation} className="w-full px-3.5 py-2.5 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 disabled:bg-slate-50 disabled:text-slate-400 font-mono" placeholder="https://graph.facebook.com/v18.0" />
+                            <input type="text" readOnly value={selected?.graph_api_url || ""} className="w-full px-3.5 py-2.5 text-xs border border-slate-200 rounded-xl bg-slate-50 text-slate-600 font-mono" placeholder="Generated from the selected number" />
                         </div>
                         <div>
                             <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1"><FiKey size={11} /> System User Token (API Key)</label>
-                            <input type="password" value={formData.api_key} onChange={(e) => setFormData({ ...formData, api_key: e.target.value })} disabled={isSimulation} className="w-full px-3.5 py-2.5 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 disabled:bg-slate-50 disabled:text-slate-400 font-mono" placeholder="••••••••••••••••••••" />
+                            <input type="text" readOnly value={selected ? (selected.token_configured ? `${selected.token_hint}${selected.token_source === "env" ? "  (server environment)" : ""}` : "Not configured") : ""} className="w-full px-3.5 py-2.5 text-xs border border-slate-200 rounded-xl bg-slate-50 text-slate-600 font-mono" placeholder="••••••••••••••••••••" />
                         </div>
                         <div>
                             <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1"><FiPhone size={11} /> WhatsApp Phone Number ID</label>
-                            <input type="text" value={formData.phone_number_id} onChange={(e) => setFormData({ ...formData, phone_number_id: e.target.value })} disabled={isSimulation} className="w-full px-3.5 py-2.5 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 disabled:bg-slate-50 disabled:text-slate-400 font-mono" placeholder="102938475610" />
+                            <input type="text" readOnly value={selected?.phone_number_id || ""} className="w-full px-3.5 py-2.5 text-xs border border-slate-200 rounded-xl bg-slate-50 text-slate-600 font-mono" placeholder="Select or add a number" />
                         </div>
                     </div>
                 </div>
@@ -161,7 +188,8 @@ function WhatsAppSettings() {
                 {/* Save Button */}
                 <div className="flex items-center gap-4 pt-2">
                     <button
-                        type="submit"
+                        type="button"
+                        onClick={handleSave}
                         disabled={saving}
                         className="flex items-center gap-2 bg-[#25D366] hover:bg-emerald-600 text-white px-6 py-2.5 rounded-xl text-xs font-semibold shadow-md shadow-emerald-500/20 transition cursor-pointer disabled:opacity-50"
                     >
@@ -174,7 +202,9 @@ function WhatsAppSettings() {
                         </span>
                     )}
                 </div>
-            </form>
+            </div>
+
+            <WhatsAppDiagnostics />
         </div>
     );
 }

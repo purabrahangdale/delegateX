@@ -4,8 +4,9 @@ import {
     FiSearch, FiPlus, FiSend, FiFileText, FiUsers, FiDownload,
     FiMessageCircle, FiX, FiCheckCircle
 } from "react-icons/fi";
+import WhatsAppNumberSelector from "./WhatsAppNumberSelector";
 
-function WhatsAppHeader({ activeTab = "dashboard", onSearchChange, searchQuery = "", filterComponent = null }) {
+function WhatsAppHeader({ activeTab = "dashboard", onSearchChange, searchQuery = "", filterComponent = null, onImportContacts = null }) {
     const navigate = useNavigate();
     const [localSearch, setLocalSearch] = useState(searchQuery);
     const [isExporting, setIsExporting] = useState(false);
@@ -38,7 +39,7 @@ function WhatsAppHeader({ activeTab = "dashboard", onSearchChange, searchQuery =
 
 
     return (
-        <div className="space-y-4 mb-6 animate-fade-in">
+        <div className="relative z-30 space-y-4 mb-6 animate-fade-in">
             {/* Main Header Bar */}
             <div className="bg-white/90 backdrop-blur-md border border-slate-200/80 rounded-2xl p-5 shadow-[0_2px_12px_rgba(15,23,42,0.02)] flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 sticky top-0 z-20">
                 {/* Left: Branding & Subtitle */}
@@ -53,7 +54,13 @@ function WhatsAppHeader({ activeTab = "dashboard", onSearchChange, searchQuery =
                             WhatsApp Automation
                         </h1>
                     </div>
+                    {/* <div className="hidden sm:block ml-1">
+                        <WhatsAppNumberSelector />
+                    </div> */}
                 </div>
+                {/* <div className="sm:hidden">
+                    <WhatsAppNumberSelector />
+                </div> */}
 
                 {/* Right: Quick Action Toolbar */}
                 <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 shrink-0">
@@ -82,7 +89,13 @@ function WhatsAppHeader({ activeTab = "dashboard", onSearchChange, searchQuery =
                     </button>
 
                     <button
-                        onClick={() => navigate("/whatsapp/contacts")}
+                        onClick={() => {
+                            if (onImportContacts) {
+                                onImportContacts();
+                            } else {
+                                navigate("/whatsapp/contacts?openImport=true");
+                            }
+                        }}
                         className="flex items-center gap-1.5 bg-white border border-slate-200/90 text-slate-700 hover:bg-slate-50 px-3 py-2 rounded-xl text-xs font-semibold shadow-xs transition duration-200 cursor-pointer hidden sm:flex"
                     >
                         <FiUsers size={13} className="text-slate-500" />

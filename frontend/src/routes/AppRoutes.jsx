@@ -32,6 +32,7 @@ import WhatsAppReports from "../whatsapp/pages/WhatsAppReports";
 import WhatsAppTemplateInsights from "../whatsapp/pages/WhatsAppTemplateInsights";
 import WhatsAppDND from "../whatsapp/pages/WhatsAppDND";
 import ChatAccessHistory from "../whatsapp/pages/ChatAccessHistory";
+import { WhatsAppNumberLayout } from "../whatsapp/context/WhatsAppNumberContext";
 
 function AppRoutes() {
     return (
@@ -57,7 +58,8 @@ function AppRoutes() {
 
                     <Route path="/crm/:view" element={<CRMView />} />
 
-                    {/* WhatsApp Automation */}
+                    {/* WhatsApp Automation — every page works on the globally selected business number */}
+                    <Route element={<WhatsAppNumberLayout />}>
                     <Route path="/whatsapp/dashboard" element={<WhatsAppDashboard />} />
                     <Route path="/whatsapp/campaigns" element={<WhatsAppCampaigns />} />
                     <Route path="/whatsapp/bulk-send" element={<WhatsAppCampaigns isWizardOnly={true} />} />
@@ -74,6 +76,7 @@ function AppRoutes() {
                     <Route path="/whatsapp/access-history" element={<ChatAccessHistory />} />
                     <Route path="/whatsapp/logs" element={<WhatsAppLogs />} />
                     <Route path="/whatsapp/settings" element={<WhatsAppSettings />} />
+                    </Route>
 
 
                     <Route path="/settings/users" element={<UserManagement />} />

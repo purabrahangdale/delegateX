@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import WhatsAppHeader from "../components/WhatsAppHeader";
-import { getWhatsAppDashboardStats, triggerAutomation } from "../services/whatsappApi";
+import { getWhatsAppDashboardStats, triggerAutomation, isEventForActiveNumber } from "../services/whatsappApi";
 import { useWebSockets } from "../../context/WebSocketContext";
 import {
     FiSend, FiClock, FiCalendar, FiCheckCircle, FiXCircle, FiZap,
@@ -35,7 +35,7 @@ function WhatsAppDashboard() {
     useEffect(() => {
         if (!whatsappSocket) return;
         const handleEvent = (data) => {
-            if (data.event === "new_message" || data.event === "automation_log_created") {
+            if ((data.event === "new_message" || data.event === "automation_log_created") && isEventForActiveNumber(data.data)) {
                 fetchStats();
             }
         };
@@ -55,93 +55,26 @@ function WhatsAppDashboard() {
         }
     };
 
+    const contactsCount = (() => {
+        try { return JSON.parse(localStorage.getItem("whatsapp_contacts_list") || "[]").length; } catch { return 0; }
+    })();
+    const o = stats?.outcomes_30d || {};
+    const rate = (v) => (v === null || v === undefined ? "—" : `${v}%`);
     const executiveCards = stats ? [
-        {
-            title: "Total Contacts",
-            value: "2,450",
-            growth: "+12.4%",
-            comparison: "Compared to last month",
-            trendUp: true,
-            icon: FiUsers,
-            color: "text-indigo-600 border-indigo-100 bg-indigo-50/50",
-            progress: 85
-        },
-        {
-            title: "Today's Messages",
-            value: stats.messages_sent_today || 0,
-            growth: "+8.2%",
-            comparison: "Compared to yesterday",
-            trendUp: true,
-            icon: FiSend,
-            color: "text-emerald-600 border-emerald-100 bg-emerald-50/50",
-            progress: 92
-        },
-        {
-            title: "Active Campaigns",
-            value: "4 Active",
-            growth: "3 Scheduled",
-            comparison: "2 Queue items",
-            trendUp: true,
-            icon: FiZap,
-            color: "text-blue-600 border-blue-100 bg-blue-50/50",
-            progress: 75
-        },
-        {
-            title: "Delivery Rate",
-            value: "98.4%",
-            growth: "↑ 4.2%",
-            comparison: "Compared to yesterday",
-            trendUp: true,
-            icon: FiCheckCircle,
-            color: "text-emerald-600 border-emerald-100 bg-emerald-50/50",
-            progress: 98
-        },
-        {
-            title: "Read Rate",
-            value: "86.2%",
-            growth: "↑ 3.1%",
-            comparison: "Compared to last week",
-            trendUp: true,
-            icon: FiMessageSquare,
-            color: "text-teal-600 border-teal-100 bg-teal-50/50",
-            progress: 86
-        },
-        {
-            title: "Reply Rate",
-            value: "34.8%",
-            growth: "↑ 5.0%",
-            comparison: "High customer engagement",
-            trendUp: true,
-            icon: FiTrendingUp,
-            color: "text-indigo-600 border-indigo-100 bg-indigo-50/50",
-            progress: 35
-        },
-        {
-            title: "Pending Replies",
-            value: stats.pending_messages || 0,
-            growth: "Avg 2 min",
-            comparison: "Active SLA Queue",
-            trendUp: false,
-            icon: FiClock,
-            color: "text-amber-600 border-amber-100 bg-amber-50/50",
-            progress: 20
-        },
-        {
-            title: "Failed Messages",
-            value: stats.failed_messages || 0,
-            growth: "0.4%",
-            comparison: "Low failure rate",
-            trendUp: false,
-            icon: FiXCircle,
-            color: "text-rose-600 border-rose-100 bg-rose-50/50",
-            progress: 4
-        },
+        { title: "Saved Contacts", value: contactsCount, growth: "", comparison: "WhatsApp contact list", icon: FiUsers, color: "text-indigo-600 border-indigo-100 bg-indigo-50/50", progress: null },
+        { title: "Messages Today", value: stats.messages_sent_today || 0, growth: "", comparison: "Outbound, created today", icon: FiSend, color: "text-emerald-600 border-emerald-100 bg-emerald-50/50", progress: null },
+        { title: "Active Campaigns", value: stats.campaigns?.active ?? 0, growth: `${stats.campaigns?.scheduled ?? 0} scheduled`, comparison: `${stats.campaigns?.completed ?? 0} finished`, icon: FiZap, color: "text-blue-600 border-blue-100 bg-blue-50/50", progress: null },
+        { title: "Delivery Rate (30d)", value: rate(o.delivery_rate), growth: `${o.delivered ?? 0} delivered`, comparison: `of ${o.accepted ?? 0} accepted by Meta`, icon: FiCheckCircle, color: "text-emerald-600 border-emerald-100 bg-emerald-50/50", progress: o.delivery_rate },
+        { title: "Read Rate (30d)", value: rate(o.read_rate), growth: `${o.read ?? 0} read`, comparison: "of delivered messages", icon: FiMessageSquare, color: "text-teal-600 border-teal-100 bg-teal-50/50", progress: o.read_rate },
+        { title: "Customer Replies (30d)", value: o.replies ?? 0, growth: "", comparison: "Inbound messages received", icon: FiTrendingUp, color: "text-indigo-600 border-indigo-100 bg-indigo-50/50", progress: null },
+        { title: "Awaiting Status", value: Math.max(0, (o.accepted ?? 0) - (o.delivered ?? 0) - (o.failed ?? 0)), growth: "", comparison: "Accepted, no delivery webhook yet", icon: FiClock, color: "text-amber-600 border-amber-100 bg-amber-50/50", progress: null },
+        { title: "Failed (30d)", value: o.failed ?? 0, growth: rate(o.failure_rate), comparison: "of accepted messages", icon: FiXCircle, color: "text-rose-600 border-rose-100 bg-rose-50/50", progress: o.failure_rate },
     ] : [];
 
     const workflows = [
-        { id: "followup-reminder", label: "Follow-up Reminders", desc: "Send reminders to active leads" },
-        { id: "meeting-reminder", label: "Meeting Reminders", desc: "Remind clients of today's meetings" },
-        { id: "daily-report", label: "Daily Lead Report", desc: "Generate CRM lead summary" },
+        { id: "followup_reminder", label: "Follow-up Reminders", desc: "Runs the bound template automation (Automation page)" },
+        { id: "meeting_reminder", label: "Meeting Reminders", desc: "Today's meetings, once per meeting" },
+        { id: "daily_lead_report", label: "Daily Lead Report", desc: "CRM summary to the configured admin phone" },
     ];
 
     if (loading) {
@@ -196,12 +129,14 @@ function WhatsAppDashboard() {
                                     </span>
                                     <span className="text-slate-400 font-medium">{item.comparison}</span>
                                 </div>
-                                <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                                    <div
-                                        className="bg-emerald-500 h-1.5 rounded-full transition-all duration-500"
-                                        style={{ width: `${item.progress}%` }}
-                                    ></div>
-                                </div>
+                                {item.progress !== null && item.progress !== undefined && (
+                                    <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                                        <div
+                                            className="bg-emerald-500 h-1.5 rounded-full transition-all duration-500"
+                                            style={{ width: `${item.progress}%` }}
+                                        ></div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     );
@@ -275,12 +210,12 @@ function WhatsAppDashboard() {
                             <div className="flex items-center justify-between p-3.5 bg-slate-50/80 rounded-xl border border-slate-100">
                                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Scheduler Service</span>
                                 <span className={`text-[10px] font-extrabold px-2.5 py-1 rounded-md border ${stats?.scheduler?.running ? "text-emerald-600 bg-emerald-50 border-emerald-100" : "text-amber-600 bg-amber-50 border-amber-100"}`}>
-                                    {stats?.scheduler?.running ? "Running (APScheduler)" : "Stopped"}
+                                    {stats?.scheduler?.running ? "Running" : "Stopped"}
                                 </span>
                             </div>
                             <div className="flex items-center justify-between p-3.5 bg-slate-50/80 rounded-xl border border-slate-100">
-                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">WebSocket Latency</span>
-                                <span className="text-[10px] font-bold text-slate-700 font-mono">14 ms</span>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Integration Health</span>
+                                <button onClick={() => navigate("/whatsapp/settings")} className="text-[10px] font-bold text-emerald-700 hover:underline cursor-pointer">Open diagnostics →</button>
                             </div>
                         </div>
                     </div>

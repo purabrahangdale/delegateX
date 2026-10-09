@@ -11,6 +11,7 @@ from enum import Enum
 
 class MessageStatus(str, Enum):
     QUEUED = "queued"
+    ACCEPTED = "accepted"  # Meta API returned a wamid; not yet confirmed sent by webhook
     SENT = "sent"
     DELIVERED = "delivered"
     READ = "read"
@@ -123,7 +124,15 @@ class WhatsAppTemplateCreate(BaseModel):
     variables: Optional[List[str]] = []
     description: Optional[str] = ""
     is_favorite: Optional[bool] = False
+    is_active: Optional[bool] = True
     response_buttons: Optional[List[Dict[str, Any]]] = []
+    # Meta template fields
+    meta_template_name: Optional[str] = None      # lowercase_underscore; derived from name if omitted
+    language: Optional[str] = "en_US"
+    meta_category: Optional[str] = "UTILITY"      # MARKETING | UTILITY
+    header: Optional[Dict[str, Any]] = None       # {"format": "NONE|TEXT|IMAGE|VIDEO|DOCUMENT", "text", "sample_url"}
+    footer: Optional[str] = ""
+    variable_examples: Optional[Dict[str, str]] = {}  # {"client_name": "John"} — required by Meta review
 
 
 class WhatsAppTemplateUpdate(BaseModel):
@@ -136,9 +145,13 @@ class WhatsAppTemplateUpdate(BaseModel):
     is_active: Optional[bool] = None
     description: Optional[str] = None
     is_favorite: Optional[bool] = None
-    views: Optional[int] = None
-    times_used: Optional[int] = None
     response_buttons: Optional[List[Dict[str, Any]]] = None
+    meta_template_name: Optional[str] = None
+    language: Optional[str] = None
+    meta_category: Optional[str] = None
+    header: Optional[Dict[str, Any]] = None
+    footer: Optional[str] = None
+    variable_examples: Optional[Dict[str, str]] = None
 
 
 class WhatsAppTemplate(BaseModel):
@@ -163,6 +176,41 @@ class WhatsAppTemplate(BaseModel):
     last_used_at: Optional[str] = None
     created_at: str = ""
     updated_at: str = ""
+
+
+# ── Campaign Models ───────────────────────────────────────────────
+
+class CampaignCreate(BaseModel):
+    """Create a draft campaign. Recipients are validated and stored server-side."""
+    name: str
+    purpose: Optional[str] = ""
+    template_id: str
+    variable_mapping: Dict[str, Dict[str, Any]] = {}   # slot key → {"source": "field"|"static", "value": str}
+    audience_source: str = "contacts"                  # contacts | crm_leads | employees
+    audience_label: Optional[str] = None
+    recipients: Optional[List[Dict[str, Any]]] = None  # required when audience_source == "contacts"
+    timezone: Optional[str] = "UTC"
+    client_request_id: Optional[str] = None            # idempotency key from the client (prevents double-create)
+
+
+class CampaignPreview(BaseModel):
+    template_id: str
+    variable_mapping: Dict[str, Dict[str, Any]] = {}
+    audience_source: str = "contacts"
+    recipients: Optional[List[Dict[str, Any]]] = None
+
+
+class CampaignLaunch(BaseModel):
+    confirm_consent: bool = False
+    scheduled_at: Optional[str] = None   # ISO-8601 with timezone offset; omitted = send now
+    timezone: Optional[str] = None
+
+
+class AutomationBindingUpdate(BaseModel):
+    enabled: bool = False
+    template_id: Optional[str] = None
+    variable_mapping: Dict[str, Dict[str, Any]] = {}
+    recipient_phone: Optional[str] = None
 
 
 # ── Automation Log Models ─────────────────────────────────────────
@@ -206,6 +254,54 @@ class AutomationSettings(BaseModel):
     is_active: bool = True
     configured_at: str = ""
     updated_at: str = ""
+
+
+# ── Business Number Models ────────────────────────────────────────
+
+class WhatsAppNumberCreate(BaseModel):
+    """Add a WhatsApp Business phone number. Secrets are write-only (never returned)."""
+    display_name: str
+    phone_number: str
+    purpose: Optional[str] = ""
+    business_portfolio_id: Optional[str] = ""
+    waba_id: str
+    waba_name: Optional[str] = ""
+    phone_number_id: str
+    access_token: Optional[str] = None
+    copy_token_from: Optional[str] = None          # internal number_id whose stored token to reuse (same system user)
+    graph_api_version: Optional[str] = None
+    app_id: Optional[str] = ""
+    app_secret: Optional[str] = None               # only if this WABA is subscribed by a different Meta app
+    allowed_users: Optional[List[str]] = None      # empty = every WhatsApp user may use this number
+    is_default: Optional[bool] = False
+
+
+class WhatsAppNumberUpdate(BaseModel):
+    display_name: Optional[str] = None
+    phone_number: Optional[str] = None
+    purpose: Optional[str] = None
+    business_portfolio_id: Optional[str] = None
+    waba_id: Optional[str] = None
+    waba_name: Optional[str] = None
+    phone_number_id: Optional[str] = None
+    access_token: Optional[str] = None             # blank / masked = keep the current token
+    graph_api_version: Optional[str] = None
+    app_id: Optional[str] = None
+    app_secret: Optional[str] = None
+    allowed_users: Optional[List[str]] = None
+
+
+class WhatsAppNumberVerify(BaseModel):
+    """Configuration to check against Meta before saving. Nothing is stored."""
+    number_id: Optional[str] = None                # set when verifying edits of a saved number
+    display_name: Optional[str] = None
+    phone_number: Optional[str] = None
+    business_portfolio_id: Optional[str] = None
+    waba_id: Optional[str] = None
+    phone_number_id: Optional[str] = None
+    access_token: Optional[str] = None             # blank / masked = stored token of `number_id`
+    copy_token_from: Optional[str] = None
+    graph_api_version: Optional[str] = None
 
 
 # ── Global DND Models ─────────────────────────────────────────────

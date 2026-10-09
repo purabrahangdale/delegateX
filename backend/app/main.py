@@ -116,9 +116,35 @@ async def startup_whatsapp_automation():
     try:
         from app.whatsapp.services.template_service import seed_default_templates
         from app.whatsapp.services.scheduler_service import start_schedulers
+        import asyncio
+        from app.whatsapp.indexes import ensure_indexes
+        from app.whatsapp.services.campaign_service import start_worker
+        from app.whatsapp.numbers import run_startup_migration
         seed_default_templates()
+        # Multi-number upgrade: move the single legacy Meta config into the number registry (once) and
+        # attach existing records to their number where the owning phone number ID is recorded.
+        print(f"[WhatsApp] Number registry migration: {run_startup_migration()}")
+        ensure_indexes()
         start_schedulers()
-        print("[WhatsApp] Templates seeded and schedulers started.")
+        start_worker()
+        print("[WhatsApp] Indexes ensured, schedulers and campaign worker started.")
+
+        async def _initial_template_sync():
+            from app.whatsapp.services.template_service import sync_templates_from_meta
+            from app.whatsapp.numbers import all_numbers
+            # One sync per WABA: numbers in the same WABA share the template catalogue.
+            seen_wabas = set()
+            for number in all_numbers(active_only=True):
+                if not number.get("waba_id") or number["waba_id"] in seen_wabas:
+                    continue
+                seen_wabas.add(number["waba_id"])
+                try:
+                    summary = await sync_templates_from_meta(number)
+                    print(f"[WhatsApp] Template sync from Meta (WABA {number['waba_id']}): {summary}")
+                except Exception as sync_err:
+                    print(f"[WhatsApp] Template sync skipped for WABA {number['waba_id']}: {sync_err}")
+
+        asyncio.create_task(_initial_template_sync())
     except Exception as e:
         err_msg = str(e)
         if "bad auth" in err_msg or "8000" in err_msg:

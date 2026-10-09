@@ -1,652 +1,255 @@
-import { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import WhatsAppHeader from "../components/WhatsAppHeader";
-import { triggerAutomation } from "../services/whatsappApi";
-import { useToast } from "../../context/ToastContext";
-import { useWebSockets } from "../../context/WebSocketContext";
+import TemplateSelector from "../components/TemplateSelector";
+import TemplateStatusBadge from "../components/TemplateStatusBadge";
+import VariableMappingEditor from "../components/VariableMappingEditor";
+import { suggestMapping, unmappedSlots } from "../components/variableMapping";
 import {
-    FiZap, FiPlay, FiPause, FiCheckCircle, FiClock, FiSettings, FiRefreshCw,
-    FiToggleLeft, FiToggleRight, FiActivity, FiCalendar, FiEye, FiEdit2,
-    FiCheck, FiX, FiInfo, FiChevronRight, FiGlobe, FiAlertCircle
-} from "react-icons/fi";
+    apiErrorMessage, getAutomationWorkflows, saveAutomationBinding, getAutomationRuns, getSendableTemplates, triggerAutomation,
+} from "../services/whatsappApi";
+import { useToast } from "../../context/ToastContext";
+import { FiZap, FiPlay, FiSettings, FiRefreshCw, FiX, FiAlertTriangle, FiCheckCircle, FiInfo } from "react-icons/fi";
 
-const INITIAL_SCHEDULER_DATA = [
-    {
-        id: "welcome-message",
-        name: "Welcome Message",
-        trigger: "New CRM Lead Created",
-        triggerType: "Event Trigger",
-        status: "Scheduled",
-        lastRun: "2026-07-24 10:00 AM",
-        nextRunDate: "2026-07-24",
-        nextRunTime: "16:30",
-        nextRunFormatted: "24 Jul 2026 04:30 PM",
-        targetTimeMs: Date.now() + (1 * 3600 + 22 * 60 + 18) * 1000,
-        schedule: "Instant / Continuous",
-        timeZone: "Asia/Kolkata (GMT+05:30)",
-        repeat: "Daily",
-        description: "Sent automatically when a new CRM lead is created.",
-        createdBy: "Sarah Jenkins",
-        createdOn: "2026-06-01",
-        lastModified: "2026-07-20",
-        totalExecutions: 1420,
-        successfulRuns: 1410,
-        failedRuns: 10,
-        avgTime: "120ms",
-        successRate: "99.2%",
-        enabled: true,
-    },
-    {
-        id: "followup-reminder",
-        name: "Follow-up Reminder",
-        trigger: "Scheduled (Daily 10:00 AM)",
-        triggerType: "Recurring Cron",
-        status: "Scheduled",
-        lastRun: "2026-07-24 10:00 AM",
-        nextRunDate: "2026-07-25",
-        nextRunTime: "10:00",
-        nextRunFormatted: "25 Jul 2026 10:00 AM",
-        targetTimeMs: Date.now() + (19 * 3600 + 32 * 60 + 40) * 1000,
-        schedule: "Daily at 10:00 AM",
-        timeZone: "Asia/Kolkata (GMT+05:30)",
-        repeat: "Daily",
-        description: "Sends automated follow-up messages to active CRM leads.",
-        createdBy: "Admin User",
-        createdOn: "2026-05-15",
-        lastModified: "2026-07-22",
-        totalExecutions: 850,
-        successfulRuns: 836,
-        failedRuns: 14,
-        avgTime: "340ms",
-        successRate: "98.4%",
-        enabled: true,
-    },
-    {
-        id: "meeting-reminder",
-        name: "Meeting Reminder",
-        trigger: "Scheduled (Daily 09:00 AM)",
-        triggerType: "Recurring Cron",
-        status: "Scheduled",
-        lastRun: "2026-07-24 09:00 AM",
-        nextRunDate: "2026-07-25",
-        nextRunTime: "09:00",
-        nextRunFormatted: "25 Jul 2026 09:00 AM",
-        targetTimeMs: Date.now() + (18 * 3600 + 32 * 60 + 40) * 1000,
-        schedule: "Daily at 09:00 AM",
-        timeZone: "Asia/Kolkata (GMT+05:30)",
-        repeat: "Daily",
-        description: "Reminds clients 1 hour before scheduled consultation meetings.",
-        createdBy: "David Miller",
-        createdOn: "2026-06-10",
-        lastModified: "2026-07-21",
-        totalExecutions: 520,
-        successfulRuns: 519,
-        failedRuns: 1,
-        avgTime: "210ms",
-        successRate: "99.8%",
-        enabled: true,
-    },
-    {
-        id: "task-assigned",
-        name: "Task Assignment Notification",
-        trigger: "Delegation Task Created",
-        triggerType: "Event Hook",
-        status: "Scheduled",
-        lastRun: "2026-07-23 04:15 PM",
-        nextRunDate: "2026-07-24",
-        nextRunTime: "18:00",
-        nextRunFormatted: "24 Jul 2026 06:00 PM",
-        targetTimeMs: Date.now() + (3 * 3600 + 2 * 60 + 10) * 1000,
-        schedule: "Event Triggered",
-        timeZone: "Asia/Kolkata (GMT+05:30)",
-        repeat: "Once",
-        description: "Notifies employees via WhatsApp when a new delegation task is assigned.",
-        createdBy: "Sarah Jenkins",
-        createdOn: "2026-06-12",
-        lastModified: "2026-07-18",
-        totalExecutions: 310,
-        successfulRuns: 310,
-        failedRuns: 0,
-        avgTime: "150ms",
-        successRate: "100%",
-        enabled: true,
-    },
-    {
-        id: "daily-report",
-        name: "Daily Executive Lead Report",
-        trigger: "Scheduled (Daily 08:00 PM)",
-        triggerType: "Cron Schedule",
-        status: "Scheduled",
-        lastRun: "2026-07-23 08:00 PM",
-        nextRunDate: "2026-07-24",
-        nextRunTime: "20:00",
-        nextRunFormatted: "24 Jul 2026 08:00 PM",
-        targetTimeMs: Date.now() + (5 * 3600 + 2 * 60 + 10) * 1000,
-        schedule: "Daily at 08:00 PM",
-        timeZone: "Asia/Kolkata (GMT+05:30)",
-        repeat: "Daily",
-        description: "Generates CRM daily summary report and dispatches to executive admin.",
-        createdBy: "Admin User",
-        createdOn: "2026-05-01",
-        lastModified: "2026-07-19",
-        totalExecutions: 450,
-        successfulRuns: 439,
-        failedRuns: 11,
-        avgTime: "620ms",
-        successRate: "97.5%",
-        enabled: true,
-    }
-];
+const RUNNABLE = new Set(["followup_reminder", "meeting_reminder", "daily_lead_report", "daily_reply_report"]);
 
-function WhatsAppAutomation() {
-    const navigate = useNavigate();
+const RUN_STATUS = {
+    queued: "text-amber-700 bg-amber-50 border-amber-200",
+    skipped: "text-slate-600 bg-slate-50 border-slate-200",
+    failed: "text-rose-700 bg-rose-50 border-rose-200",
+    pending: "text-slate-600 bg-slate-50 border-slate-200",
+};
+const MESSAGE_STATE = {
+    accepted: "text-sky-700", sent: "text-teal-700", delivered: "text-emerald-700", read: "text-emerald-800",
+    failed: "text-rose-600", queued: "text-amber-600", unknown: "text-purple-700", skipped: "text-slate-500", invalid: "text-rose-600",
+};
+
+const fmt = (iso) => (iso ? new Date(iso.endsWith("Z") ? iso : `${iso}Z`).toLocaleString() : "—");
+
+function BindingEditor({ workflow, onClose, onSaved }) {
     const { showToast } = useToast();
-    const { whatsappSocket } = useWebSockets();
+    const [templates, setTemplates] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState(null);
+    const [template, setTemplate] = useState(null);
+    const [mapping, setMapping] = useState(workflow.binding?.variable_mapping || {});
+    const [enabled, setEnabled] = useState(!!workflow.binding?.enabled);
+    const [recipientPhone, setRecipientPhone] = useState(workflow.binding?.recipient_phone || "");
+    const [saving, setSaving] = useState(false);
+    const fieldOptions = useMemo(() => workflow.fields.map((f) => ({ value: f, label: f.replace(/_/g, " ") })), [workflow]);
 
-    const [workflows, setWorkflows] = useState(INITIAL_SCHEDULER_DATA);
-    const [triggering, setTriggering] = useState(null);
-    const [searchQuery, setSearchQuery] = useState("");
-
-    // Modal / Drawer States
-    const [editModal, setEditModal] = useState(null); // Automation item to edit schedule
-    const [detailsDrawer, setDetailsDrawer] = useState(null); // Automation item for deep dive
-
-    // Edit Schedule Form State
-    const [newDate, setNewDate] = useState("");
-    const [newTime, setNewTime] = useState("");
-    const [editTimeZone, setEditTimeZone] = useState("Asia/Kolkata (GMT+05:30)");
-    const [editRepeat, setEditRepeat] = useState("Daily");
-    const [changeReason, setChangeReason] = useState("");
-    const [savingSchedule, setSavingSchedule] = useState(false);
-
-    // Live Countdowns State Map
-    const [countdowns, setCountdowns] = useState({});
-
-    // Real-Time 1-Second Countdowns Loop
     useEffect(() => {
-        const timer = setInterval(() => {
-            const now = Date.now();
-            const newMap = {};
+        getSendableTemplates()
+            .then((list) => {
+                setTemplates(list);
+                const current = list.find((t) => t._id === workflow.binding?.template_id);
+                if (current) setTemplate(current);
+            })
+            .catch((e) => setLoadError(apiErrorMessage(e)))
+            .finally(() => setLoading(false));
+    }, [workflow]);
 
-            setWorkflows(prev => prev.map(w => {
-                if (w.status === "Paused" || !w.enabled) {
-                    newMap[w.id] = "Paused";
-                    return w;
-                }
+    const missing = template ? unmappedSlots(template.slots, mapping) : [];
 
-                const target = w.targetTimeMs || (now + 3600000);
-                const diff = target - now;
-
-                if (diff <= 0) {
-                    // Auto transition: Scheduled -> Running -> Completed -> Rescheduled
-                    if (w.status !== "Running") {
-                        if (showToast) showToast(`Automation "${w.name}" Started Automatically!`, "info");
-                        // Calculate next run date for repeat
-                        const nextTarget = now + (w.repeat === "Weekly" ? 7 : w.repeat === "Monthly" ? 30 : 1) * 86400 * 1000;
-                        return {
-                            ...w,
-                            status: "Running",
-                            lastRun: "Just Now",
-                            targetTimeMs: nextTarget,
-                            successfulRuns: (w.successfulRuns || 0) + 1,
-                            totalExecutions: (w.totalExecutions || 0) + 1
-                        };
-                    }
-                }
-
-                const days = Math.floor(Math.max(0, diff) / (1000 * 60 * 60 * 24));
-                const hours = Math.floor((Math.max(0, diff) / (1000 * 60 * 60)) % 24);
-                const minutes = Math.floor((Math.max(0, diff) / 1000 / 60) % 60);
-                const seconds = Math.floor((Math.max(0, diff) / 1000) % 60);
-
-                newMap[w.id] = `${days.toString().padStart(2, "0")}d ${hours.toString().padStart(2, "0")}h ${minutes.toString().padStart(2, "0")}m ${seconds.toString().padStart(2, "0")}s`;
-                return w;
-            }));
-
-            setCountdowns(newMap);
-        }, 1000);
-
-        return () => clearInterval(timer);
-    }, []);
-
-    // Instant Trigger (Run Now)
-    const handleRunNow = async (wf) => {
-        setTriggering(wf.id);
-        if (showToast) showToast(`Automation "${wf.name}" Started`, "info");
-
+    const save = async () => {
+        setSaving(true);
         try {
-            await triggerAutomation(wf.id, {
-                workflowName: wf.name,
-                template: wf.template || wf.name,
-                template_name: wf.template || wf.name
+            await saveAutomationBinding(workflow.key, {
+                enabled, template_id: template?._id || null, variable_mapping: mapping, recipient_phone: recipientPhone || null,
             });
+            showToast(`"${workflow.label}" saved${enabled ? " and enabled" : ""}.`, "success");
+            onSaved();
         } catch (e) {
-            console.warn("Manual trigger simulation", e);
-        }
-
-        setWorkflows(prev => prev.map(w => {
-            if (w.id === wf.id) {
-                return {
-                    ...w,
-                    status: "Running",
-                    lastRun: "Just Now",
-                    totalExecutions: w.totalExecutions + 1,
-                    successfulRuns: w.successfulRuns + 1
-                };
-            }
-            return w;
-        }));
-
-        setTimeout(() => {
-            setWorkflows(prev => prev.map(w => {
-                if (w.id === wf.id) {
-                    if (showToast) showToast(`Automation "${wf.name}" Completed Successfully`, "success");
-                    return { ...w, status: "Scheduled" };
-                }
-                return w;
-            }));
-            setTriggering(null);
-        }, 2000);
-    };
-
-    // Pause / Resume Controls
-    const handleTogglePause = (wf) => {
-        const isCurrentlyPaused = wf.status === "Paused";
-        const newStatus = isCurrentlyPaused ? "Scheduled" : "Paused";
-
-        setWorkflows(prev => prev.map(w => w.id === wf.id ? { ...w, status: newStatus, enabled: isCurrentlyPaused } : w));
-        
-        if (showToast) {
-            showToast(`Automation "${wf.name}" ${isCurrentlyPaused ? "Resumed" : "Paused"}`, isCurrentlyPaused ? "success" : "warning");
+            showToast(apiErrorMessage(e), "error");
+        } finally {
+            setSaving(false);
         }
     };
-
-    // Open Edit Schedule Modal
-    const handleOpenEditModal = (wf) => {
-        setEditModal(wf);
-        setNewDate(wf.nextRunDate || new Date().toISOString().split("T")[0]);
-        setNewTime(wf.nextRunTime || "12:00");
-        setEditTimeZone(wf.timeZone || "Asia/Kolkata (GMT+05:30)");
-        setEditRepeat(wf.repeat || "Daily");
-        setChangeReason("");
-    };
-
-    // Save Edit Schedule Changes
-    const handleSaveSchedule = (e) => {
-        e?.preventDefault();
-
-        // Validation
-        if (!newDate || !newTime) {
-            if (showToast) showToast("Please select a valid date and time.", "error");
-            return;
-        }
-
-        const selectedMs = new Date(`${newDate}T${newTime}`).getTime();
-        if (selectedMs < Date.now()) {
-            if (showToast) showToast("Cannot schedule automations in the past. Please pick a future date & time.", "error");
-            return;
-        }
-
-        setSavingSchedule(true);
-
-        setTimeout(() => {
-            const formatted = `${newDate} ${newTime} (${editTimeZone.split(" ")[0]})`;
-
-            setWorkflows(prev => prev.map(w => {
-                if (w.id === editModal.id) {
-                    return {
-                        ...w,
-                        nextRunDate: newDate,
-                        nextRunTime: newTime,
-                        nextRunFormatted: formatted,
-                        targetTimeMs: selectedMs,
-                        timeZone: editTimeZone,
-                        repeat: editRepeat,
-                        schedule: `${editRepeat} at ${newTime}`,
-                        status: "Scheduled",
-                        enabled: true,
-                        lastModified: new Date().toISOString().split("T")[0]
-                    };
-                }
-                return w;
-            }));
-
-            if (showToast) showToast(`Schedule Updated Successfully for "${editModal.name}"`, "success");
-            setSavingSchedule(false);
-            setEditModal(null);
-        }, 400);
-    };
-
-    const statusBadgeColors = {
-        Scheduled: "bg-blue-50 text-blue-600 border-blue-100 font-bold",
-        Running: "bg-emerald-50 text-emerald-600 border-emerald-200 font-bold animate-pulse",
-        Completed: "bg-emerald-50 text-emerald-600 border-emerald-100 font-bold",
-        Paused: "bg-orange-50 text-orange-600 border-orange-100 font-bold",
-        Failed: "bg-rose-50 text-rose-600 border-rose-100 font-bold",
-    };
-
-    const filteredWorkflows = workflows.filter(w =>
-        w.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        w.trigger.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        w.status.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-
-    // Dashboard Counters
-    const totalActive = workflows.length;
-    const runningCount = workflows.filter(w => w.status === "Running").length;
-    const pausedCount = workflows.filter(w => w.status === "Paused").length;
-    const nextScheduledWf = workflows.find(w => w.status === "Scheduled");
 
     return (
-        <div className="space-y-6 mt-2 pb-12 animate-fade-in">
-            <WhatsAppHeader activeTab="automation" searchQuery={searchQuery} onSearchChange={setSearchQuery} />
-
-            {/* AUTOMATION SCHEDULER DASHBOARD CARDS */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-2xs hover:shadow-md transition">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block font-sans">Total Automations</span>
-                    <div className="flex items-center justify-between mt-2">
-                        <span className="text-2xl font-extrabold text-slate-800 font-display">{totalActive}</span>
-                        <div className="p-2.5 rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-100">
-                            <FiZap size={18} />
-                        </div>
-                    </div>
-                </div>
-
-                <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-2xs hover:shadow-md transition">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block font-sans">Running Automations</span>
-                    <div className="flex items-center justify-between mt-2">
-                        <span className="text-2xl font-extrabold text-emerald-600 font-display">{runningCount}</span>
-                        <div className="p-2.5 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100">
-                            <FiActivity size={18} />
-                        </div>
-                    </div>
-                </div>
-
-                <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-2xs hover:shadow-md transition">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block font-sans">Paused Automations</span>
-                    <div className="flex items-center justify-between mt-2">
-                        <span className="text-2xl font-extrabold text-orange-600 font-display">{pausedCount}</span>
-                        <div className="p-2.5 rounded-xl bg-orange-50 text-orange-600 border border-orange-100">
-                            <FiPause size={18} />
-                        </div>
-                    </div>
-                </div>
-
-                <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-2xs hover:shadow-md transition">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block font-sans">Next Scheduled Run</span>
-                    <div className="flex items-center justify-between mt-2">
-                        <div>
-                            <span className="text-xs font-bold text-slate-800 truncate block max-w-[130px]">{nextScheduledWf?.name || "None"}</span>
-                            <span className="text-[9px] text-emerald-600 font-mono font-bold block mt-0.5">{countdowns[nextScheduledWf?.id] || "00:00:00"}</span>
-                        </div>
-                        <div className="p-2.5 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100">
-                            <FiClock size={18} />
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* PROFESSIONAL SCHEDULER TABLE */}
-            <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-[0_2px_8px_rgba(15,23,42,0.01)] space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-xs" onClick={onClose} />
+            <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto border border-slate-200">
+                <div className="flex items-center justify-between p-5 border-b border-slate-100 sticky top-0 bg-white z-10">
                     <div>
-                        <h3 className="text-sm font-bold text-slate-900 font-display">Automation Workflow Scheduler & Live Countdowns</h3>
-                        <p className="text-xs text-slate-400 mt-0.5 font-sans">Configure triggers, cron schedules, next run dates, and real-time execution countdowns.</p>
+                        <h3 className="text-sm font-bold text-slate-900 font-display">{workflow.label}</h3>
+                        <p className="text-[10px] text-slate-400">{workflow.trigger}</p>
                     </div>
+                    <button onClick={onClose} className="text-slate-400 hover:text-slate-600 cursor-pointer"><FiX size={16} /></button>
                 </div>
-
-                <div className="overflow-x-auto">
-                    <table className="w-full">
-                        <thead>
-                            <tr className="border-b border-slate-100 bg-slate-50/50">
-                                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Automation Name</th>
-                                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Trigger Type</th>
-                                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Current Status</th>
-                                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Last Run</th>
-                                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Next Scheduled Run</th>
-                                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Live Countdown</th>
-                                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Schedule</th>
-                                <th className="text-right px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {filteredWorkflows.map((wf) => (
-                                <tr key={wf.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
-                                    <td className="px-4 py-3.5">
-                                        <div className="flex items-center gap-2.5">
-                                            <div className="p-2 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100">
-                                                <FiZap size={14} />
-                                            </div>
-                                            <div>
-                                                <span className="text-xs font-bold text-slate-800 block">{wf.name}</span>
-                                                <span className="text-[9px] text-slate-400 block mt-0.5">{wf.trigger}</span>
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td className="px-4 py-3 text-xs text-slate-600 font-medium">{wf.triggerType || "Event"}</td>
-                                    <td className="px-4 py-3">
-                                        <span className={`text-[9px] font-bold px-2.5 py-1 rounded-md border uppercase ${statusBadgeColors[wf.status] || statusBadgeColors.Scheduled}`}>
-                                            {wf.status}
-                                        </span>
-                                    </td>
-                                    <td className="px-4 py-3 text-[10px] text-slate-500 font-mono">{wf.lastRun}</td>
-                                    <td className="px-4 py-3 text-[10px] text-slate-700 font-mono font-semibold">{wf.nextRunFormatted || wf.schedule}</td>
-                                    <td className="px-4 py-3">
-                                        <span className="text-xs font-bold font-mono text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-100">
-                                            {countdowns[wf.id] || "00:00:00"}
-                                        </span>
-                                    </td>
-                                    <td className="px-4 py-3 text-[10px] text-slate-600 font-medium">{wf.repeat || "Daily"}</td>
-                                    <td className="px-4 py-3 text-right">
-                                        <div className="flex items-center justify-end gap-1">
-                                            <button
-                                                onClick={() => handleRunNow(wf)}
-                                                disabled={triggering === wf.id}
-                                                className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition cursor-pointer disabled:opacity-40"
-                                                title="Run Now"
-                                            >
-                                                {triggering === wf.id ? <FiRefreshCw className="animate-spin" size={13} /> : <FiPlay size={13} />}
-                                            </button>
-
-                                            <button
-                                                onClick={() => handleTogglePause(wf)}
-                                                className={`p-1.5 rounded-lg transition cursor-pointer ${wf.status === "Paused" ? "text-emerald-600 hover:bg-emerald-50" : "text-orange-500 hover:bg-orange-50"}`}
-                                                title={wf.status === "Paused" ? "Resume Automation" : "Pause Automation"}
-                                            >
-                                                {wf.status === "Paused" ? <FiPlay size={13} /> : <FiPause size={13} />}
-                                            </button>
-
-                                            <button
-                                                onClick={() => handleOpenEditModal(wf)}
-                                                className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition cursor-pointer flex items-center gap-1"
-                                                title="Edit Schedule"
-                                            >
-                                                <FiCalendar size={13} />
-                                            </button>
-
-                                            <button
-                                                onClick={() => setDetailsDrawer(wf)}
-                                                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition cursor-pointer"
-                                                title="View Details"
-                                            >
-                                                <FiEye size={13} />
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                <div className="p-5 space-y-5">
+                    <div>
+                        <p className="text-[10px] font-bold text-slate-500 uppercase mb-2">1. Approved template</p>
+                        {loadError ? <p className="text-xs text-rose-600">{loadError}</p> : (
+                            <TemplateSelector templates={templates} loading={loading} selectedId={template?._id}
+                                onSelect={(t) => { setTemplate(t); setMapping(suggestMapping(t.slots, fieldOptions, {})); }} />
+                        )}
+                    </div>
+                    {template && (
+                        <div>
+                            <p className="text-[10px] font-bold text-slate-500 uppercase mb-2">2. Fill template variables from the trigger data</p>
+                            <VariableMappingEditor slots={template.slots} mapping={mapping} onChange={setMapping} fieldOptions={fieldOptions} />
+                        </div>
+                    )}
+                    {workflow.fixed_recipient && (
+                        <div>
+                            <p className="text-[10px] font-bold text-slate-500 uppercase mb-2">3. Send report to</p>
+                            <input value={recipientPhone} onChange={(e) => setRecipientPhone(e.target.value)} placeholder="+91 98765 43210" className="w-full px-3.5 py-2.5 text-xs border border-slate-200 rounded-xl font-mono" />
+                            <p className="text-[10px] text-slate-400 mt-1">Must be a number that has opted in to receive these reports.</p>
+                        </div>
+                    )}
+                    <label className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+                        <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} /> Enable this automation
+                    </label>
+                    {enabled && missing.length > 0 && <p className="text-[11px] text-amber-700">Map all variables before enabling ({missing.length} missing).</p>}
+                </div>
+                <div className="flex justify-end gap-2 p-5 border-t border-slate-100">
+                    <button onClick={onClose} className="px-4 py-2 text-xs font-semibold text-slate-600 bg-slate-100 rounded-xl cursor-pointer">Cancel</button>
+                    <button onClick={save} disabled={saving || (enabled && (!template || missing.length > 0))} className="px-4 py-2 text-xs font-semibold text-white bg-[#25D366] rounded-xl disabled:opacity-40 cursor-pointer">
+                        {saving ? "Saving..." : "Save"}
+                    </button>
                 </div>
             </div>
+        </div>
+    );
+}
 
-            {/* EDIT AUTOMATION SCHEDULE MODAL */}
-            {editModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
-                    <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-xs" onClick={() => setEditModal(null)}></div>
-                    <div className="relative bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md border border-slate-200/90 animate-slide-up space-y-4">
-                        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                            <div className="flex items-center gap-2">
-                                <span className="p-1.5 rounded-lg bg-blue-50 text-blue-600 border border-blue-100">
-                                    <FiCalendar size={15} />
-                                </span>
-                                <h3 className="text-sm font-bold text-slate-900 font-display">Edit Automation Schedule</h3>
-                            </div>
-                            <button onClick={() => setEditModal(null)} className="text-slate-400 hover:text-slate-600"><FiX size={16} /></button>
-                        </div>
+function WhatsAppAutomation() {
+    const { showToast } = useToast();
+    const [workflows, setWorkflows] = useState([]);
+    const [runs, setRuns] = useState({ runs: [], total: 0 });
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+    const [editing, setEditing] = useState(null);
+    const [running, setRunning] = useState(null);
+    const [runFilter, setRunFilter] = useState("");
 
-                        <form onSubmit={handleSaveSchedule} className="space-y-3.5">
-                            <div>
-                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Automation Name</label>
-                                <input
-                                    type="text"
-                                    readOnly
-                                    value={editModal.name}
-                                    className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-500 font-semibold cursor-not-allowed"
-                                />
-                            </div>
+    const load = useCallback(async () => {
+        try {
+            const [wf, r] = await Promise.all([getAutomationWorkflows(), getAutomationRuns({ workflow: runFilter || undefined, limit: 200 })]);
+            setWorkflows(wf);
+            setRuns(r);
+            setError(null);
+        } catch (e) {
+            setError(apiErrorMessage(e));
+        } finally {
+            setLoading(false);
+        }
+    }, [runFilter]);
 
-                            <div>
-                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Current Schedule</label>
-                                <input
-                                    type="text"
-                                    readOnly
-                                    value={editModal.schedule || editModal.nextRunFormatted}
-                                    className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-500 font-mono cursor-not-allowed"
-                                />
-                            </div>
+    useEffect(() => { load(); }, [load]);
 
-                            <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
-                                        New Date <span className="text-rose-500">*</span>
-                                    </label>
-                                    <input
-                                        type="date"
-                                        required
-                                        min={new Date().toISOString().split("T")[0]}
-                                        value={newDate}
-                                        onChange={(e) => setNewDate(e.target.value)}
-                                        className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
-                                        New Time <span className="text-rose-500">*</span>
-                                    </label>
-                                    <input
-                                        type="time"
-                                        required
-                                        value={newTime}
-                                        onChange={(e) => setNewTime(e.target.value)}
-                                        className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                                    />
-                                </div>
-                            </div>
+    const runNow = async (wf) => {
+        setRunning(wf.key);
+        try {
+            const res = await triggerAutomation(wf.key, {});
+            const result = res.result;
+            const count = Array.isArray(result) ? result.length : result ? 1 : 0;
+            showToast(count ? `${wf.label}: ${count} trigger(s) processed — see the execution log.` : res.message, count ? "success" : "warning");
+            await load();
+        } catch (e) {
+            showToast(apiErrorMessage(e), "error");
+        } finally {
+            setRunning(null);
+        }
+    };
 
-                            <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Time Zone</label>
-                                    <select
-                                        value={editTimeZone}
-                                        onChange={(e) => setEditTimeZone(e.target.value)}
-                                        className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl font-medium"
-                                    >
-                                        <option value="Asia/Kolkata (GMT+05:30)">Asia/Kolkata (GMT+05:30)</option>
-                                        <option value="UTC (GMT+00:00)">UTC (GMT+00:00)</option>
-                                        <option value="America/New_York (GMT-05:00)">America/New_York (GMT-05:00)</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Repeat Frequency</label>
-                                    <select
-                                        value={editRepeat}
-                                        onChange={(e) => setEditRepeat(e.target.value)}
-                                        className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl font-medium"
-                                    >
-                                        <option value="Once">Once</option>
-                                        <option value="Daily">Daily</option>
-                                        <option value="Weekly">Weekly</option>
-                                        <option value="Monthly">Monthly</option>
-                                    </select>
-                                </div>
-                            </div>
+    return (
+        <div className="space-y-6 mt-2 pb-12 animate-fade-in font-sans">
+            <WhatsAppHeader activeTab="automation" />
 
-                            <div>
-                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Reason for Change (Optional)</label>
-                                <input
-                                    type="text"
-                                    placeholder="e.g. Adjusting time per executive review..."
-                                    value={changeReason}
-                                    onChange={(e) => setChangeReason(e.target.value)}
-                                    className="w-full px-3.5 py-2 text-xs border border-slate-200 rounded-xl"
-                                />
-                            </div>
-
-                            <div className="flex gap-3 pt-2">
-                                <button type="button" onClick={() => setEditModal(null)} className="flex-1 py-2.5 text-xs font-semibold text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200 transition cursor-pointer">
-                                    Cancel
-                                </button>
-                                <button type="submit" disabled={savingSchedule} className="flex-1 py-2.5 text-xs font-semibold text-white bg-emerald-500 hover:bg-emerald-600 rounded-xl shadow-xs transition cursor-pointer flex items-center justify-center gap-1.5">
-                                    {savingSchedule ? <FiRefreshCw className="animate-spin" size={13} /> : <FiCheck size={13} />}
-                                    <span>{savingSchedule ? "Saving..." : "Save Changes"}</span>
-                                </button>
-                            </div>
-                        </form>
+            <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-2xs">
+                <div className="flex items-center justify-between mb-4">
+                    <div>
+                        <h2 className="text-sm font-bold text-slate-900 font-display flex items-center gap-2"><FiZap className="text-emerald-500" /> Automation Rules</h2>
+                        <p className="text-[10px] text-slate-400">Business-initiated messages must use a Meta-approved template. Each trigger sends at most once (replays are ignored).</p>
                     </div>
+                    <button onClick={load} className="p-2 text-slate-500 hover:bg-slate-100 rounded-xl cursor-pointer" title="Refresh"><FiRefreshCw size={14} /></button>
                 </div>
-            )}
-
-            {/* AUTOMATION DETAILS DRAWER / MODAL */}
-            {detailsDrawer && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
-                    <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-xs" onClick={() => setDetailsDrawer(null)}></div>
-                    <div className="relative bg-white rounded-2xl shadow-2xl p-6 w-full max-w-lg border border-slate-200 space-y-4 animate-slide-up">
-                        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                            <div>
-                                <h3 className="text-sm font-bold text-slate-900 font-display">{detailsDrawer.name}</h3>
-                                <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-md border uppercase mt-1 inline-block ${statusBadgeColors[detailsDrawer.status]}`}>
-                                    {detailsDrawer.status}
-                                </span>
-                            </div>
-                            <button onClick={() => setDetailsDrawer(null)} className="text-slate-400 hover:text-slate-600"><FiX size={18} /></button>
-                        </div>
-
-                        <p className="text-xs text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-100 italic">
-                            {detailsDrawer.description}
-                        </p>
-
-                        <div className="grid grid-cols-3 gap-2 text-center text-xs">
-                            <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100">
-                                <span className="text-[9px] text-slate-400 font-bold uppercase block">Executions</span>
-                                <span className="font-extrabold text-slate-800">{detailsDrawer.totalExecutions}</span>
-                            </div>
-                            <div className="p-2.5 bg-emerald-50/60 rounded-xl border border-emerald-100">
-                                <span className="text-[9px] text-emerald-600 font-bold uppercase block">Success</span>
-                                <span className="font-extrabold text-emerald-700">{detailsDrawer.successfulRuns}</span>
-                            </div>
-                            <div className="p-2.5 bg-rose-50/60 rounded-xl border border-rose-100">
-                                <span className="text-[9px] text-rose-600 font-bold uppercase block">Failed</span>
-                                <span className="font-extrabold text-rose-700">{detailsDrawer.failedRuns}</span>
-                            </div>
-                        </div>
-
-                        <div className="space-y-2 text-xs text-slate-600 pt-2 border-t border-slate-100">
-                            <p className="flex justify-between"><span>Trigger:</span> <strong className="text-slate-800">{detailsDrawer.trigger}</strong></p>
-                            <p className="flex justify-between"><span>Schedule:</span> <strong className="text-slate-800">{detailsDrawer.schedule}</strong></p>
-                            <p className="flex justify-between"><span>Next Scheduled Run:</span> <strong className="text-emerald-600 font-mono">{detailsDrawer.nextRunFormatted}</strong></p>
-                            <p className="flex justify-between"><span>Live Countdown:</span> <strong className="text-emerald-600 font-mono">{countdowns[detailsDrawer.id] || "00:00:00"}</strong></p>
-                            <p className="flex justify-between"><span>Created By:</span> <strong className="text-slate-800">{detailsDrawer.createdBy} ({detailsDrawer.createdOn})</strong></p>
-                            <p className="flex justify-between"><span>Average Execution Speed:</span> <strong className="text-slate-800 font-mono">{detailsDrawer.avgTime}</strong></p>
-                        </div>
-
-                        <button onClick={() => setDetailsDrawer(null)} className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold cursor-pointer">
-                            Close Details
-                        </button>
+                {loading ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">{[1, 2, 3, 4].map((i) => <div key={i} className="h-28 bg-slate-100 rounded-xl animate-pulse" />)}</div>
+                ) : error ? (
+                    <p className="text-xs text-rose-600">{error}</p>
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {workflows.map((wf) => {
+                            const enabled = wf.binding?.enabled;
+                            const broken = enabled && !wf.template_sendable;
+                            return (
+                                <div key={wf.key} className={`p-4 rounded-xl border ${broken ? "border-rose-200 bg-rose-50/30" : enabled ? "border-emerald-200" : "border-slate-200"}`}>
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div>
+                                            <p className="text-xs font-bold text-slate-800">{wf.label}</p>
+                                            <p className="text-[10px] text-slate-400">{wf.trigger}</p>
+                                        </div>
+                                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded-md border uppercase ${enabled ? "text-emerald-700 bg-emerald-50 border-emerald-200" : "text-slate-500 bg-slate-50 border-slate-200"}`}>
+                                            {enabled ? "Enabled" : "Off"}
+                                        </span>
+                                    </div>
+                                    <div className="mt-3 text-[11px] text-slate-600 flex items-center gap-2 flex-wrap">
+                                        {wf.template ? (
+                                            <>
+                                                <span>Template: <strong>{wf.template.name}</strong> <span className="font-mono text-[10px]">({wf.template.language})</span></span>
+                                                <TemplateStatusBadge status={wf.template.status} />
+                                            </>
+                                        ) : <span className="text-slate-400">No template bound — this automation sends nothing.</span>}
+                                    </div>
+                                    {broken && <p className="text-[10px] text-rose-700 mt-1 flex items-center gap-1"><FiAlertTriangle size={11} /> The bound template is not approved on Meta any more — runs will fail until you pick another.</p>}
+                                    <div className="flex gap-2 mt-3">
+                                        <button onClick={() => setEditing(wf)} className="flex items-center gap-1 text-[11px] font-semibold px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer"><FiSettings size={11} /> Configure</button>
+                                        {RUNNABLE.has(wf.key) && (
+                                            <button onClick={() => runNow(wf)} disabled={!enabled || running === wf.key} title={enabled ? "Run the scheduled check now" : "Enable the automation first"} className="flex items-center gap-1 text-[11px] font-semibold px-3 py-1.5 rounded-lg bg-slate-900 text-white disabled:opacity-40 cursor-pointer">
+                                                <FiPlay size={11} /> {running === wf.key ? "Running..." : "Run now"}
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })}
                     </div>
+                )}
+                <p className="text-[10px] text-slate-400 mt-4 flex gap-1.5"><FiInfo size={11} className="shrink-0 mt-0.5" /> Auto-reply, AI FAQ and intent routing answer inbound customer messages with free-form text inside the 24-hour service window and need no template.</p>
+            </div>
+
+            <div className="bg-white border border-slate-200/80 rounded-2xl shadow-2xs">
+                <div className="flex items-center justify-between p-4 border-b border-slate-100">
+                    <h2 className="text-sm font-bold text-slate-900 font-display">Execution Log ({runs.total})</h2>
+                    <select value={runFilter} onChange={(e) => setRunFilter(e.target.value)} className="text-xs border border-slate-200 rounded-xl px-2.5 py-1.5">
+                        <option value="">All automations</option>
+                        {workflows.map((w) => <option key={w.key} value={w.key}>{w.label}</option>)}
+                    </select>
                 </div>
-            )}
+                {runs.runs.length === 0 ? (
+                    <p className="p-8 text-center text-xs text-slate-400">No automation has run yet.</p>
+                ) : (
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-[11px]">
+                            <thead className="bg-slate-50 text-slate-500 uppercase text-[9px]">
+                                <tr>
+                                    <th className="text-left px-4 py-2">Time</th><th className="text-left px-4 py-2">Automation</th><th className="text-left px-4 py-2">Trigger</th>
+                                    <th className="text-left px-4 py-2">Recipient</th><th className="text-left px-4 py-2">Run</th><th className="text-left px-4 py-2">Message</th><th className="text-left px-4 py-2">Reason</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-50">
+                                {runs.runs.map((r) => (
+                                    <tr key={r._id}>
+                                        <td className="px-4 py-2 text-slate-500 whitespace-nowrap">{fmt(r.created_at)}</td>
+                                        <td className="px-4 py-2 font-semibold text-slate-800">{r.workflow_label}</td>
+                                        <td className="px-4 py-2 text-slate-500">{r.trigger}</td>
+                                        <td className="px-4 py-2"><p>{r.recipient_name || "—"}</p><p className="font-mono text-slate-400">{r.recipient_phone || ""}</p></td>
+                                        <td className="px-4 py-2"><span className={`text-[9px] font-bold px-2 py-0.5 rounded-md border uppercase ${RUN_STATUS[r.status] || RUN_STATUS.pending}`}>{r.status}</span></td>
+                                        <td className={`px-4 py-2 font-semibold ${MESSAGE_STATE[r.message_state] || "text-slate-400"}`}>
+                                            {r.message_state ? <span className="flex items-center gap-1">{["delivered", "read"].includes(r.message_state) && <FiCheckCircle size={11} />}{r.message_state}</span> : "—"}
+                                        </td>
+                                        <td className="px-4 py-2 text-rose-600 max-w-[280px]">{r.message_error || r.reason || ""}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </div>
+
+            {editing && <BindingEditor workflow={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />}
         </div>
     );
 }

@@ -57,7 +57,9 @@ function Login() {
                 showToast("Logged in successfully! Welcome back.", "success");
                 localStorage.setItem("authToken", "mock-saas-jwt-token");
                 localStorage.setItem("userEmail", email);
-                navigate("/");
+                // Return to the page that asked for a sign-in (in-app paths only).
+                const redirect = new URLSearchParams(window.location.search).get("redirect");
+                navigate(redirect && redirect.startsWith("/") && !redirect.startsWith("//") ? redirect : "/");
             } else {
                 setErrors({
                     form: "Invalid email or password. Please use the default credentials."

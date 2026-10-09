@@ -1,7 +1,19 @@
 """
 WhatsApp Automation — Automation Service
-Orchestrates all automation workflows (Phase 1, 2, 3).
-Business logic lives here — n8n only handles workflow orchestration.
+Orchestrates all automation workflows.
+
+Business-initiated automations (welcome, follow-up, meeting, lead status, task, daily reports) send
+an *approved Meta template* bound to the workflow in Settings → Automation Templates, through the
+same queued send pipeline as campaigns. Each trigger has an idempotency key, so replayed events or
+repeated scheduler runs never send the same message twice. Without a binding, the run is recorded
+as skipped — free-form text is not sent because Meta rejects it outside the 24h service window.
+
+Customer-initiated automations (auto reply, AI FAQ, CRM lookup, intent routing) reply with
+free-form text, which is allowed inside the 24h window opened by the customer's message.
+
+Business numbers: template bindings are configured per number (stored on the number). An ERP event runs
+the automation once for every active number that has it enabled, each with its own template and its
+own idempotency key. Customer-initiated replies always go out from the number the customer wrote to.
 """
 
 import asyncio
@@ -10,12 +22,22 @@ import time
 from datetime import datetime, date
 from typing import Dict, Any, Optional, List
 
-from app.whatsapp.services.message_service import send_message, simulate_incoming_message, _broadcast_whatsapp_event
-from app.whatsapp.services.template_service import get_template_by_name, get_template_by_id_or_name, render_template, record_template_usage_metrics
+from bson import ObjectId
+from pymongo.errors import DuplicateKeyError
+
+from app.whatsapp.services.message_service import send_message, _broadcast_whatsapp_event
 from app.whatsapp.services import n8n_service
-from app.whatsapp.repository import AutomationLogRepository, DNDRepository
+from app.whatsapp.repository import AutomationLogRepository, _serialize_doc
 from app.whatsapp.models import AutomationStatus
-from app.config.database import crm_lead_collection, crm_meeting_collection, task_collection
+from app.whatsapp import numbers as number_registry
+from app.config.database import (
+    crm_lead_collection,
+    crm_meeting_collection,
+    employee_collection,
+    automation_settings_collection,
+    whatsapp_automation_run_collection as runs,
+    whatsapp_campaign_recipient_collection as send_jobs,
+)
 
 logger = logging.getLogger("whatsapp.automation")
 
@@ -30,8 +52,9 @@ async def _log_automation(
     duration_ms: int = 0,
     error: str = None,
     metadata: dict = None,
+    number_id: Optional[str] = None,
 ) -> dict:
-    """Create an automation log entry and broadcast it."""
+    """Create an automation log entry (for one business number) and broadcast it."""
     log_data = {
         "workflow_name": workflow_name,
         "trigger": trigger,
@@ -43,6 +66,7 @@ async def _log_automation(
         "execution_duration_ms": duration_ms,
         "error_message": error,
         "metadata": metadata,
+        "number_id": number_id,
     }
     log_entry = AutomationLogRepository.create(log_data)
     await _broadcast_whatsapp_event("automation_log_created", log_entry)
@@ -50,210 +74,362 @@ async def _log_automation(
 
 
 # ═══════════════════════════════════════════════════════════════════
-# PHASE 1 AUTOMATIONS
+# WORKFLOW REGISTRY & TEMPLATE BINDINGS
 # ═══════════════════════════════════════════════════════════════════
 
-async def trigger_welcome_message(lead_data: dict) -> dict:
+WORKFLOWS: Dict[str, Dict[str, Any]] = {
+    "welcome_message": {
+        "label": "Welcome Message",
+        "trigger": "New CRM lead created",
+        "fields": ["name", "first_name", "phone", "email", "project_type", "assigned_to", "lead_source", "status"],
+    },
+    "followup_reminder": {
+        "label": "Follow-up Reminder",
+        "trigger": "Scheduled — active leads, at most once per lead per week",
+        "fields": ["name", "first_name", "phone", "email", "project_type", "assigned_to", "status"],
+    },
+    "meeting_reminder": {
+        "label": "Meeting Reminder",
+        "trigger": "Scheduled — meetings scheduled for today, once per meeting",
+        "fields": ["name", "first_name", "phone", "meeting_date", "meeting_time", "meeting_location", "assigned_to"],
+    },
+    "lead_status_update": {
+        "label": "Lead Status Update",
+        "trigger": "CRM lead status changed, once per lead per status",
+        "fields": ["name", "first_name", "phone", "new_status", "project_type", "assigned_to"],
+    },
+    "task_assigned": {
+        "label": "Task Assignment Notification",
+        "trigger": "Task assigned to an employee, once per task",
+        "fields": ["name", "first_name", "phone", "task_title", "project_name", "priority", "deadline"],
+    },
+    "daily_lead_report": {
+        "label": "Daily Lead Report",
+        "trigger": "Scheduled daily — sent to the configured admin phone",
+        "fields": ["report_date", "total_leads", "new_leads", "converted", "lost", "active"],
+        "fixed_recipient": True,
+    },
+    "daily_reply_report": {
+        "label": "Daily Customer Reply Report",
+        "trigger": "Scheduled daily — sent to the configured admin phone",
+        "fields": ["report_date", "total_replies", "today_replies", "unique_customers", "unread_replies"],
+        "fixed_recipient": True,
+    },
+}
+
+
+def get_bindings(number: Optional[dict] = None) -> Dict[str, Any]:
+    """Template bindings of one number (legacy settings bindings only when no number exists)."""
+    if number is not None:
+        fresh = number_registry.get_number(str(number["_id"]), include_deleted=True) or number
+        return fresh.get("automation_bindings") or {}
+    settings = automation_settings_collection.find_one() or {}
+    return settings.get("automation_bindings") or {}
+
+
+def describe_workflows(number: Optional[dict] = None) -> List[dict]:
+    from app.whatsapp.services import template_service
+    bindings = get_bindings(number)
+    out = []
+    for key, wf in WORKFLOWS.items():
+        b = bindings.get(key) or {}
+        tmpl = template_service.TemplateRepository.find_by_id(b["template_id"]) if b.get("template_id") else None
+        if tmpl and not template_service.template_in_scope(tmpl, number):
+            tmpl = None
+        out.append({
+            "key": key,
+            **wf,
+            "binding": b,
+            "template": template_service.describe_for_sending(tmpl) if tmpl else None,
+            "template_sendable": template_service.is_sendable(tmpl),
+        })
+    return out
+
+
+def save_binding(workflow_key: str, data: dict, number: Optional[dict] = None) -> dict:
+    from app.whatsapp.services import template_service
+    if workflow_key not in WORKFLOWS:
+        raise ValueError(f"Unknown automation '{workflow_key}'.")
+    if number is None:
+        raise ValueError("Select a WhatsApp business number before configuring automations.")
+    enabled = bool(data.get("enabled"))
+    template_id = data.get("template_id") or None
+    if template_id:
+        tmpl = template_service.TemplateRepository.find_by_id(template_id)
+        if tmpl and not template_service.template_in_scope(tmpl, number):
+            raise ValueError("That template belongs to a different WhatsApp Business Account than this number.")
+    if enabled:
+        tmpl = template_service.TemplateRepository.find_by_id(template_id) if template_id else None
+        if not template_service.is_sendable(tmpl):
+            raise ValueError("Select a template that is APPROVED on Meta before enabling this automation.")
+        slots = template_service.get_send_slots(tmpl)
+        mapping = data.get("variable_mapping") or {}
+        unmapped = [s["label"] for s in slots if not (mapping.get(s["key"]) or {}).get("value")]
+        if unmapped:
+            raise ValueError("Map every template variable: " + ", ".join(unmapped))
+        if WORKFLOWS[workflow_key].get("fixed_recipient"):
+            from app.whatsapp.services.campaign_service import normalize_phone
+            if not normalize_phone(data.get("recipient_phone") or ""):
+                raise ValueError("Enter a valid admin phone number with country code for this report.")
+    binding = {
+        "enabled": enabled,
+        "template_id": template_id,
+        "variable_mapping": data.get("variable_mapping") or {},
+        "recipient_phone": data.get("recipient_phone") or None,
+        "updated_at": datetime.utcnow().isoformat(),
+    }
+    number_registry.save_bindings(str(number["_id"]), workflow_key, binding)
+    return binding
+
+
+def list_runs(limit: int = 100, skip: int = 0, workflow: Optional[str] = None, status: Optional[str] = None, scope: Optional[dict] = None) -> dict:
+    query: Dict[str, Any] = dict(scope or {})
+    if workflow:
+        query["workflow"] = workflow
+    if status:
+        query["status"] = status
+    docs = [_serialize_doc(d) for d in runs.find(query).sort("created_at", -1).skip(skip).limit(limit)]
+    job_ids = [ObjectId(d["job_id"]) for d in docs if d.get("job_id")]
+    jobs = {str(j["_id"]): j for j in send_jobs.find({"_id": {"$in": job_ids}}, {"state": 1, "reason": 1, "error": 1, "wamid": 1})}
+    for d in docs:
+        j = jobs.get(d.get("job_id") or "")
+        if j:
+            d["message_state"] = j.get("state")
+            d["message_error"] = (j.get("error") or {}).get("message") or j.get("reason")
+            d["wamid"] = j.get("wamid")
+    return {"runs": docs, "total": runs.count_documents(query)}
+
+
+def _numbers_for(workflow_key: str, numbers: Optional[List[dict]] = None) -> List[dict]:
+    """Active numbers (of `numbers`, default all) that have this automation enabled."""
+    candidates = numbers if numbers is not None else number_registry.all_numbers(active_only=True)
+    return [n for n in candidates if (get_bindings(n).get(workflow_key) or {}).get("enabled")]
+
+
+def _run_key(workflow_key: str, idempotency_key: str, number: dict) -> str:
+    # The migrated legacy number keeps the pre-multi-number key format, so triggers that already ran
+    # before the upgrade are still recognized as duplicates and are not sent again.
+    if number.get("legacy"):
+        return f"{workflow_key}:{idempotency_key}"
+    return f"{workflow_key}:{number['_id']}:{idempotency_key}"
+
+
+async def run_bound_automation(workflow_key: str, idempotency_key: str, recipient: dict, trigger: str,
+                               entity_id: Optional[str] = None, number: Optional[dict] = None) -> dict:
     """
-    Phase 1 — Welcome Message Automation
-    Trigger: New CRM lead created
-    Flow: Lead Created → Generate Message → Save to MongoDB → Display in Inbox
+    Execute one automation trigger through the queued template pipeline, from `number`.
+    `recipient` = {"name", "phone", **fields}. Returns the run record.
     """
-    start_time = time.time()
-    workflow_name = "Welcome Message"
-    
+    from app.whatsapp.services import campaign_service
+    if number is None:
+        raise ValueError("An automation run needs a WhatsApp business number.")
+    number_id = str(number["_id"])
+    wf = WORKFLOWS[workflow_key]
+    now = datetime.utcnow().isoformat()
+    run = {
+        "workflow": workflow_key,
+        "workflow_label": wf["label"],
+        "trigger": trigger,
+        "entity_id": entity_id,
+        "number_id": number_id,
+        "idempotency_key": _run_key(workflow_key, idempotency_key, number),
+        "recipient_name": recipient.get("name"),
+        "recipient_phone": recipient.get("phone"),
+        "status": "pending",
+        "created_at": now,
+        "updated_at": now,
+    }
     try:
-        # Get template
-        template = get_template_by_name("Welcome Message")
-        if not template:
-            raise ValueError("Welcome Message template not found. Run seed-templates first.")
-        
-        # Render message
-        variables = {
-            "client_name": lead_data.get("name", "Valued Client"),
-            "project_type": lead_data.get("projectType", "Project"),
-            "assigned_to": lead_data.get("assignedTo", "our team"),
-        }
-        content = render_template(template["content"], variables)
-        
-        phone = lead_data.get("phone", "+91-0000000000")
-        name = lead_data.get("name", "Unknown")
-        
-        # Fire n8n webhook (fire-and-forget)
-        asyncio.create_task(n8n_service.trigger_welcome_workflow(lead_data))
-        
-        # Send message via provider
-        message = await send_message(
-            recipient_phone=phone,
-            content=content,
-            recipient_name=name,
-            message_type="template",
-            template_id=template.get("_id"),
-            automation_workflow=workflow_name,
-            metadata={"lead_id": lead_data.get("_id", ""), "trigger": "lead_created"},
-        )
-        
-        duration_ms = int((time.time() - start_time) * 1000)
-        
-        await _log_automation(
-            workflow_name=workflow_name,
-            trigger="New CRM Lead Created",
-            status=AutomationStatus.SUCCESS.value,
-            recipient=name,
-            recipient_phone=phone,
-            message_preview=content,
-            duration_ms=duration_ms,
-            metadata={"lead_id": lead_data.get("_id", "")},
-        )
-        
-        return message
-        
-    except Exception as e:
-        duration_ms = int((time.time() - start_time) * 1000)
-        logger.error(f"[Welcome Message] Error: {e}")
-        await _log_automation(
-            workflow_name=workflow_name,
-            trigger="New CRM Lead Created",
-            status=AutomationStatus.FAILED.value,
-            recipient=lead_data.get("name", ""),
-            recipient_phone=lead_data.get("phone", ""),
-            duration_ms=duration_ms,
-            error=str(e),
-        )
-        return {"error": str(e)}
+        run["_id"] = runs.insert_one(run).inserted_id
+    except DuplicateKeyError:
+        existing = _serialize_doc(runs.find_one({"idempotency_key": run["idempotency_key"]}))
+        existing["duplicate"] = True
+        return existing
 
-
-async def trigger_followup_reminders() -> List[dict]:
-    """
-    Phase 1 — Follow-up Reminder Automation
-    Trigger: Scheduled (runs daily)
-    Flow: Find today's follow-ups → Generate reminders → Save messages → Display in Inbox
-    """
-    results = []
-    start_time = time.time()
-    workflow_name = "Follow-up Reminder"
-    today_str = date.today().isoformat()
-    
-    # Find leads with today's follow-up date
-    leads = list(crm_lead_collection.find({
-        "status": {"$nin": ["Converted", "Lost"]},
-    }))
-    
-    template = get_template_by_name("Follow-up Reminder")
-    if not template:
-        logger.warning("Follow-up Reminder template not found.")
-        return results
-    
-    for lead in leads:
+    binding = get_bindings(number).get(workflow_key) or {}
+    status, reason, job = "skipped", None, None
+    if not binding.get("enabled") or not binding.get("template_id"):
+        reason = "No approved template is bound to this automation (Settings → Automation Templates)."
+    else:
+        if wf.get("fixed_recipient"):
+            recipient = {**recipient, "phone": binding.get("recipient_phone")}
         try:
-            variables = {
-                "client_name": lead.get("name", "Valued Client"),
-                "project_type": lead.get("projectType", "Project"),
-                "assigned_to": lead.get("assignedTo", "our team"),
-            }
-            content = render_template(template["content"], variables)
-            phone = lead.get("phone", "+91-0000000000")
-            name = lead.get("name", "Unknown")
-            
-            asyncio.create_task(n8n_service.trigger_followup_workflow(
-                {**lead, "_id": str(lead.get("_id", ""))}
-            ))
-            
-            message = await send_message(
-                recipient_phone=phone,
-                content=content,
-                recipient_name=name,
-                message_type="template",
-                template_id=template.get("_id"),
-                automation_workflow=workflow_name,
-                metadata={"lead_id": str(lead.get("_id", "")), "trigger": "followup_due"},
+            job = campaign_service.enqueue_single(
+                template_id=binding["template_id"],
+                mapping=binding.get("variable_mapping") or {},
+                recipient=recipient,
+                idempotency_key=f"automation:{run['idempotency_key']}",
+                automation_run_id=str(run["_id"]),
+                workflow=wf["label"],
+                number=number,
             )
-            results.append(message)
-            
-        except Exception as e:
-            logger.error(f"[Follow-up Reminder] Error for {lead.get('name')}: {e}")
-    
-    duration_ms = int((time.time() - start_time) * 1000)
+            if job["state"] == "queued":
+                status = "queued"
+            else:
+                status = "skipped" if job["state"] == "skipped" else "failed"
+                reason = job.get("reason")
+        except ValueError as e:
+            status, reason = "failed", str(e)
+
+    runs.update_one({"_id": run["_id"]}, {"$set": {
+        "status": status, "reason": reason, "job_id": str(job["_id"]) if job else None, "updated_at": datetime.utcnow().isoformat(),
+    }})
     await _log_automation(
-        workflow_name=workflow_name,
-        trigger="Scheduled Follow-up Check",
-        status=AutomationStatus.SUCCESS.value if results else AutomationStatus.SKIPPED.value,
-        recipient=f"{len(results)} leads",
-        message_preview=f"Sent {len(results)} follow-up reminders",
-        duration_ms=duration_ms,
+        workflow_name=wf["label"],
+        trigger=trigger,
+        status={"queued": AutomationStatus.PENDING.value, "skipped": AutomationStatus.SKIPPED.value}.get(status, AutomationStatus.FAILED.value),
+        recipient=recipient.get("name") or "",
+        recipient_phone=recipient.get("phone") or "",
+        message_preview=(job or {}).get("preview") or "",
+        error=reason,
+        metadata={"automation_run_id": str(run["_id"]), "idempotency_key": run["idempotency_key"]},
+        number_id=number_id,
     )
-    
-    return results
+    return {**_serialize_doc(run), "status": status, "reason": reason}
 
 
-async def trigger_meeting_reminders() -> List[dict]:
-    """
-    Phase 1 — Meeting Reminder Automation
-    Trigger: Scheduled (runs daily)
-    Flow: Find today's meetings → Generate reminders → Save messages → Display in Inbox
-    """
-    results = []
-    start_time = time.time()
-    workflow_name = "Meeting Reminder"
-    today_str = date.today().isoformat()
-    
-    meetings = list(crm_meeting_collection.find({
-        "date": today_str,
-        "status": {"$in": ["Scheduled", "scheduled"]},
-    }))
-    
-    template = get_template_by_name("Meeting Reminder")
-    if not template:
-        logger.warning("Meeting Reminder template not found.")
-        return results
-    
-    for mtg in meetings:
-        try:
-            client_name = mtg.get("clientName", "Client")
-            phone = mtg.get("phone", "+91-0000000000")
-            
-            variables = {
-                "client_name": client_name,
-                "meeting_date": mtg.get("date", today_str),
-                "meeting_time": mtg.get("time", "TBD"),
-                "meeting_location": mtg.get("location", "TBD"),
-                "assigned_to": mtg.get("assignedTo", "DelegateX Team"),
-            }
-            content = render_template(template["content"], variables)
-            
-            asyncio.create_task(n8n_service.trigger_meeting_reminder_workflow(
-                {**mtg, "_id": str(mtg.get("_id", ""))}
-            ))
-            
-            message = await send_message(
-                recipient_phone=phone,
-                content=content,
-                recipient_name=client_name,
-                message_type="template",
-                template_id=template.get("_id"),
-                automation_workflow=workflow_name,
-                metadata={"meeting_id": str(mtg.get("_id", "")), "trigger": "meeting_reminder"},
-            )
-            results.append(message)
-            
-        except Exception as e:
-            logger.error(f"[Meeting Reminder] Error for {mtg.get('clientName')}: {e}")
-    
-    duration_ms = int((time.time() - start_time) * 1000)
-    await _log_automation(
-        workflow_name=workflow_name,
-        trigger="Scheduled Meeting Check",
-        status=AutomationStatus.SUCCESS.value if results else AutomationStatus.SKIPPED.value,
-        recipient=f"{len(results)} meetings",
-        message_preview=f"Sent {len(results)} meeting reminders",
-        duration_ms=duration_ms,
-    )
-    
-    return results
+def _lead_fields(lead: dict) -> dict:
+    name = lead.get("name") or ""
+    return {
+        "name": name,
+        "first_name": name.split(" ")[0] if name else None,
+        "phone": lead.get("phone"),
+        "email": lead.get("email"),
+        "project_type": lead.get("projectType"),
+        "assigned_to": lead.get("assignedTo"),
+        "lead_source": lead.get("leadSource"),
+        "status": lead.get("status"),
+    }
 
 
 # ═══════════════════════════════════════════════════════════════════
-# PHASE 2 AUTOMATIONS
+# BUSINESS-INITIATED AUTOMATIONS (template based)
+# ═══════════════════════════════════════════════════════════════════
+
+async def trigger_welcome_message(lead_data: dict, numbers: Optional[List[dict]] = None) -> List[dict]:
+    """Trigger: new CRM lead created. Once per lead per number that has the automation enabled."""
+    lead_id = str(lead_data.get("_id") or lead_data.get("id") or "")
+    asyncio.create_task(n8n_service.trigger_welcome_workflow(lead_data))
+    if not lead_id:
+        return [{"status": "skipped", "reason": "Lead has no ID"}]
+    return [await run_bound_automation("welcome_message", f"lead:{lead_id}", _lead_fields(lead_data), "New CRM Lead Created", lead_id, number=n)
+            for n in _numbers_for("welcome_message", numbers)]
+
+
+async def trigger_followup_reminders(numbers: Optional[List[dict]] = None) -> List[dict]:
+    """Scheduled: active leads, at most once per lead per ISO week (per number)."""
+    targets = _numbers_for("followup_reminder", numbers)
+    if not targets:
+        return []
+    week = date.today().strftime("%G-W%V")
+    results = []
+    for lead in crm_lead_collection.find({"status": {"$nin": ["Converted", "Lost"]}, "phone": {"$nin": [None, ""]}}):
+        lead_id = str(lead["_id"])
+        asyncio.create_task(n8n_service.trigger_followup_workflow({**lead, "_id": lead_id}))
+        for n in targets:
+            results.append(await run_bound_automation("followup_reminder", f"lead:{lead_id}:{week}", _lead_fields(lead), "Scheduled Follow-up Check", lead_id, number=n))
+    return results
+
+
+async def trigger_meeting_reminders(numbers: Optional[List[dict]] = None) -> List[dict]:
+    """Scheduled: meetings scheduled for today. Once per meeting (per number)."""
+    targets = _numbers_for("meeting_reminder", numbers)
+    if not targets:
+        return []
+    today_str = date.today().isoformat()
+    results = []
+    for mtg in crm_meeting_collection.find({"date": today_str, "status": {"$in": ["Scheduled", "scheduled"]}}):
+        mtg_id = str(mtg["_id"])
+        name = mtg.get("clientName") or ""
+        recipient = {
+            "name": name,
+            "first_name": name.split(" ")[0] if name else None,
+            "phone": mtg.get("phone"),
+            "meeting_date": mtg.get("date"),
+            "meeting_time": mtg.get("time"),
+            "meeting_location": mtg.get("location"),
+            "assigned_to": ", ".join(mtg.get("attendees") or []) or None,
+        }
+        asyncio.create_task(n8n_service.trigger_meeting_reminder_workflow({**mtg, "_id": mtg_id}))
+        for n in targets:
+            results.append(await run_bound_automation("meeting_reminder", f"meeting:{mtg_id}", recipient, "Scheduled Meeting Check", mtg_id, number=n))
+    return results
+
+
+async def trigger_lead_status_update(lead_data: dict, new_status: str, numbers: Optional[List[dict]] = None) -> List[dict]:
+    """Trigger: lead status changed. Once per lead per status (per number)."""
+    lead_id = str(lead_data.get("_id") or lead_data.get("id") or "")
+    asyncio.create_task(n8n_service.trigger_lead_status_workflow({**lead_data, "_id": lead_id}, new_status))
+    recipient = {**_lead_fields(lead_data), "new_status": new_status}
+    return [await run_bound_automation("lead_status_update", f"lead:{lead_id}:{new_status}", recipient, f"Status → {new_status}", lead_id, number=n)
+            for n in _numbers_for("lead_status_update", numbers)]
+
+
+async def trigger_task_assignment_notification(task_data: dict, numbers: Optional[List[dict]] = None) -> List[dict]:
+    """Trigger: task assigned. Once per task (per number). Phone comes from the employee record."""
+    task_id = str(task_data.get("_id") or task_data.get("id") or "")
+    asyncio.create_task(n8n_service.trigger_task_assignment_workflow(task_data))
+    employee = None
+    emp_id = task_data.get("employee_id")
+    if emp_id and ObjectId.is_valid(str(emp_id)):
+        employee = employee_collection.find_one({"_id": ObjectId(str(emp_id))})
+    if not employee and task_data.get("employee"):
+        employee = employee_collection.find_one({"name": task_data["employee"]})
+    name = (employee or {}).get("name") or task_data.get("employee_name") or task_data.get("employee") or ""
+    recipient = {
+        "name": name,
+        "first_name": name.split(" ")[0] if name else None,
+        "phone": (employee or {}).get("phone") or (employee or {}).get("mobile"),
+        "task_title": task_data.get("title"),
+        "project_name": task_data.get("project"),
+        "priority": task_data.get("priority"),
+        "deadline": task_data.get("deadline"),
+    }
+    return [await run_bound_automation("task_assigned", f"task:{task_id}", recipient, "Task Assigned", task_id, number=n)
+            for n in _numbers_for("task_assigned", numbers)]
+
+
+async def trigger_daily_lead_report(numbers: Optional[List[dict]] = None) -> List[dict]:
+    """Scheduled daily: CRM lead summary to the admin phone configured on each number's binding."""
+    targets = _numbers_for("daily_lead_report", numbers)
+    if not targets:
+        return []
+    today_str = date.today().isoformat()
+    total = crm_lead_collection.count_documents({})
+    converted = crm_lead_collection.count_documents({"status": "Converted"})
+    lost = crm_lead_collection.count_documents({"status": "Lost"})
+    recipient = {
+        "name": "Admin",
+        "report_date": today_str,
+        "total_leads": total,
+        "new_leads": crm_lead_collection.count_documents({"date": today_str}),
+        "converted": converted,
+        "lost": lost,
+        "active": total - converted - lost,
+    }
+    return [await run_bound_automation("daily_lead_report", today_str, recipient, "Scheduled Daily", today_str, number=n) for n in targets]
+
+
+async def trigger_daily_reply_report(numbers: Optional[List[dict]] = None) -> List[dict]:
+    """Scheduled daily: each number's own customer reply summary to the admin phone on its binding."""
+    from app.whatsapp.repository import MessageRepository
+    today_str = date.today().isoformat()
+    results = []
+    for n in _numbers_for("daily_reply_report", numbers):
+        stats = MessageRepository.get_reply_stats({"number_id": str(n["_id"])})
+        recipient = {"name": "Admin", "report_date": today_str, **stats}
+        results.append(await run_bound_automation("daily_reply_report", today_str, recipient, "Scheduled Daily", today_str, number=n))
+    return results
+
+
+def _incoming_number(incoming_message: dict) -> Optional[dict]:
+    """The business number that received the customer's message (replies must go out from it)."""
+    nid = incoming_message.get("number_id")
+    return number_registry.get_number(nid, include_deleted=True) if nid else None
+
+
+# ═══════════════════════════════════════════════════════════════════
+# CUSTOMER-INITIATED AUTOMATIONS (free-form replies inside the 24h window)
 # ═══════════════════════════════════════════════════════════════════
 
 async def trigger_auto_reply(incoming_message: dict) -> Optional[dict]:
@@ -278,6 +454,7 @@ async def trigger_auto_reply(incoming_message: dict) -> Optional[dict]:
         content=reply_content,
         recipient_name=sender_name,
         automation_workflow="Auto Reply",
+        number=_incoming_number(incoming_message),
         metadata={"trigger": "auto_reply", "original_message_id": incoming_message.get("_id", "")},
     )
     
@@ -290,212 +467,12 @@ async def trigger_auto_reply(incoming_message: dict) -> Optional[dict]:
         recipient_phone=sender_phone,
         message_preview=reply_content,
         duration_ms=duration_ms,
+        number_id=incoming_message.get("number_id"),
     )
     
     return message
 
 
-async def trigger_lead_status_update(lead_data: dict, new_status: str) -> Optional[dict]:
-    """
-    Phase 2 — Lead Status Update Notification
-    Sends a WhatsApp message when a lead's status changes.
-    """
-    start_time = time.time()
-    
-    if new_status.lower() == "converted":
-        template = get_template_by_name("Lead Converted")
-    else:
-        template = None
-    
-    phone = lead_data.get("phone", "+91-0000000000")
-    name = lead_data.get("name", "Client")
-    
-    if template:
-        variables = {
-            "client_name": name,
-            "project_type": lead_data.get("projectType", "Project"),
-            "assigned_to": lead_data.get("assignedTo", "our team"),
-        }
-        content = render_template(template["content"], variables)
-    else:
-        content = (
-            f"Hi {name}! 📋\n\n"
-            f"Your enquiry status has been updated to: *{new_status}*\n\n"
-            f"If you have any questions, please don't hesitate to reach out.\n\n"
-            f"— Team DelegateX"
-        )
-    
-    asyncio.create_task(n8n_service.trigger_lead_status_workflow(
-        {**lead_data, "_id": str(lead_data.get("_id", ""))}, new_status
-    ))
-    
-    message = await send_message(
-        recipient_phone=phone,
-        content=content,
-        recipient_name=name,
-        automation_workflow="Lead Status Update",
-        metadata={"lead_id": str(lead_data.get("_id", "")), "new_status": new_status},
-    )
-    
-    duration_ms = int((time.time() - start_time) * 1000)
-    await _log_automation(
-        workflow_name="Lead Status Update",
-        trigger=f"Status → {new_status}",
-        status=AutomationStatus.SUCCESS.value,
-        recipient=name,
-        recipient_phone=phone,
-        message_preview=content,
-        duration_ms=duration_ms,
-    )
-    
-    return message
-
-
-async def trigger_daily_lead_report() -> Optional[dict]:
-    """
-    Phase 2 — Daily Lead Report
-    Generates and sends a daily summary of CRM lead activity.
-    """
-    start_time = time.time()
-    today_str = date.today().isoformat()
-    
-    total_leads = crm_lead_collection.count_documents({})
-    new_leads = crm_lead_collection.count_documents({"date": today_str})
-    converted = crm_lead_collection.count_documents({"status": "Converted"})
-    lost = crm_lead_collection.count_documents({"status": "Lost"})
-    active = total_leads - converted - lost
-    
-    report_content = (
-        f"📊 *Daily Lead Report — {today_str}*\n\n"
-        f"📋 Total Leads: *{total_leads}*\n"
-        f"🆕 New Today: *{new_leads}*\n"
-        f"✅ Converted: *{converted}*\n"
-        f"❌ Lost: *{lost}*\n"
-        f"🔄 Active Pipeline: *{active}*\n\n"
-        f"— DelegateX CRM Automation"
-    )
-    
-    message = await send_message(
-        recipient_phone="+91-ADMIN",
-        content=report_content,
-        recipient_name="Admin",
-        automation_workflow="Daily Lead Report",
-        metadata={"trigger": "daily_report", "date": today_str},
-    )
-    
-    duration_ms = int((time.time() - start_time) * 1000)
-    await _log_automation(
-        workflow_name="Daily Lead Report",
-        trigger="Scheduled Daily",
-        status=AutomationStatus.SUCCESS.value,
-        recipient="Admin",
-        message_preview=report_content,
-        duration_ms=duration_ms,
-    )
-    
-    return message
-
-
-async def trigger_daily_reply_report() -> Optional[dict]:
-    """
-    Daily Customer Reply Summary Automation (Runs daily via scheduler).
-    Logs daily reply statistics and makes report data snapshot available.
-    """
-    from app.whatsapp.repository import MessageRepository
-    start_time = time.time()
-    today_str = date.today().isoformat()
-    
-    stats = MessageRepository.get_reply_stats()
-    
-    report_content = (
-        f"📩 *Daily WhatsApp Customer Reply Report — {today_str}*\n\n"
-        f"💬 Total Replies (All-Time): *{stats.get('total_replies', 0)}*\n"
-        f"🆕 Replies Received Today: *{stats.get('today_replies', 0)}*\n"
-        f"👥 Unique Customer Contacts: *{stats.get('unique_customers', 0)}*\n"
-        f"⏳ Unread / Pending Replies: *{stats.get('unread_replies', 0)}*\n"
-        f"📝 Text / Media Ratio: *{stats.get('text_replies', 0)} / {stats.get('media_replies', 0)}*\n\n"
-        f"📥 Admin can download full Excel report from WhatsApp Automation → Export Report."
-    )
-    
-    message = await send_message(
-        recipient_phone="+91-ADMIN",
-        content=report_content,
-        recipient_name="Admin",
-        automation_workflow="Daily Customer Reply Report",
-        metadata={"trigger": "daily_reply_report", "date": today_str, **stats},
-    )
-    
-    duration_ms = int((time.time() - start_time) * 1000)
-    await _log_automation(
-        workflow_name="Daily Customer Reply Report",
-        trigger="Scheduled Daily (11:59 PM)",
-        status=AutomationStatus.SUCCESS.value,
-        recipient="Admin",
-        message_preview=report_content,
-        duration_ms=duration_ms,
-    )
-    
-    return message
-
-
-
-async def trigger_task_assignment_notification(task_data: dict) -> Optional[dict]:
-    """
-    Phase 2 — Employee Task Assignment Notification
-    Sends a WhatsApp message when a task is assigned to an employee.
-    """
-    start_time = time.time()
-    
-    template = get_template_by_name("Task Assigned")
-    employee_name = task_data.get("employee", "Team Member")
-    
-    # Use a simulated phone for the employee
-    phone = f"+91-EMP-{employee_name.replace(' ', '-').upper()}"
-    
-    if template:
-        variables = {
-            "employee_name": employee_name,
-            "task_title": task_data.get("title", "New Task"),
-            "project_name": task_data.get("project", "Project"),
-            "priority": task_data.get("priority", "Medium"),
-            "deadline": task_data.get("deadline", "TBD"),
-        }
-        content = render_template(template["content"], variables)
-    else:
-        content = (
-            f"📌 Hi {employee_name}!\n\n"
-            f"A new task '{task_data.get('title', 'New Task')}' has been assigned to you.\n\n"
-            f"— DelegateX"
-        )
-    
-    asyncio.create_task(n8n_service.trigger_task_assignment_workflow(task_data))
-    
-    message = await send_message(
-        recipient_phone=phone,
-        content=content,
-        recipient_name=employee_name,
-        message_type="template",
-        automation_workflow="Task Assignment Notification",
-        metadata={"task_id": str(task_data.get("_id", "")), "trigger": "task_assigned"},
-    )
-    
-    duration_ms = int((time.time() - start_time) * 1000)
-    await _log_automation(
-        workflow_name="Task Assignment Notification",
-        trigger="Task Assigned",
-        status=AutomationStatus.SUCCESS.value,
-        recipient=employee_name,
-        recipient_phone=phone,
-        message_preview=content,
-        duration_ms=duration_ms,
-    )
-    
-    return message
-
-
-# ═══════════════════════════════════════════════════════════════════
-# PHASE 3 AUTOMATIONS
-# ═══════════════════════════════════════════════════════════════════
 
 async def trigger_ai_faq_bot(incoming_message: dict) -> Optional[dict]:
     """
@@ -535,6 +512,7 @@ async def trigger_ai_faq_bot(incoming_message: dict) -> Optional[dict]:
         content=reply_content,
         recipient_name=sender_name,
         automation_workflow="AI FAQ Bot",
+        number=_incoming_number(incoming_message),
         metadata={"trigger": "ai_faq", "query": query},
     )
     
@@ -547,6 +525,7 @@ async def trigger_ai_faq_bot(incoming_message: dict) -> Optional[dict]:
         recipient_phone=sender_phone,
         message_preview=reply_content[:200],
         duration_ms=duration_ms,
+        number_id=incoming_message.get("number_id"),
     )
     
     return message
@@ -587,6 +566,7 @@ async def trigger_crm_lookup(incoming_message: dict) -> Optional[dict]:
         content=lead_info,
         recipient_name=sender_name,
         automation_workflow="CRM Lookup",
+        number=_incoming_number(incoming_message),
         metadata={"trigger": "crm_lookup", "lead_found": lead is not None},
     )
     
@@ -599,6 +579,7 @@ async def trigger_crm_lookup(incoming_message: dict) -> Optional[dict]:
         recipient_phone=sender_phone,
         message_preview=lead_info[:200],
         duration_ms=duration_ms,
+        number_id=incoming_message.get("number_id"),
     )
     
     return message
@@ -622,6 +603,7 @@ async def detect_intent_and_route(incoming_message: dict) -> Optional[dict]:
             content=reply,
             recipient_name=sender_name,
             automation_workflow="Webhook Test Automation",
+            number=_incoming_number(incoming_message),
             metadata={"trigger": "webhook_test", "original_content": incoming_message.get("content")},
         )
         
@@ -633,6 +615,7 @@ async def detect_intent_and_route(incoming_message: dict) -> Optional[dict]:
             recipient_phone=sender_phone,
             message_preview=reply,
             duration_ms=10,
+            number_id=incoming_message.get("number_id"),
         )
         return message
 
@@ -652,6 +635,7 @@ async def detect_intent_and_route(incoming_message: dict) -> Optional[dict]:
             content=reply,
             recipient_name=incoming_message.get("sender", "Customer"),
             automation_workflow="Intent Detection",
+            number=_incoming_number(incoming_message),
         )
     
     elif content == "agent" or "human" in content or "help" in content:
@@ -665,212 +649,10 @@ async def detect_intent_and_route(incoming_message: dict) -> Optional[dict]:
             content=reply,
             recipient_name=incoming_message.get("sender", "Customer"),
             automation_workflow="Intent Detection — Agent Handoff",
+            number=_incoming_number(incoming_message),
         )
     
     else:
         # Default: route to AI FAQ bot
         return await trigger_ai_faq_bot(incoming_message)
-
-
-# ═══════════════════════════════════════════════════════════════════
-# SIMULATION ENGINE — CAMPAIGN & BULK DISPATCH
-# ═══════════════════════════════════════════════════════════════════
-
-async def execute_simulated_campaign(
-    campaign_name: str,
-    template_identifier: str,
-    target_audience: str = "all_leads",
-    override_recipients: Optional[List[dict]] = None
-) -> dict:
-    """
-    Execute a Campaign or Bulk Messaging dispatch in Simulation Mode.
-    
-    1. Ensures default seed conversations exist if DB is empty.
-    2. Validates selected template exists and has non-empty content.
-    3. Fetches target recipient contacts.
-    4. Filters out Global DND numbers.
-    5. Renders template content dynamically for each contact.
-    6. Saves outbound messages into MongoDB & broadcasts via WebSocket.
-    7. Updates template metrics & logs campaign execution.
-    """
-    start_time = time.time()
-    
-    # 1. Ensure seed conversations exist in DB if empty
-    try:
-        from app.whatsapp.services.message_service import seed_default_conversations_if_empty
-        seed_default_conversations_if_empty()
-    except Exception as seed_err:
-        logger.warning(f"[Campaign Engine] Seed check warning: {seed_err}")
-
-    # 2. Resolve and Validate Selected Template
-    if not template_identifier:
-        template_identifier = "Welcome Message"
-
-    template = get_template_by_id_or_name(template_identifier)
-    if not template or not template.get("content", "").strip():
-        # Fallback check by category or default template names before failing
-        for fallback_name in ["Welcome Message", "Follow-up Reminder", "Meeting Reminder", "Lead Converted", "Task Assigned", "Payment Reminder", "Order Confirmation"]:
-            template = get_template_by_name(fallback_name)
-            if template and template.get("content", "").strip():
-                break
-
-    if not template or not template.get("content", "").strip():
-        err_msg = f"Validation Error: Selected template '{template_identifier}' does not exist in database or contains empty content."
-        logger.error(f"[Campaign Engine] {err_msg}")
-        await _log_automation(
-            workflow_name=campaign_name,
-            trigger="Campaign Launch",
-            status=AutomationStatus.FAILED.value,
-            error=err_msg,
-        )
-        raise ValueError(err_msg)
-
-    template_content = template["content"]
-    template_id = template["_id"]
-
-    # 3. Gather Target Recipients
-    recipients = []
-    if override_recipients:
-        recipients = override_recipients
-    else:
-        # Fetch CRM leads
-        crm_leads = list(crm_lead_collection.find())
-        for lead in crm_leads:
-            phone = lead.get("phone")
-            name = lead.get("name")
-            if phone and name:
-                recipients.append({
-                    "name": name,
-                    "phone": phone,
-                    "email": lead.get("email", ""),
-                    "projectType": lead.get("projectType", "Real Estate Consulting"),
-                    "assignedTo": lead.get("assignedTo", "Alex Morgan"),
-                    "status": lead.get("status", "Active"),
-                })
-
-        # Standard simulation contact pool for realistic inbox sync
-        simulation_pool = [
-            {"name": "Rahul Sharma", "phone": "+91 98765 43210", "projectType": "Commercial Complex", "assignedTo": "Alex Morgan"},
-            {"name": "Priya Patel", "phone": "+91 98765 43211", "projectType": "Residential Villa", "assignedTo": "Sarah Jenkins"},
-            {"name": "Amit Verma", "phone": "+91 98765 43212", "projectType": "IT Park Office", "assignedTo": "Michael Chang"},
-            {"name": "Sneha Gupta", "phone": "+91 98765 43213", "projectType": "Luxury Apartment", "assignedTo": "Anita Sharma"},
-            {"name": "Rohit Singh", "phone": "+91 98765 43214", "projectType": "Penthouse", "assignedTo": "David Miller"},
-        ]
-
-        # Combine CRM leads and simulation pool
-        recipients.extend(simulation_pool)
-
-    # 4. Deduplicate by clean phone number and filter out DND numbers
-    import re
-    seen_phones = set()
-    valid_recipients = []
-
-    for contact in recipients:
-        raw_phone = contact.get("phone", "")
-        clean_p = re.sub(r"\D", "", raw_phone)
-        if not clean_p or clean_p in seen_phones:
-            continue
-
-        # Check Global DND
-        if DNDRepository.is_dnd(raw_phone):
-            logger.info(f"[Campaign Engine] Intercepted DND blocked contact: {raw_phone}")
-            continue
-
-        seen_phones.add(clean_p)
-        valid_recipients.append(contact)
-
-    if not valid_recipients:
-        # Fallback to simulation pool if all leads were empty
-        valid_recipients = [
-            {"name": "Rahul Sharma", "phone": "+91 98765 43210", "projectType": "Commercial Complex", "assignedTo": "Alex Morgan"},
-            {"name": "Priya Patel", "phone": "+91 98765 43211", "projectType": "Residential Villa", "assignedTo": "Sarah Jenkins"},
-            {"name": "Amit Verma", "phone": "+91 98765 43212", "projectType": "IT Park Office", "assignedTo": "Michael Chang"},
-            {"name": "Sneha Gupta", "phone": "+91 98765 43213", "projectType": "Luxury Apartment", "assignedTo": "Anita Sharma"},
-            {"name": "Rohit Singh", "phone": "+91 98765 43214", "projectType": "Penthouse", "assignedTo": "David Miller"},
-        ]
-
-    # 5. Render Selected Template & Dispatch Messages
-    sent_messages = []
-    sample_preview = ""
-
-    for idx, contact in enumerate(valid_recipients):
-        c_name = contact.get("name", "Valued Client")
-        c_phone = contact.get("phone", "+91-0000000000")
-
-        # Map dynamic contact variables
-        vars_map = {
-            "client_name": c_name,
-            "name": c_name,
-            "employee_name": c_name,
-            "project_type": contact.get("projectType", "Real Estate Consulting"),
-            "project_name": contact.get("projectType", "Commercial Complex"),
-            "assigned_to": contact.get("assignedTo", "Alex Morgan"),
-            "meeting_date": "Tomorrow",
-            "meeting_time": "11:00 AM",
-            "meeting_location": "DelegateX HQ",
-            "invoice_no": f"INV-{7800 + idx * 47}",
-            "amount": f"₹{(25 + idx * 5):,},000",
-            "due_date": "2026-08-05",
-            "order_id": f"ORD-{4100 + idx * 23}",
-            "delivery_date": "2026-08-03",
-            "task_title": "Enterprise Automation Review",
-            "priority": "High",
-            "deadline": "2026-08-10",
-        }
-
-        # Render template content with contact variables
-        rendered_content = render_template(template_content, vars_map)
-        if not sample_preview:
-            sample_preview = rendered_content
-
-        # Send outbound message (saves to DB, triggers simulation status, broadcasts WS)
-        message = await send_message(
-            recipient_phone=c_phone,
-            content=rendered_content,
-            recipient_name=c_name,
-            message_type=template.get("content_type", "template"),
-            template_id=template_id,
-            automation_workflow=campaign_name,
-            metadata={
-                "campaign_name": campaign_name,
-                "template_id": template_id,
-                "template_name": template.get("name"),
-                "target_audience": target_audience,
-                "dispatched_at": datetime.utcnow().isoformat(),
-            }
-        )
-        sent_messages.append(message)
-
-    # 6. Update Template Insights & Analytics Stats
-    record_template_usage_metrics(
-        identifier_or_id=template_id,
-        sent_count=len(sent_messages),
-        delivered_count=len(sent_messages),
-        read_count=len(sent_messages)
-    )
-
-    # 7. Create Automation Log
-    duration_ms = int((time.time() - start_time) * 1000)
-    await _log_automation(
-        workflow_name=campaign_name,
-        trigger="Start Campaign / Bulk Broadcast",
-        status=AutomationStatus.SUCCESS.value,
-        recipient=f"{len(sent_messages)} recipients",
-        message_preview=sample_preview,
-        duration_ms=duration_ms,
-        metadata={
-            "template_name": template.get("name"),
-            "messages_count": len(sent_messages),
-            "target_audience": target_audience,
-        }
-    )
-
-    return {
-        "status": "success",
-        "campaign_name": campaign_name,
-        "template_used": template.get("name"),
-        "messages_sent_count": len(sent_messages),
-        "messages": sent_messages,
-        "sample_content": sample_preview,
-    }
 

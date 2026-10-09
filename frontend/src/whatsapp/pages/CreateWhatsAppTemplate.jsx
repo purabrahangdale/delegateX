@@ -1,8 +1,10 @@
-import { useState, useRef, useMemo } from "react";
+import { useState, useRef, useMemo, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { createWhatsAppTemplate } from "../services/whatsappApi";
+import { createWhatsAppTemplate, submitWhatsAppTemplate, apiErrorMessage } from "../services/whatsappApi";
 import { useToast } from "../../context/ToastContext";
 import WhatsAppAiAssistant from "../components/WhatsAppAiAssistant";
+import { SelectedNumberBadge } from "../components/WhatsAppNumberSelector";
+import { useNumberSwitchGuard, useWhatsAppNumber } from "../context/WhatsAppNumberContext";
 import {
     FiArrowLeft, FiSave, FiFileText, FiPlus, FiSmile, FiBold, FiItalic,
     FiCornerDownLeft, FiPaperclip, FiImage, FiFile, FiVideo, FiMapPin,
@@ -93,6 +95,15 @@ const VARIABLE_GROUPS = [
     }
 ];
 
+const LANGUAGES = [
+    ["en_US", "English (US)"], ["en_GB", "English (UK)"], ["en", "English"], ["hi", "Hindi"], ["mr", "Marathi"],
+    ["gu", "Gujarati"], ["ta", "Tamil"], ["te", "Telugu"], ["kn", "Kannada"], ["bn", "Bengali"], ["ml", "Malayalam"],
+    ["pa", "Punjabi"], ["ur", "Urdu"], ["ar", "Arabic"], ["es", "Spanish"], ["fr", "French"], ["de", "German"],
+];
+
+const VAR_RE = /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g;
+const extractVars = (text) => [...new Set([...(text || "").matchAll(VAR_RE)].map((m) => m[1]))];
+
 const EMOJI_LIST = ["😊", "👋", "📅", "📋", "📌", "✅", "🚀", "💬", "🏢", "✉️", "🎉", "⭐", "🔹", "📍", "👤"];
 
 // Interactive Button Options Configuration (Matching WhatsApp Business API Options)
@@ -116,7 +127,7 @@ const BUTTON_TYPES = [
     {
         id: "call_whatsapp",
         label: "Call on WhatsApp",
-        description: "Direct WhatsApp call trigger",
+        description: "Not supported in Meta message templates (local only)",
         icon: FiMessageSquare,
         defaultText: "Call on WhatsApp",
         defaultPhone: "+91 98765 43210",
@@ -132,10 +143,10 @@ const BUTTON_TYPES = [
     {
         id: "complete_flow",
         label: "Complete flow",
-        description: "WhatsApp Survey or Form Flow",
+        description: "Opens a published WhatsApp Flow (numeric Flow ID)",
         icon: FiClipboard,
         defaultText: "Complete flow",
-        defaultFlowId: "flow_qualification_v1",
+        defaultFlowId: "",
     },
     {
         id: "copy_offer_code",
@@ -148,7 +159,7 @@ const BUTTON_TYPES = [
     {
         id: "share_contact",
         label: "Share contact info",
-        description: "Share representative contact details",
+        description: "Not supported in Meta message templates (local only)",
         icon: FiUser,
         defaultText: "Share contact info",
         defaultContactName: "Sarah Jenkins",
@@ -187,6 +198,33 @@ function CreateWhatsAppTemplate() {
             color: "red",
         }
     ]);
+
+    // Meta template fields
+    const [language, setLanguage] = useState("en_US");
+    const [metaCategory, setMetaCategory] = useState("UTILITY");
+    const [headerFormat, setHeaderFormat] = useState("NONE");
+    const [headerText, setHeaderText] = useState("");
+    const [headerSampleUrl, setHeaderSampleUrl] = useState("");
+    const [footer, setFooter] = useState("");
+    const numberCtx = useWhatsAppNumber();
+    // The draft is created in the selected number's WhatsApp Business Account — switching asks first.
+    useNumberSwitchGuard(!!(name.trim() || content.trim()), "This template draft has not been saved yet.");
+    const [variableExamples, setVariableExamples] = useState({});
+
+    const metaName = useMemo(() => name.trim().toLowerCase().replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, ""), [name]);
+    const allVariables = useMemo(
+        () => [...new Set([...(headerFormat === "TEXT" ? extractVars(headerText) : []), ...extractVars(content)])],
+        [content, headerText, headerFormat]
+    );
+
+    // Pre-fill example values from sample data for newly used variables
+    useEffect(() => {
+        setVariableExamples((prev) => {
+            const next = { ...prev };
+            allVariables.forEach((v) => { if (next[v] === undefined && SAMPLE_DATA[v]) next[v] = SAMPLE_DATA[v]; });
+            return next;
+        });
+    }, [allVariables]);
 
     // Settings Checkboxes
     const [isActive, setIsActive] = useState(true);
@@ -298,13 +336,13 @@ function CreateWhatsAppTemplate() {
     // Real-Time Preview Generator (Memoized)
     const resolvedPreview = useMemo(() => {
         if (!content.trim()) return "";
-
-        let rendered = content.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key) => {
-            return SAMPLE_DATA[key] !== undefined ? SAMPLE_DATA[key] : "[Not Available]";
+        const fill = (text) => text.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key) => {
+            const v = variableExamples[key] ?? SAMPLE_DATA[key];
+            return v ? v : `[${key}]`;
         });
-
-        return rendered;
-    }, [content]);
+        const header = headerFormat === "TEXT" && headerText.trim() ? `*${fill(headerText.trim())}*` : headerFormat !== "NONE" ? `[${headerFormat}]` : null;
+        return [header, fill(content), footer.trim() ? `_${footer.trim()}_` : null].filter(Boolean).join("\n\n");
+    }, [content, variableExamples, headerFormat, headerText, footer]);
 
     // Format WhatsApp preview text (*bold* -> <strong>, _italic_ -> <em>)
     const formatPreviewHtml = (text) => {
@@ -341,6 +379,19 @@ function CreateWhatsAppTemplate() {
 
         if (!content.trim()) {
             newErrors.content = "Message content is required";
+        } else if (/^\s*\{\{/.test(content) || /\}\}\s*$/.test(content)) {
+            newErrors.content = "Meta does not allow a message to start or end with a variable — add text before/after it.";
+        } else if (content.length > 1024) {
+            newErrors.content = "Meta allows at most 1024 characters in the body.";
+        }
+        if (!metaName) {
+            newErrors.name = "Template name must contain letters or numbers";
+        }
+        if (headerFormat === "TEXT" && !headerText.trim()) {
+            newErrors.header = "Header text is required (or choose no header)";
+        }
+        if (["IMAGE", "VIDEO", "DOCUMENT"].includes(headerFormat) && !/^https:\/\//.test(headerSampleUrl.trim())) {
+            newErrors.header = "A public HTTPS sample URL is required for media headers";
         }
 
         setErrors(newErrors);
@@ -348,7 +399,7 @@ function CreateWhatsAppTemplate() {
     };
 
     // Handle Save
-    const handleSave = async (e) => {
+    const handleSave = async (e, submitToMeta = false) => {
         e?.preventDefault();
         if (!validate()) {
             showToast("Please fix the errors before saving", "error");
@@ -365,6 +416,7 @@ function CreateWhatsAppTemplate() {
             type: btn.type,
             text: (btn.text || "").trim(),
             url: (btn.url || "").trim(),
+            url_example: (btn.url_example || "").trim(),
             phone_number: (btn.phone_number || "").trim(),
             flow_id: (btn.flow_id || "").trim(),
             offer_code: (btn.offer_code || "").trim(),
@@ -373,25 +425,43 @@ function CreateWhatsAppTemplate() {
             color: btn.color || "green",
         })).filter(b => b.text) : [];
 
+        const examples = Object.fromEntries(allVariables.map((v) => [v, (variableExamples[v] || "").trim()]));
+        let created;
         try {
-            await createWhatsAppTemplate({
+            const res = await createWhatsAppTemplate({
                 name: name.trim(),
+                meta_template_name: metaName,
                 category: category.toLowerCase().replace(/\s+/g, "_"),
+                meta_category: metaCategory,
+                language,
                 content: content.trim(),
+                header: { format: headerFormat, text: headerText.trim(), sample_url: headerSampleUrl.trim() },
+                footer: footer.trim(),
+                variable_examples: examples,
                 variables: extractedVars,
                 description: description.trim(),
                 is_active: isActive,
                 response_buttons: responseButtons,
             });
-
-            showToast("WhatsApp Template Created Successfully", "success");
-            navigate("/whatsapp/templates");
+            created = res.template;
         } catch (err) {
-            console.error("Failed to save WhatsApp template", err);
-            showToast("Failed to create WhatsApp template. Please try again.", "error");
-        } finally {
+            showToast(`Failed to save template: ${apiErrorMessage(err)}`, "error");
             setSaving(false);
+            return;
         }
+
+        if (submitToMeta) {
+            try {
+                const r = await submitWhatsAppTemplate(created._id);
+                showToast(`${r.message}. You'll be able to use it once Meta approves it.`, "success");
+            } catch (err) {
+                showToast(`Saved as draft, but Meta rejected the submission: ${apiErrorMessage(err)}`, "error");
+            }
+        } else {
+            showToast("Template saved as draft. Submit it to Meta for review from the Templates list.", "success");
+        }
+        setSaving(false);
+        navigate("/whatsapp/templates");
     };
 
     const handleFileSelect = (e) => {
@@ -440,6 +510,14 @@ function CreateWhatsAppTemplate() {
                         <p className="text-slate-500 text-xs mt-0.5">
                             Create reusable WhatsApp templates with dynamic CRM variables and interactive response buttons.
                         </p>
+                        {numberCtx?.selected && (
+                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                                <SelectedNumberBadge />
+                                <span className="text-[10px] text-slate-400">
+                                    Saved to WABA {numberCtx.selected.waba_name || numberCtx.selected.waba_id} — shared by every number in that account.
+                                </span>
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -453,16 +531,27 @@ function CreateWhatsAppTemplate() {
                     </button>
                     <button
                         type="button"
-                        onClick={handleSave}
+                        onClick={(e) => handleSave(e, false)}
                         disabled={saving}
+                        title="Save locally as a draft. It cannot be sent until submitted and approved by Meta."
+                        className="flex items-center gap-2 bg-white border border-slate-200 text-slate-700 px-4 py-2.5 rounded-xl text-xs font-semibold hover:bg-slate-50 transition cursor-pointer disabled:opacity-50"
+                    >
+                        <FiSave size={15} />
+                        Save Draft
+                    </button>
+                    <button
+                        type="button"
+                        onClick={(e) => handleSave(e, true)}
+                        disabled={saving}
+                        title="Save and send to Meta for review. Approval usually takes minutes to 24 hours."
                         className="flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white px-5 py-2.5 rounded-xl text-xs font-semibold shadow-lg shadow-green-500/20 transition duration-200 hover:scale-[1.01] active:scale-[0.99] cursor-pointer disabled:opacity-50"
                     >
                         {saving ? (
                             <FiCheckCircle className="animate-spin" size={15} />
                         ) : (
-                            <FiSave size={15} />
+                            <FiUpload size={15} />
                         )}
-                        {saving ? "Saving..." : "Save Template"}
+                        {saving ? "Saving..." : "Save & Submit to Meta"}
                     </button>
                 </div>
             </div>
@@ -553,6 +642,98 @@ function CreateWhatsAppTemplate() {
                                 className="w-full px-3.5 py-2.5 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-400 transition"
                             />
                         </div>
+                    </div>
+
+
+                    {/* Section 1.5: Meta WhatsApp review settings */}
+                    <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-[0_2px_8px_rgba(15,23,42,0.01)] space-y-4">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                            <div className="flex items-center gap-2">
+                                <span className="p-1.5 rounded-lg bg-green-50 text-green-600 border border-green-100">
+                                    <FiTag size={15} />
+                                </span>
+                                <h3 className="text-sm font-bold text-slate-900 font-display">Meta Review Settings</h3>
+                            </div>
+                            <span className="text-[10px] text-slate-400 font-mono" title="Name used on Meta (lowercase, underscores). Cannot be changed after submission.">
+                                Meta name: {metaName || "—"}
+                            </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1" title="Meta decides pricing and review rules by category.">
+                                    Meta Category <span className="text-rose-500">*</span>
+                                </label>
+                                <select value={metaCategory} onChange={(e) => setMetaCategory(e.target.value)} className="w-full px-3.5 py-2.5 text-xs bg-white border border-slate-200 rounded-xl cursor-pointer">
+                                    <option value="UTILITY">Utility — updates about an existing order, account, appointment</option>
+                                    <option value="MARKETING">Marketing — promotions, offers, re-engagement</option>
+                                </select>
+                                <p className="text-[10px] text-slate-400 mt-1">Meta may re-categorise the template during review.</p>
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Language <span className="text-rose-500">*</span></label>
+                                <select value={language} onChange={(e) => setLanguage(e.target.value)} className="w-full px-3.5 py-2.5 text-xs bg-white border border-slate-200 rounded-xl cursor-pointer">
+                                    {LANGUAGES.map(([code, label]) => <option key={code} value={code}>{label} ({code})</option>)}
+                                </select>
+                                <p className="text-[10px] text-slate-400 mt-1">Each language is a separate template on Meta.</p>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div>
+                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Header</label>
+                                <select value={headerFormat} onChange={(e) => setHeaderFormat(e.target.value)} className="w-full px-3.5 py-2.5 text-xs bg-white border border-slate-200 rounded-xl cursor-pointer">
+                                    <option value="NONE">None</option>
+                                    <option value="TEXT">Text</option>
+                                    <option value="IMAGE">Image</option>
+                                    <option value="VIDEO">Video</option>
+                                    <option value="DOCUMENT">Document</option>
+                                </select>
+                            </div>
+                            <div className="sm:col-span-2">
+                                {headerFormat === "TEXT" && (
+                                    <>
+                                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Header text (max 60, one variable)</label>
+                                        <input value={headerText} maxLength={60} onChange={(e) => setHeaderText(e.target.value)} placeholder="e.g. Update for {{client_name}}" className="w-full px-3.5 py-2.5 text-xs border border-slate-200 rounded-xl" />
+                                    </>
+                                )}
+                                {["IMAGE", "VIDEO", "DOCUMENT"].includes(headerFormat) && (
+                                    <>
+                                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Sample {headerFormat.toLowerCase()} URL (public HTTPS)</label>
+                                        <input value={headerSampleUrl} onChange={(e) => setHeaderSampleUrl(e.target.value)} placeholder="https://..." className="w-full px-3.5 py-2.5 text-xs border border-slate-200 rounded-xl font-mono" />
+                                        <p className="text-[10px] text-slate-400 mt-1">Meta reviews this sample. Requires META_APP_ID on the server. Campaigns can send a different file.</p>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+
+                        {errors.header && <p className="text-[10px] text-rose-500 font-medium">{errors.header}</p>}
+
+                        <div>
+                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Footer (optional, max 60, no variables)</label>
+                            <input value={footer} maxLength={60} onChange={(e) => setFooter(e.target.value)} placeholder="e.g. Reply STOP to opt out" className="w-full px-3.5 py-2.5 text-xs border border-slate-200 rounded-xl" />
+                        </div>
+
+                        {allVariables.length > 0 && (
+                            <div>
+                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1" title="Meta requires a realistic example for every variable to review the template.">
+                                    Example values for Meta review <span className="text-rose-500">*</span>
+                                </label>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    {allVariables.map((v) => (
+                                        <div key={v} className="flex items-center gap-2">
+                                            <span className="text-[10px] font-mono text-indigo-600 w-32 truncate">{`{{${v}}}`}</span>
+                                            <input
+                                                value={variableExamples[v] ?? ""}
+                                                onChange={(e) => setVariableExamples((prev) => ({ ...prev, [v]: e.target.value }))}
+                                                placeholder={SAMPLE_DATA[v] || "Example value"}
+                                                className={`flex-1 px-2.5 py-1.5 text-xs border rounded-lg ${(variableExamples[v] ?? "").trim() ? "border-slate-200" : "border-amber-300"}`}
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {/* Section 2: Message Builder */}
@@ -831,8 +1012,17 @@ function CreateWhatsAppTemplate() {
                                                                 type="url"
                                                                 value={btn.url}
                                                                 onChange={(e) => handleUpdateButton(btn.id, "url", e.target.value)}
-                                                                placeholder="URL (https://example.com)"
+                                                                placeholder="URL (https://example.com) — add {{1}} at the end for a per-recipient link"
                                                                 className="w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 text-slate-800 font-mono"
+                                                            />
+                                                        )}
+                                                        {btn.type === "visit_website" && (btn.url || "").includes("{{") && (
+                                                            <input
+                                                                type="url"
+                                                                value={btn.url_example || ""}
+                                                                onChange={(e) => handleUpdateButton(btn.id, "url_example", e.target.value)}
+                                                                placeholder="Full example URL for Meta review (e.g. https://example.com/order/123)"
+                                                                className="w-full px-3 py-1.5 text-xs bg-white border border-amber-300 rounded-lg text-slate-800 font-mono"
                                                             />
                                                         )}
 

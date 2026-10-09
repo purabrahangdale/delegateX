@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import WhatsAppHeader from "../components/WhatsAppHeader";
-import { getConversations, getConversationMessages, sendWhatsAppMessage, simulateReply, logChatAccess, getWhatsAppDashboardStats } from "../services/whatsappApi";
+import { getConversations, getConversationMessages, sendWhatsAppMessage, simulateReply, logChatAccess, getWhatsAppDashboardStats, isEventForActiveNumber } from "../services/whatsappApi";
+import { useNumberSwitchGuard } from "../context/WhatsAppNumberContext";
 
 import { useWebSockets } from "../../context/WebSocketContext";
 import {
@@ -17,7 +18,12 @@ function MessageStatus({ status }) {
             <FiClock size={11} className="animate-spin text-emerald-500" />
         </span>
     );
-    if (status === "sent") return <FiCheck size={11} className="text-slate-400" title="Sent to Meta Cloud API" />;
+    if (status === "accepted") return (
+        <span className="flex items-center text-slate-300" title="Accepted by Meta Cloud API — waiting for delivery confirmation">
+            <FiClock size={11} />
+        </span>
+    );
+    if (status === "sent") return <FiCheck size={11} className="text-slate-400" title="Sent by WhatsApp (confirmed by webhook)" />;
     if (status === "delivered") return (
         <span className="flex -space-x-1.5" title="Delivered to recipient">
             <FiCheck size={11} className="text-slate-400" /><FiCheck size={11} className="text-slate-400" />
@@ -38,99 +44,30 @@ function MessageStatus({ status }) {
 
 const EMOJIS = ["😊", "👋", "✅", "🚀", "💬", "📌", "👍", "❤️", "📍", "🎉"];
 
-// Realistic Seed Conversations with Customer Replies
-const SEED_REPLIES = [
-    {
-        conversation_id: "conv-seed-1",
-        recipient: "Rahul Sharma",
-        recipient_phone: "+91 98765 43210",
-        unread_count: 1,
-        has_reply: true,
-        updated_at: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
-        last_message: {
-            content: "Thank you! Can we schedule a meeting tomorrow?",
-            direction: "inbound",
-            sender: "Rahul Sharma",
-            created_at: new Date(Date.now() - 2 * 60 * 1000).toISOString()
-        },
-        messages: [
-            { _id: "m1", direction: "outbound", sender: "DelegateX", content: "Hello Rahul, thank you for your enquiry.", status: "read", created_at: new Date(Date.now() - 30 * 60 * 1000).toISOString() },
-            { _id: "m2", direction: "inbound", sender: "Rahul Sharma", content: "Thank you! Can we schedule a meeting tomorrow?", status: "read", created_at: new Date(Date.now() - 2 * 60 * 1000).toISOString() }
-        ]
-    },
-    {
-        conversation_id: "conv-seed-2",
-        recipient: "Priya Patel",
-        recipient_phone: "+91 98765 43211",
-        unread_count: 1,
-        has_reply: true,
-        updated_at: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-        last_message: {
-            content: "Please change the timing to 4 PM.",
-            direction: "inbound",
-            sender: "Priya Patel",
-            created_at: new Date(Date.now() - 15 * 60 * 1000).toISOString()
-        },
-        messages: [
-            { _id: "m3", direction: "outbound", sender: "DelegateX", content: "Your site visit has been scheduled.", status: "read", created_at: new Date(Date.now() - 60 * 60 * 1000).toISOString() },
-            { _id: "m4", direction: "inbound", sender: "Priya Patel", content: "Please change the timing to 4 PM.", status: "read", created_at: new Date(Date.now() - 15 * 60 * 1000).toISOString() }
-        ]
-    },
-    {
-        conversation_id: "conv-seed-3",
-        recipient: "Amit Verma",
-        recipient_phone: "+91 98765 43212",
-        unread_count: 2,
-        has_reply: true,
-        updated_at: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
-        last_message: {
-            content: "Can you send me the updated price?",
-            direction: "inbound",
-            sender: "Amit Verma",
-            created_at: new Date(Date.now() - 45 * 60 * 1000).toISOString()
-        },
-        messages: [
-            { _id: "m5", direction: "outbound", sender: "DelegateX", content: "Your quotation has been shared.", status: "read", created_at: new Date(Date.now() - 120 * 60 * 1000).toISOString() },
-            { _id: "m6", direction: "inbound", sender: "Amit Verma", content: "Can you send me the updated price?", status: "read", created_at: new Date(Date.now() - 45 * 60 * 1000).toISOString() }
-        ]
-    },
-    {
-        conversation_id: "conv-seed-4",
-        recipient: "Sneha Gupta",
-        recipient_phone: "+91 98765 43213",
-        unread_count: 1,
-        has_reply: true,
-        updated_at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
-        last_message: {
-            content: "Thanks. I would like to know more about your services.",
-            direction: "inbound",
-            sender: "Sneha Gupta",
-            created_at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString()
-        },
-        messages: [
-            { _id: "m7", direction: "outbound", sender: "DelegateX", content: "Welcome to DelegateX.", status: "read", created_at: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString() },
-            { _id: "m8", direction: "inbound", sender: "Sneha Gupta", content: "Thanks. I would like to know more about your services.", status: "read", created_at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString() }
-        ]
-    },
-    {
-        conversation_id: "conv-seed-5",
-        recipient: "Rohit Singh",
-        recipient_phone: "+91 98765 43214",
-        unread_count: 0,
-        has_reply: true,
-        updated_at: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
-        last_message: {
-            content: "Confirmed. See you tomorrow.",
-            direction: "inbound",
-            sender: "Rohit Singh",
-            created_at: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString()
-        },
-        messages: [
-            { _id: "m9", direction: "outbound", sender: "DelegateX", content: "Reminder for tomorrow's meeting.", status: "read", created_at: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString() },
-            { _id: "m10", direction: "inbound", sender: "Rohit Singh", content: "Confirmed. See you tomorrow.", status: "read", created_at: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString() }
-        ]
-    }
-];
+// Dummy phone and name filters to ensure only real chats are displayed
+const DUMMY_PHONES = new Set([
+    "+91 98765 43210", "+91 98765 43211", "+91 98765 43212", "+91 98765 43213", "+91 98765 43214",
+    "+91-9876543210", "+91-9876543211", "+91-9876543212", "+91-9876543213", "+91-9876543214",
+    "+91 98765 43215", "+91 98765 43216", "+91 98765 43217", "+91 98765 43218", "+91 98765 43219",
+    "9876543210", "9876543211", "9876543212", "9876543213", "9876543214",
+    "+91-0000000000", "0000000000", "1234"
+]);
+
+const DUMMY_NAMES = new Set([
+    "Rahul Sharma", "Priya Patel", "Amit Verma", "Sneha Gupta", "Rohit Singh", "Customer"
+]);
+
+const isDummyConversation = (c) => {
+    if (!c) return true;
+    const phone = (c.recipient_phone || "").trim();
+    const cleanPhone = phone.replace(/\D/g, "");
+    const name = (c.recipient || "").trim();
+    if (DUMMY_NAMES.has(name) && ["9876543210", "9876543211", "9876543212", "9876543213", "9876543214"].includes(cleanPhone)) return true;
+    if (DUMMY_PHONES.has(phone) || DUMMY_PHONES.has(cleanPhone)) return true;
+    if (c.source === "simulation" || c.mode === "simulation") return true;
+    if (c.last_message?.source === "simulation" || c.last_message?.mode === "simulation") return true;
+    return false;
+};
 
 function WhatsAppInbox() {
     const [conversations, setConversations] = useState([]);
@@ -189,41 +126,48 @@ function WhatsAppInbox() {
         try {
             const apiData = await getConversations();
             
-            // Prioritize REAL conversations from MongoDB; use seed only if collection is completely empty
-            let combined = (apiData && apiData.length > 0) ? [...apiData] : [...SEED_REPLIES];
+            // Only keep real, valid conversations from the database
+            let realList = (Array.isArray(apiData) ? apiData : []).filter(c => !isDummyConversation(c));
 
             // Ensure conversations with inbound messages are marked has_reply = true
-            combined = combined.map(c => {
+            realList = realList.map(c => {
                 const isReplied = c.has_reply || c.last_message?.direction === "inbound" || (c.messages && c.messages.some(m => m.direction === "inbound"));
                 return { ...c, has_reply: isReplied };
             });
 
             // Sort by latest updated_at
-            combined.sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0));
-            setConversations(combined);
+            realList.sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0));
+            setConversations(realList);
 
-            // Select first conversation & clear its unread badge if initial load
-            if (!selectedConv && combined.length > 0) {
-                const first = combined[0];
-                setSelectedConv(first);
-                markConversationAsRead(first.conversation_id);
-                fetchMessages(first);
-            }
+            // Select active conversation
+            setSelectedConv(prevSelected => {
+                if (prevSelected) {
+                    const match = realList.find(c => c.conversation_id === prevSelected.conversation_id);
+                    if (match) return match;
+                }
+                if (realList.length > 0) {
+                    const first = realList[0];
+                    markConversationAsRead(first.conversation_id);
+                    fetchMessages(first);
+                    return first;
+                }
+                return null;
+            });
         } catch (err) {
             console.error("Failed to load conversations", err);
-            setConversations(SEED_REPLIES);
-            if (!selectedConv) {
-                setSelectedConv(SEED_REPLIES[0]);
-                markConversationAsRead(SEED_REPLIES[0].conversation_id);
-                fetchMessages(SEED_REPLIES[0]);
-            }
+            setConversations([]);
+            setSelectedConv(null);
+            setMessages([]);
         } finally {
             setLoading(false);
         }
     };
 
     const fetchMessages = async (conv) => {
-        if (!conv) return;
+        if (!conv) {
+            setMessages([]);
+            return;
+        }
 
         let apiMsgs = [];
         const convId = conv.conversation_id || conv.id || conv.recipient_phone;
@@ -235,26 +179,20 @@ function WhatsAppInbox() {
             }
         }
 
-        const convPhoneClean = normalizePhone(conv.recipient_phone);
-        const seedMatch = SEED_REPLIES.find(s => 
-            s.conversation_id === conv.conversation_id || 
-            (s.recipient_phone && normalizePhone(s.recipient_phone) === convPhoneClean)
+        // Keep strictly real messages, excluding any dummy or simulated data
+        const realMsgs = (Array.isArray(apiMsgs) ? apiMsgs : []).filter(m => 
+            m.source !== "simulation" && 
+            m.mode !== "simulation" &&
+            !DUMMY_NAMES.has(m.sender) &&
+            !DUMMY_PHONES.has(m.sender_phone)
         );
 
-        if (apiMsgs && apiMsgs.length > 0) {
-            // Combine seed messages with API messages if seed messages exist and aren't duplicated
-            if (seedMatch && seedMatch.messages) {
-                const apiContentSet = new Set(apiMsgs.map(m => m.content));
-                const uniqueSeedMsgs = seedMatch.messages.filter(sm => !apiContentSet.has(sm.content));
-                setMessages([...uniqueSeedMsgs, ...apiMsgs]);
-            } else {
-                setMessages(apiMsgs);
-            }
-        } else if (seedMatch && seedMatch.messages && seedMatch.messages.length > 0) {
-            setMessages(seedMatch.messages);
+        if (realMsgs.length > 0) {
+            setMessages(realMsgs);
         } else if (conv.messages && conv.messages.length > 0) {
-            setMessages(conv.messages);
-        } else if (conv.last_message) {
+            const validConvMsgs = conv.messages.filter(m => m.source !== "simulation" && m.mode !== "simulation");
+            setMessages(validConvMsgs);
+        } else if (conv.last_message && conv.last_message.source !== "simulation" && conv.last_message.mode !== "simulation") {
             setMessages([conv.last_message]);
         } else {
             setMessages([]);
@@ -292,8 +230,17 @@ function WhatsAppInbox() {
     useEffect(() => {
         if (!whatsappSocket) return;
         const handleEvent = (data) => {
+            // Events of other business numbers never enter this number's inbox.
+            if (!isEventForActiveNumber(data?.data)) return;
             if (data.event === "new_message") {
                 const msg = data.data;
+                if (!msg) return;
+                if (msg.source === "simulation" || msg.mode === "simulation") return;
+                const senderP = (msg.sender_phone || "").trim();
+                const recP = (msg.recipient_phone || "").trim();
+                if (DUMMY_PHONES.has(senderP) || DUMMY_PHONES.has(recP)) return;
+                if (DUMMY_NAMES.has(msg.sender) || DUMMY_NAMES.has(msg.recipient)) return;
+
                 const isReply = msg.direction === "inbound";
                 const rawPhone = isReply ? (msg.sender_phone || msg.recipient_phone) : (msg.recipient_phone || msg.sender_phone);
                 const msgPhone = normalizePhone(rawPhone);
@@ -359,6 +306,8 @@ function WhatsAppInbox() {
         whatsappSocket.on("message", handleEvent);
         return () => whatsappSocket.off("message", handleEvent);
     }, [whatsappSocket, selectedConv]);
+
+    useNumberSwitchGuard(!!newMessage.trim() || !!newChatMessage.trim(), "You have an unsent WhatsApp message.");
 
     const handleSend = async () => {
         if (!newMessage.trim() || !selectedConv || sending) return;
@@ -563,6 +512,7 @@ function WhatsAppInbox() {
 
     // Filter Logic
     const filteredConversations = conversations.filter(conv => {
+        if (isDummyConversation(conv)) return false;
         const query = searchQuery.toLowerCase();
         const matchesSearch = 
             conv.recipient?.toLowerCase().includes(query) ||
@@ -932,7 +882,7 @@ function WhatsAppInbox() {
                                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Customer Name</label>
                                 <input
                                     type="text"
-                                    placeholder="Customer Name (e.g. Rahul Sharma)"
+                                    placeholder="Customer Name (e.g. Purab / Client)"
                                     value={simName}
                                     onChange={(e) => setSimName(e.target.value)}
                                     className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
@@ -943,7 +893,7 @@ function WhatsAppInbox() {
                                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Phone Number</label>
                                 <input
                                     type="text"
-                                    placeholder="Phone Number (e.g. +91 98765 43210)"
+                                    placeholder="Phone Number (e.g. +91 91794 85720)"
                                     value={simPhone}
                                     onChange={(e) => setSimPhone(e.target.value)}
                                     className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500/20"

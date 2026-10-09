@@ -112,16 +112,16 @@ function WhatsAppTemplateInsights() {
 
         // 5. Sorting
         result.sort((a, b) => {
-            if (sortBy === "score") return b.performance_score - a.performance_score;
+            if (sortBy === "score") return (b.performance_score ?? -1) - (a.performance_score ?? -1);
             if (sortBy === "used") return (b.times_used || 0) - (a.times_used || 0);
             if (sortBy === "views") return (b.views || 0) - (a.views || 0);
-            if (sortBy === "delivery") return b.delivery_rate - a.delivery_rate;
-            if (sortBy === "read") return b.read_rate - a.read_rate;
+            if (sortBy === "delivery") return (b.delivery_rate ?? -1) - (a.delivery_rate ?? -1);
+            if (sortBy === "read") return (b.read_rate ?? -1) - (a.read_rate ?? -1);
             if (sortBy === "alpha") return a.name.localeCompare(b.name);
             if (sortBy === "oldest") return new Date(a.created_at || 0) - new Date(b.created_at || 0);
             if (sortBy === "newest") return new Date(b.created_at || 0) - new Date(a.created_at || 0);
             if (sortBy === "last_used") return new Date(b.last_used_at || 0) - new Date(a.last_used_at || 0);
-            return b.performance_score - a.performance_score;
+            return (b.performance_score ?? -1) - (a.performance_score ?? -1);
         });
 
         return result;
@@ -299,13 +299,13 @@ function WhatsAppTemplateInsights() {
                                 <div className="flex items-end gap-1 w-full justify-center h-full">
                                     {/* Delivery Bar */}
                                     <div
-                                        style={{ height: `${item.delivery_rate - 20}%` }}
+                                        style={{ height: `${Math.max(2, item.delivery_rate)}%` }}
                                         className="w-3 bg-emerald-500 rounded-t-sm transition-all duration-300"
                                         title={`Delivery: ${item.delivery_rate}%`}
                                     ></div>
                                     {/* Read Bar */}
                                     <div
-                                        style={{ height: `${item.read_rate - 20}%` }}
+                                        style={{ height: `${Math.max(2, item.read_rate)}%` }}
                                         className="w-3 bg-indigo-500 rounded-t-sm transition-all duration-300"
                                         title={`Read: ${item.read_rate}%`}
                                     ></div>
@@ -499,21 +499,21 @@ function WhatsAppTemplateInsights() {
                                             {/* Delivery Rate */}
                                             <td className="py-3.5 px-4 text-center">
                                                 <span className="text-[11px] font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-md border border-teal-100">
-                                                    {tmpl.delivery_rate}%
+                                                    {tmpl.delivery_rate != null ? `${tmpl.delivery_rate}%` : "—"}
                                                 </span>
                                             </td>
 
                                             {/* Read Rate */}
                                             <td className="py-3.5 px-4 text-center">
                                                 <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">
-                                                    {tmpl.read_rate}%
+                                                    {tmpl.read_rate != null ? `${tmpl.read_rate}%` : "—"}
                                                 </span>
                                             </td>
 
                                             {/* Score */}
                                             <td className="py-3.5 px-4 text-center">
                                                 <span className="text-xs font-black text-emerald-700 bg-emerald-100/80 px-2.5 py-1 rounded-lg border border-emerald-200 shadow-2xs">
-                                                    {tmpl.performance_score}
+                                                    {tmpl.performance_score ?? "—"}
                                                 </span>
                                             </td>
 
@@ -564,7 +564,7 @@ function WhatsAppTemplateInsights() {
                                         {selectedTemplate.category}
                                     </span>
                                     <span className="text-[9px] font-bold px-2 py-0.5 rounded-md border border-emerald-200 bg-emerald-50 text-emerald-700 font-mono">
-                                        Score: {selectedTemplate.performance_score}
+                                        Score: {selectedTemplate.performance_score ?? "—"}
                                     </span>
                                 </div>
                             </div>
@@ -592,11 +592,11 @@ function WhatsAppTemplateInsights() {
                             </div>
                             <div className="bg-emerald-50 p-3 rounded-xl border border-emerald-100 text-center">
                                 <span className="text-[9px] font-bold text-emerald-600 uppercase block">Delivery Rate</span>
-                                <span className="text-base font-bold text-emerald-800 font-mono">{selectedTemplate.delivery_rate}%</span>
+                                <span className="text-base font-bold text-emerald-800 font-mono">{selectedTemplate.delivery_rate != null ? `${selectedTemplate.delivery_rate}%` : "—"}</span>
                             </div>
                             <div className="bg-indigo-50 p-3 rounded-xl border border-indigo-100 text-center">
                                 <span className="text-[9px] font-bold text-indigo-600 uppercase block">Read Rate</span>
-                                <span className="text-base font-bold text-indigo-800 font-mono">{selectedTemplate.read_rate}%</span>
+                                <span className="text-base font-bold text-indigo-800 font-mono">{selectedTemplate.read_rate != null ? `${selectedTemplate.read_rate}%` : "—"}</span>
                             </div>
                             <div className="bg-purple-50 p-3 rounded-xl border border-purple-100 text-center">
                                 <span className="text-[9px] font-bold text-purple-600 uppercase block">Reply Rate</span>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import WhatsAppHeader from "../components/WhatsAppHeader";
-import { getAutomationLogs } from "../services/whatsappApi";
+import { getAutomationLogs, isEventForActiveNumber } from "../services/whatsappApi";
 import { useWebSockets } from "../../context/WebSocketContext";
 import { FiSearch, FiFilter, FiClock, FiCheckCircle, FiXCircle, FiActivity, FiRefreshCw } from "react-icons/fi";
 
@@ -33,7 +33,7 @@ function WhatsAppLogs() {
     useEffect(() => {
         if (!whatsappSocket) return;
         const handleEvent = (data) => {
-            if (data.event === "automation_log_created") {
+            if (data.event === "automation_log_created" && isEventForActiveNumber(data.data)) {
                 setLogs(prev => [data.data, ...prev]);
                 setTotal(prev => prev + 1);
             }

@@ -1,48 +1,99 @@
 import { useState, useEffect } from "react";
+import { useLocation } from "react-router-dom";
+import * as XLSX from "xlsx";
 import WhatsAppHeader from "../components/WhatsAppHeader";
 import { useToast } from "../../context/ToastContext";
+import { contactsStorageKey, getActiveNumberId, LEGACY_CONTACTS_STORAGE_KEY } from "../services/whatsappApi";
+import { useWhatsAppNumber } from "../context/WhatsAppNumberContext";
 import {
     FiUploadCloud, FiFileText, FiCheckCircle, FiUsers, FiAlertTriangle,
     FiUserCheck, FiStar, FiClock, FiSearch, FiCheck, FiX, FiPlus, FiEye,
-    FiEdit2, FiTrash2, FiPhone, FiMail, FiTag
+    FiEdit2, FiTrash2, FiPhone, FiMail, FiTag, FiDownload
 } from "react-icons/fi";
 
-const CONTACTS_STORAGE_KEY = "whatsapp_contacts_list";
+const INITIAL_CONTACTS = [];
 
-const INITIAL_CONTACTS = [
-    { id: 1, name: "John Smith", phone: "+91-9876543210", email: "john.smith@example.com", category: "VIP Client", status: "Valid", notes: "Key decision maker", lastContact: "Today 11:20 AM" },
-    { id: 2, name: "Sarah Jenkins", phone: "+91-9876543211", email: "sarah.j@example.com", category: "Recently Contacted", status: "Valid", notes: "Requested site visit", lastContact: "Yesterday" },
-    { id: 3, name: "Michael Chang", phone: "+91-9876543212", email: "m.chang@example.com", category: "Recently Imported", status: "Valid", notes: "Met at expo", lastContact: "2 days ago" },
-    { id: 4, name: "Anita Sharma", phone: "+91-9876543213", email: "anita.s@example.com", category: "VIP Client", status: "Valid", notes: "Interested in villa project", lastContact: "3 days ago" },
-    { id: 5, name: "David Miller", phone: "+91-9876543214", email: "david.m@example.com", category: "Recently Contacted", status: "DND", notes: "Do not disturb requested", lastContact: "1 week ago" },
-];
+const DUMMY_PHONES = new Set([
+    "+91-9876543210",
+    "+91-9876543211",
+    "+91-9876543212",
+    "+91-9876543213",
+    "+91-9876543214"
+]);
 
 const getInitialContacts = () => {
     try {
-        const saved = localStorage.getItem(CONTACTS_STORAGE_KEY);
+        // Contacts of the selected business number only (the page remounts when the number changes).
+        const saved = localStorage.getItem(contactsStorageKey());
         if (saved !== null) {
             const parsed = JSON.parse(saved);
             if (Array.isArray(parsed)) {
-                return parsed;
+                return parsed.filter(c => !DUMMY_PHONES.has(c.phone));
             }
         }
     } catch (err) {
         console.error("Failed to load contacts from localStorage", err);
     }
-    return INITIAL_CONTACTS;
+    return [];
+};
+
+const readLegacyContacts = () => {
+    if (contactsStorageKey() === LEGACY_CONTACTS_STORAGE_KEY) return [];
+    try {
+        const parsed = JSON.parse(localStorage.getItem(LEGACY_CONTACTS_STORAGE_KEY) || "[]");
+        return Array.isArray(parsed) ? parsed.filter(c => !DUMMY_PHONES.has(c.phone)) : [];
+    } catch {
+        return [];
+    }
 };
 
 function WhatsAppContacts() {
     const { showToast } = useToast();
+    const location = useLocation();
+    const numberCtx = useWhatsAppNumber();
     const [contacts, setContacts] = useState(getInitialContacts);
+    const [storageKey] = useState(contactsStorageKey);
+    const legacyFlagKey = `${LEGACY_CONTACTS_STORAGE_KEY}:imported:${getActiveNumberId()}`;
+    const [legacyContacts, setLegacyContacts] = useState(() => (localStorage.getItem(legacyFlagKey) ? [] : readLegacyContacts()));
 
     useEffect(() => {
         try {
-            localStorage.setItem(CONTACTS_STORAGE_KEY, JSON.stringify(contacts));
+            localStorage.setItem(storageKey, JSON.stringify(contacts));
         } catch (err) {
             console.error("Failed to save contacts to localStorage", err);
         }
-    }, [contacts]);
+    }, [contacts, storageKey]);
+
+    // Contacts saved before multi-number support are copied into this number only on request.
+    const importLegacyContacts = () => {
+        const phones = new Set(contacts.map(c => c.phone));
+        const added = legacyContacts.filter(c => !phones.has(c.phone));
+        setContacts(prev => [...prev, ...added]);
+        localStorage.setItem(legacyFlagKey, new Date().toISOString());
+        setLegacyContacts([]);
+        showToast(`${added.length} earlier contact(s) added to ${numberCtx?.selected?.display_name || "this number"}.`, "success");
+    };
+    const dismissLegacyContacts = () => {
+        localStorage.setItem(legacyFlagKey, "dismissed");
+        setLegacyContacts([]);
+    };
+
+    const [duplicatesCount, setDuplicatesCount] = useState(45);
+    const [importedCount, setImportedCount] = useState(0);
+
+    // Import Modal State
+    const [showImportModal, setShowImportModal] = useState(false);
+    const [importModalDragActive, setImportModalDragActive] = useState(false);
+    const [parsedBatch, setParsedBatch] = useState(null);
+    const [isParsing, setIsParsing] = useState(false);
+
+    useEffect(() => {
+        const params = new URLSearchParams(location.search);
+        if (params.get("openImport") === "true" || params.get("import") === "true") {
+            setShowImportModal(true);
+        }
+    }, [location.search]);
+
     const [searchQuery, setSearchQuery] = useState("");
     const [dragActive, setDragActive] = useState(false);
     const [uploading, setUploading] = useState(false);
@@ -163,15 +214,187 @@ function WhatsAppContacts() {
         }
     };
 
-    const handleFileUpload = (e) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            setUploading(true);
-            setTimeout(() => {
-                setUploading(false);
-                setUploadSuccess(true);
-                setTimeout(() => setUploadSuccess(false), 4000);
-            }, 1500);
+    const downloadSampleCSV = () => {
+        const sampleHeaders = "Name,Phone,Email,Category,Status,Notes\n";
+        const sampleRows = [
+            "Aarav Patel,+91 98765 43210,aarav@example.com,VIP Client,Valid,Interested in real estate investment",
+            "Priya Sharma,+91 91234 56789,priya@example.com,Recently Contacted,Valid,Scheduled consultation",
+            "Rohan Mehta,+91 99887 76655,rohan@example.com,Regular Contact,Valid,Enquiry regarding project timeline",
+            "Neha Gupta,+91 97654 32109,neha@example.com,VIP Client,Valid,High priority client",
+            "Vikram Singh,+91 96543 21098,vikram@example.com,Regular Contact,DND,Requested DND on weekends"
+        ].join("\n");
+
+        const blob = new Blob([sampleHeaders + sampleRows], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.setAttribute("download", "sample_whatsapp_contacts.csv");
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+        if (showToast) showToast("Sample CSV template downloaded", "success");
+    };
+
+    const parseContactsFromFile = (file) => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: "array" });
+                    const firstSheetName = workbook.SheetNames[0];
+                    if (!firstSheetName) {
+                        throw new Error("No sheet found in file.");
+                    }
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    const rawRows = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+
+                    if (!rawRows || rawRows.length === 0) {
+                        throw new Error("The uploaded file contains no data rows.");
+                    }
+
+                    const parsed = [];
+                    let duplicateCount = 0;
+                    let invalidCount = 0;
+                    const seenPhones = new Set(contacts.map(c => c.phone.replace(/[\s-]/g, "")));
+
+                    for (let i = 0; i < rawRows.length; i++) {
+                        const row = rawRows[i];
+                        const nameKey = Object.keys(row).find(k => /^(name|full\s*name|contact\s*name|customer\s*name|client\s*name)/i.test(k.trim()));
+                        const phoneKey = Object.keys(row).find(k => /^(phone|phone\s*number|mobile|mobile\s*number|contact\s*number|wa\s*number|whatsapp)/i.test(k.trim()));
+                        const emailKey = Object.keys(row).find(k => /^(email|e-mail|mail)/i.test(k.trim()));
+                        const categoryKey = Object.keys(row).find(k => /^(category|group|type|tag)/i.test(k.trim()));
+                        const statusKey = Object.keys(row).find(k => /^(status|wa\s*status|whatsapp\s*status)/i.test(k.trim()));
+                        const notesKey = Object.keys(row).find(k => /^(notes|note|remark|remarks|comments)/i.test(k.trim()));
+
+                        const rawName = (nameKey ? row[nameKey] : Object.values(row)[0] || "").toString().trim();
+                        const rawPhone = (phoneKey ? row[phoneKey] : Object.values(row)[1] || "").toString().trim();
+                        const rawEmail = (emailKey ? row[emailKey] : "").toString().trim();
+                        const rawCategory = (categoryKey ? row[categoryKey] : "Recently Imported").toString().trim() || "Recently Imported";
+                        const rawStatus = (statusKey ? row[statusKey] : "Valid").toString().trim() || "Valid";
+                        const rawNotes = (notesKey ? row[notesKey] : "").toString().trim();
+
+                        if (!rawName && !rawPhone) {
+                            continue;
+                        }
+
+                        let cleanPhone = rawPhone.replace(/[^\d+]/g, "");
+                        if (!cleanPhone.startsWith("+") && cleanPhone.length === 10) {
+                            cleanPhone = `+91${cleanPhone}`;
+                        } else if (!cleanPhone.startsWith("+") && cleanPhone.length > 10) {
+                            cleanPhone = `+${cleanPhone}`;
+                        }
+
+                        if (cleanPhone.length < 8) {
+                            invalidCount++;
+                            continue;
+                        }
+
+                        const normalizedPhoneKey = cleanPhone.replace(/[\s-]/g, "");
+                        if (seenPhones.has(normalizedPhoneKey)) {
+                            duplicateCount++;
+                            continue;
+                        }
+
+                        seenPhones.add(normalizedPhoneKey);
+
+                        parsed.push({
+                            id: Date.now() + i + Math.floor(Math.random() * 1000),
+                            name: rawName || `Contact ${parsed.length + 1}`,
+                            phone: cleanPhone,
+                            email: rawEmail || "",
+                            category: ["VIP Client", "Recently Contacted", "Recently Imported", "Regular Contact"].includes(rawCategory) ? rawCategory : "Recently Imported",
+                            status: /dnd/i.test(rawStatus) ? "DND" : "Valid",
+                            notes: rawNotes || "Imported via file",
+                            lastContact: "Just Now"
+                        });
+                    }
+
+                    resolve({
+                        fileName: file.name,
+                        validContacts: parsed,
+                        duplicateCount,
+                        invalidCount,
+                        totalRows: rawRows.length
+                    });
+                } catch (err) {
+                    reject(err);
+                }
+            };
+            reader.onerror = (err) => reject(err);
+            reader.readAsArrayBuffer(file);
+        });
+    };
+
+    const handleModalFileSelect = async (e) => {
+        const file = e.target?.files?.[0] || e.dataTransfer?.files?.[0];
+        if (!file) return;
+
+        setIsParsing(true);
+        try {
+            const result = await parseContactsFromFile(file);
+            setParsedBatch(result);
+        } catch (err) {
+            console.error("Error parsing contacts:", err);
+            if (showToast) showToast(err.message || "Failed to parse file. Please upload a valid CSV or Excel file.", "error");
+        } finally {
+            setIsParsing(false);
+        }
+    };
+
+    const handleConfirmImport = () => {
+        if (!parsedBatch || parsedBatch.validContacts.length === 0) {
+            if (showToast) showToast("No valid contacts to import", "error");
+            return;
+        }
+
+        const count = parsedBatch.validContacts.length;
+        setContacts(prev => [...parsedBatch.validContacts, ...prev]);
+        setDuplicatesCount(prev => prev + (parsedBatch.duplicateCount || 0));
+        setImportedCount(count);
+        setUploadSuccess(true);
+        setTimeout(() => setUploadSuccess(false), 4000);
+
+        if (showToast) {
+            showToast(`Successfully imported ${count} contact${count > 1 ? "s" : ""}!`, "success");
+        }
+
+        setShowImportModal(false);
+        setParsedBatch(null);
+    };
+
+    const handleFileUpload = async (e) => {
+        const file = e.target?.files?.[0] || e.dataTransfer?.files?.[0];
+        if (!file) return;
+
+        setUploading(true);
+        try {
+            const result = await parseContactsFromFile(file);
+            if (result.validContacts.length === 0) {
+                if (showToast) {
+                    showToast(`No new valid contacts found (${result.duplicateCount} duplicates, ${result.invalidCount} invalid rows)`, "error");
+                }
+                return;
+            }
+
+            const count = result.validContacts.length;
+            setContacts(prev => [...result.validContacts, ...prev]);
+            setDuplicatesCount(prev => prev + (result.duplicateCount || 0));
+            setImportedCount(count);
+            setUploadSuccess(true);
+            setTimeout(() => setUploadSuccess(false), 4000);
+
+            if (showToast) {
+                showToast(`Successfully imported ${count} contact${count > 1 ? "s" : ""}!`, "success");
+            }
+        } catch (err) {
+            console.error("Upload error:", err);
+            if (showToast) {
+                showToast(err.message || "Failed to process file.", "error");
+            }
+        } finally {
+            setUploading(false);
         }
     };
 
@@ -184,7 +407,19 @@ function WhatsAppContacts() {
 
     return (
         <div className="space-y-6 mt-2 pb-12 animate-fade-in">
-            <WhatsAppHeader activeTab="contacts" searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+            <WhatsAppHeader activeTab="contacts" searchQuery={searchQuery} onSearchChange={setSearchQuery} onImportContacts={() => setShowImportModal(true)} />
+
+            {legacyContacts.length > 0 && (
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 rounded-xl bg-amber-50/60 border border-amber-200 text-[11px] text-amber-900">
+                    <FiUsers className="shrink-0 text-amber-600" size={16} />
+                    <p className="flex-1">
+                        <strong>{legacyContacts.length} contact(s)</strong> were saved in this browser before multi-number support.
+                        Contacts are now kept separately for each WhatsApp number — add them to <strong>{numberCtx?.selected?.display_name || "this number"}</strong> only if they belong to it.
+                    </p>
+                    <button type="button" onClick={importLegacyContacts} className="shrink-0 px-3 py-1.5 rounded-lg bg-slate-900 text-white font-semibold cursor-pointer">Add to this number</button>
+                    <button type="button" onClick={dismissLegacyContacts} className="shrink-0 px-3 py-1.5 rounded-lg border border-amber-300 font-semibold cursor-pointer">Not for this number</button>
+                </div>
+            )}
 
             {/* Stat Counters Bar */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
@@ -193,7 +428,7 @@ function WhatsAppContacts() {
                     { label: "Valid WhatsApp", val: contacts.filter(c => c.status === "Valid").length, color: "text-emerald-600 bg-emerald-50/60 border-emerald-100" },
                     { label: "VIP Contacts", val: contacts.filter(c => c.category === "VIP Client").length, color: "text-indigo-600 bg-indigo-50/60 border-indigo-100" },
                     { label: "Recently Contacted", val: contacts.filter(c => c.category === "Recently Contacted").length, color: "text-blue-600 bg-blue-50/60 border-blue-100" },
-                    { label: "Duplicates Filtered", val: "45", color: "text-amber-600 bg-amber-50/60 border-amber-100" },
+                    { label: "Duplicates Filtered", val: duplicatesCount, color: "text-amber-600 bg-amber-50/60 border-amber-100" },
                     { label: "DND Excluded", val: contacts.filter(c => c.status === "DND").length, color: "text-rose-600 bg-rose-50/60 border-rose-100" },
                 ].map((stat, i) => (
                     <div key={i} className={`p-4 border rounded-2xl shadow-2xs hover:shadow-xs transition ${stat.color}`}>
@@ -307,7 +542,7 @@ function WhatsAppContacts() {
                     ) : uploadSuccess ? (
                         <div className="space-y-2">
                             <FiCheckCircle className="text-emerald-500 mx-auto" size={36} />
-                            <p className="text-xs font-bold text-emerald-700">Successfully Imported 150 Contacts!</p>
+                            <p className="text-xs font-bold text-emerald-700">Successfully Imported {importedCount > 0 ? importedCount : 150} Contacts!</p>
                         </div>
                     ) : (
                         <>
@@ -451,6 +686,172 @@ function WhatsAppContacts() {
                             {showDetailModal.notes && <p><span className="text-slate-400 font-medium">Notes:</span> <span className="text-slate-700 italic block mt-0.5 p-2 bg-slate-50 rounded-lg">{showDetailModal.notes}</span></p>}
                         </div>
                         <button onClick={() => setShowDetailModal(null)} className="w-full py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold">Close</button>
+                    </div>
+                </div>
+            )}
+
+            {/* IMPORT CONTACTS MODAL */}
+            {showImportModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
+                    <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-xs" onClick={() => { setShowImportModal(false); setParsedBatch(null); }}></div>
+                    <div className="relative bg-white rounded-2xl shadow-2xl p-6 w-full max-w-xl border border-slate-200/90 animate-slide-up space-y-4 max-h-[90vh] overflow-y-auto">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                            <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                                    <FiUsers size={16} />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-bold text-slate-900 font-display">Import Contacts</h3>
+                                    <p className="text-[11px] text-slate-400">Upload CSV or Excel file to batch import WhatsApp contacts</p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => { setShowImportModal(false); setParsedBatch(null); }}
+                                className="text-slate-400 hover:text-slate-600 cursor-pointer p-1 rounded-lg hover:bg-slate-100 transition"
+                            >
+                                <FiX size={16} />
+                            </button>
+                        </div>
+
+                        {/* Download Sample Template bar */}
+                        <div className="flex items-center justify-between bg-slate-50 border border-slate-200/80 rounded-xl p-3">
+                            <div>
+                                <p className="text-xs font-semibold text-slate-700">Need a format guide?</p>
+                                <p className="text-[10px] text-slate-400">Supports headers: Name, Phone, Email, Category, Notes</p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={downloadSampleCSV}
+                                className="flex items-center gap-1.5 bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-200/80 px-3 py-1.5 rounded-lg text-xs font-semibold shadow-2xs transition cursor-pointer"
+                            >
+                                <FiDownload size={13} className="text-emerald-600" />
+                                <span>Sample Template</span>
+                            </button>
+                        </div>
+
+                        {/* Parsing Spinner */}
+                        {isParsing ? (
+                            <div className="py-12 flex flex-col items-center justify-center space-y-3">
+                                <div className="w-10 h-10 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin"></div>
+                                <p className="text-xs font-semibold text-slate-600">Reading and validating contacts...</p>
+                            </div>
+                        ) : parsedBatch ? (
+                            /* Preview & Confirmation state */
+                            <div className="space-y-3.5">
+                                <div className="p-3.5 bg-emerald-50/60 border border-emerald-100 rounded-xl flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <FiCheckCircle className="text-emerald-600" size={18} />
+                                        <div>
+                                            <p className="text-xs font-bold text-emerald-900">{parsedBatch.fileName}</p>
+                                            <p className="text-[10px] text-emerald-700">Found {parsedBatch.totalRows} row(s) in file</p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setParsedBatch(null)}
+                                        className="text-xs text-slate-500 hover:text-slate-800 underline cursor-pointer"
+                                    >
+                                        Change File
+                                    </button>
+                                </div>
+
+                                {/* Stats badges */}
+                                <div className="grid grid-cols-3 gap-2">
+                                    <div className="p-2.5 bg-emerald-50 border border-emerald-200/70 rounded-xl text-center">
+                                        <span className="text-[10px] font-bold text-emerald-600 uppercase block">Valid Contacts</span>
+                                        <span className="text-lg font-extrabold text-emerald-700">{parsedBatch.validContacts.length}</span>
+                                    </div>
+                                    <div className="p-2.5 bg-amber-50 border border-amber-200/70 rounded-xl text-center">
+                                        <span className="text-[10px] font-bold text-amber-600 uppercase block">Duplicates</span>
+                                        <span className="text-lg font-extrabold text-amber-700">{parsedBatch.duplicateCount}</span>
+                                    </div>
+                                    <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-center">
+                                        <span className="text-[10px] font-bold text-slate-500 uppercase block">Invalid / Empty</span>
+                                        <span className="text-lg font-extrabold text-slate-700">{parsedBatch.invalidCount}</span>
+                                    </div>
+                                </div>
+
+                                {/* Preview table */}
+                                {parsedBatch.validContacts.length > 0 ? (
+                                    <div className="border border-slate-200/80 rounded-xl overflow-hidden">
+                                        <div className="bg-slate-50 px-3 py-2 border-b border-slate-200/80 text-[10px] font-bold text-slate-500 uppercase">
+                                            Preview (first {Math.min(parsedBatch.validContacts.length, 5)} rows)
+                                        </div>
+                                        <div className="max-h-40 overflow-y-auto divide-y divide-slate-100 text-xs">
+                                            {parsedBatch.validContacts.slice(0, 5).map((c, idx) => (
+                                                <div key={idx} className="p-2.5 flex items-center justify-between">
+                                                    <div>
+                                                        <p className="font-bold text-slate-800">{c.name}</p>
+                                                        <p className="text-[11px] text-slate-400 font-mono">{c.phone}</p>
+                                                    </div>
+                                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-600 border border-indigo-100">
+                                                        {c.category}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="p-4 bg-amber-50 text-amber-800 text-xs rounded-xl border border-amber-200">
+                                        No new valid contacts found in this file (all were either duplicates or missing valid phone numbers).
+                                    </div>
+                                )}
+
+                                <div className="flex gap-3 pt-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => { setShowImportModal(false); setParsedBatch(null); }}
+                                        className="flex-1 py-2.5 text-xs font-semibold text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200 transition cursor-pointer"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleConfirmImport}
+                                        disabled={parsedBatch.validContacts.length === 0}
+                                        className="flex-1 py-2.5 text-xs font-semibold text-white bg-[#25D366] hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl shadow-xs transition cursor-pointer"
+                                    >
+                                        Import {parsedBatch.validContacts.length} Contacts
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            /* File Drop Zone */
+                            <div className="space-y-4">
+                                <div
+                                    onDragOver={(e) => { e.preventDefault(); setImportModalDragActive(true); }}
+                                    onDragLeave={() => setImportModalDragActive(false)}
+                                    onDrop={(e) => { e.preventDefault(); setImportModalDragActive(false); handleModalFileSelect(e); }}
+                                    className={`border-2 border-dashed rounded-2xl p-8 flex flex-col items-center justify-center text-center transition-all ${
+                                        importModalDragActive ? "border-emerald-500 bg-emerald-50/40" : "border-slate-200 bg-slate-50/50 hover:bg-slate-50"
+                                    }`}
+                                >
+                                    <FiUploadCloud size={40} className="text-slate-300 mb-2" />
+                                    <p className="text-xs font-bold text-slate-800">Drag & Drop your CSV or XLSX file here</p>
+                                    <p className="text-[10px] text-slate-400 mt-1 max-w-xs">Supports Excel (.xlsx, .xls) and CSV (.csv) formats</p>
+                                    <label className="mt-4 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-semibold shadow-xs transition cursor-pointer flex items-center gap-1.5">
+                                        <FiUploadCloud size={14} />
+                                        <span>Browse Files</span>
+                                        <input
+                                            type="file"
+                                            onChange={handleModalFileSelect}
+                                            accept=".csv, .xlsx, .xls"
+                                            className="hidden"
+                                        />
+                                    </label>
+                                </div>
+
+                                <div className="flex justify-end pt-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowImportModal(false)}
+                                        className="px-4 py-2 text-xs font-semibold text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200 transition cursor-pointer"
+                                    >
+                                        Close
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}

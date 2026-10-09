@@ -54,12 +54,13 @@ def resolve_manager_from_request(request=None, payload: dict = None) -> dict:
     }
 
 
-def record_chat_access(conversation_id: str, payload: dict = None, request=None) -> dict:
+def record_chat_access(conversation_id: str, payload: dict = None, request=None, scope: dict = None) -> dict:
     """
     Record an access event whenever a manager opens a customer conversation.
-    Creates a distinct, immutable audit record.
+    Creates a distinct, immutable audit record, stored against the business number (`scope`).
     """
     payload = payload or {}
+    scope = scope or {}
     manager = resolve_manager_from_request(request, payload)
 
     c_phone = payload.get("contact_phone") or payload.get("recipient_phone") or ""
@@ -72,7 +73,7 @@ def record_chat_access(conversation_id: str, payload: dict = None, request=None)
     tmpl_id = ""
 
     try:
-        messages = MessageRepository.find_by_conversation(conversation_id)
+        messages = MessageRepository.find_by_conversation(conversation_id, scope)
         if messages:
             last_msg = messages[-1]
             c_phone = c_phone or last_msg.get("sender_phone") or last_msg.get("recipient_phone") or ""
@@ -106,6 +107,7 @@ def record_chat_access(conversation_id: str, payload: dict = None, request=None)
         "campaign_name": camp_name,
         "template_id": tmpl_id,
         "template_name": tmpl_name,
+        "number_id": scope.get("number_id"),
     }
 
     created = ChatAccessLogRepository.create(access_record)
@@ -113,7 +115,7 @@ def record_chat_access(conversation_id: str, payload: dict = None, request=None)
     return created
 
 
-def record_manager_reply(conversation_id: str, manager_identifier: str, reply_message_id: str = None, reply_time: str = None, contact_phone: str = None) -> bool:
+def record_manager_reply(conversation_id: str, manager_identifier: str, reply_message_id: str = None, reply_time: str = None, contact_phone: str = None, scope: dict = None) -> bool:
     """
     Find the latest unreplied access record for THAT manager and conversation/phone,
     and mark replied_to_customer = True.
@@ -125,6 +127,7 @@ def record_manager_reply(conversation_id: str, manager_identifier: str, reply_me
         manager_id_or_email=manager_identifier,
         conversation_id=conversation_id,
         contact_phone=contact_phone,
+        scope=scope,
     )
 
     if latest_log:

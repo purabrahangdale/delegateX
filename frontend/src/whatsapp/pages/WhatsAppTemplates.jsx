@@ -7,17 +7,25 @@ import {
     getWhatsAppTemplateNames,
     updateWhatsAppTemplate,
     deleteWhatsAppTemplate,
-    seedWhatsAppTemplates,
     toggleWhatsAppTemplateFavorite,
+    submitWhatsAppTemplate,
+    syncTemplatesFromMeta,
+    apiErrorMessage,
 } from "../services/whatsappApi";
+import TemplateStatusBadge from "../components/TemplateStatusBadge";
+import { useToast } from "../../context/ToastContext";
 import {
     FiPlus, FiTrash2, FiEye, FiToggleLeft, FiToggleRight,
-    FiFileText, FiDownload, FiX, FiCheck, FiRotateCcw,
-    FiBarChart2, FiHeart
+    FiFileText, FiX, FiCheck, FiRotateCcw,
+    FiBarChart2, FiHeart, FiUploadCloud, FiRefreshCw, FiAlertTriangle
 } from "react-icons/fi";
 
 function WhatsAppTemplates() {
     const navigate = useNavigate();
+    const { showToast } = useToast();
+    const [syncing, setSyncing] = useState(false);
+    const [submittingId, setSubmittingId] = useState(null);
+    const [statusFilter, setStatusFilter] = useState("");
     const [templates, setTemplates] = useState([]);
     const [dbTemplateNames, setDbTemplateNames] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -54,22 +62,42 @@ function WhatsAppTemplates() {
         return Array.from(set).filter(Boolean).sort();
     }, [dbTemplateNames, templates]);
 
-    const handleSeed = async () => {
+    const handleSync = async () => {
+        setSyncing(true);
         try {
-            await seedWhatsAppTemplates();
+            const r = await syncTemplatesFromMeta();
+            showToast(`Synced ${r.total_on_meta} template(s) from Meta (${r.created} imported, ${r.updated} updated${r.reset_to_draft ? `, ${r.reset_to_draft} unconfirmed reset to draft` : ""}).`, "success");
             await fetchTemplates();
         } catch (err) {
-            console.error("Seed error:", err);
+            showToast(`Sync failed: ${apiErrorMessage(err)}`, "error");
+        } finally {
+            setSyncing(false);
         }
     };
 
-    const handleDelete = async (id) => {
-        if (!confirm("Are you sure you want to delete this template?")) return;
+    const handleSubmit = async (tmpl) => {
+        setSubmittingId(tmpl._id);
         try {
-            await deleteWhatsAppTemplate(id);
+            const r = await submitWhatsAppTemplate(tmpl._id);
+            showToast(r.message, "success");
+        } catch (err) {
+            showToast(`Meta submission failed: ${apiErrorMessage(err)}`, "error");
+        } finally {
+            setSubmittingId(null);
+            await fetchTemplates();
+        }
+    };
+
+    const handleDelete = async (tmpl) => {
+        const onMeta = tmpl.meta_template_id && tmpl.status !== "DELETED";
+        if (!confirm(onMeta
+            ? `Delete "${tmpl.name}" here AND from your WhatsApp Business Account on Meta? This cannot be undone. Past campaigns keep their history.`
+            : `Delete "${tmpl.name}"?`)) return;
+        try {
+            await deleteWhatsAppTemplate(tmpl._id);
             await fetchTemplates();
         } catch (err) {
-            console.error("Delete error:", err);
+            showToast(`Delete failed: ${apiErrorMessage(err)}`, "error");
         }
     };
 
@@ -97,6 +125,7 @@ function WhatsAppTemplates() {
         setSelectedContentTypes([]);
         setSelectedTemplateNames([]);
         setSelectedTemplateTypes([]);
+        setStatusFilter("");
     };
 
     const categoryColors = {
@@ -150,13 +179,16 @@ function WhatsAppTemplates() {
                 if (!matchesType) return false;
             }
 
+            // 5. Meta status filter
+            if (statusFilter && (tmpl.status || "DRAFT") !== statusFilter) return false;
+
             return true;
         });
 
-        // Automatically sort templates by performance score descending
-        result.sort((a, b) => (b.performance_score || 0) - (a.performance_score || 0));
+        // Sort by real performance score; templates without send data keep their order
+        result.sort((a, b) => (b.performance_score ?? -1) - (a.performance_score ?? -1));
         return result;
-    }, [templates, searchQuery, selectedContentTypes, selectedTemplateNames, selectedTemplateTypes]);
+    }, [templates, searchQuery, selectedContentTypes, selectedTemplateNames, selectedTemplateTypes, statusFilter]);
 
     if (loading) {
         return (
@@ -183,7 +215,8 @@ function WhatsAppTemplates() {
             {/* Template Library Header Actions */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white p-4 border border-slate-200/80 rounded-2xl shadow-2xs">
                 <div>
-                    <h2 className="text-sm font-bold text-slate-800 font-display">Approved WhatsApp Templates</h2>
+                    <h2 className="text-sm font-bold text-slate-800 font-display">WhatsApp Templates</h2>
+                    <p className="text-[10px] text-slate-400">Only templates Meta has approved can be used in campaigns and automations.</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 shrink-0">
                     {/* TEMPLATE INSIGHTS BUTTON */}
@@ -207,11 +240,22 @@ function WhatsAppTemplates() {
                         onReset={handleResetFilters}
                     />
 
-                    <button
-                        onClick={handleSeed}
-                        className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-2 rounded-xl text-xs font-semibold transition cursor-pointer"
+                    <select
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value)}
+                        className="text-xs border border-slate-200 rounded-xl px-2.5 py-2 bg-white"
+                        title="Filter by Meta review status"
                     >
-                        <FiDownload size={13} /> Seed Defaults
+                        <option value="">All statuses</option>
+                        {["DRAFT", "PENDING", "APPROVED", "REJECTED", "PAUSED", "DISABLED", "DELETED"].map((s) => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                    <button
+                        onClick={handleSync}
+                        disabled={syncing}
+                        title="Fetch every template and its current review status from Meta"
+                        className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-2 rounded-xl text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+                    >
+                        <FiRefreshCw size={13} className={syncing ? "animate-spin" : ""} /> {syncing ? "Syncing..." : "Sync from Meta"}
                     </button>
                     <button
                         onClick={() => navigate("/whatsapp/templates/create")}
@@ -241,6 +285,13 @@ function WhatsAppTemplates() {
 
                                         {/* Dynamic Badges */}
                                         <div className="flex items-center gap-1 flex-wrap">
+                                            <TemplateStatusBadge status={tmpl.status} />
+                                            {tmpl.meta_category && (
+                                                <span className="text-[9px] font-bold px-2 py-0.5 rounded-md border border-slate-200 bg-white text-slate-600 uppercase" title="Meta template category">{tmpl.meta_category}</span>
+                                            )}
+                                            {tmpl.language && (
+                                                <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-md border border-slate-200 bg-white text-slate-500">{tmpl.language}</span>
+                                            )}
                                             <span className={`text-[9px] font-bold px-2 py-0.5 rounded-md border uppercase ${categoryColors[tmpl.category] || categoryColors.utility}`}>
                                                 {tmpl.category}
                                             </span>
@@ -278,6 +329,19 @@ function WhatsAppTemplates() {
                                     <p className="text-[10px] text-slate-400 mb-2">{tmpl.description}</p>
                                 )}
 
+                                {tmpl.rejected_reason && (
+                                    <p className="text-[10px] text-rose-700 bg-rose-50 border border-rose-100 rounded-lg px-2 py-1 mb-2 flex gap-1"><FiAlertTriangle size={11} className="shrink-0 mt-0.5" /> Meta rejection reason: {tmpl.rejected_reason}</p>
+                                )}
+                                {tmpl.last_submit_error && (
+                                    <p className="text-[10px] text-rose-700 bg-rose-50 border border-rose-100 rounded-lg px-2 py-1 mb-2">Last submission error: {tmpl.last_submit_error.message}{tmpl.last_submit_error.code ? ` (code ${tmpl.last_submit_error.code})` : ""}</p>
+                                )}
+                                {tmpl.sync_note && tmpl.status === "DRAFT" && (
+                                    <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1 mb-2">{tmpl.sync_note}</p>
+                                )}
+                                {tmpl.has_unsubmitted_changes && (
+                                    <p className="text-[10px] text-amber-700 mb-2">Edited locally since the last Meta submission — resubmit to apply.</p>
+                                )}
+
                                 <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 mb-3 max-h-28 overflow-y-auto">
                                     <p className="text-[10px] text-slate-600 leading-relaxed whitespace-pre-wrap font-mono">{tmpl.content}</p>
                                 </div>
@@ -292,14 +356,24 @@ function WhatsAppTemplates() {
                             </div>
 
                             <div className="flex items-center justify-between pt-3 border-t border-slate-100 text-xs">
-                                <span className="text-[9px] text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">
-                                    Score: {tmpl.performance_score || 92.5}
+                                <span className="text-[9px] text-slate-500 font-bold bg-slate-50 px-2 py-0.5 rounded-md border border-slate-100" title="Computed from real delivery data">
+                                    {tmpl.performance_score != null ? `Score: ${tmpl.performance_score}` : "No send data yet"}
                                 </span>
                                 <div className="flex items-center gap-2">
+                                    {(!tmpl.meta_template_id || ["REJECTED", "PAUSED", "DELETED"].includes(tmpl.status) || (tmpl.has_unsubmitted_changes && tmpl.status === "APPROVED")) && (
+                                        <button
+                                            onClick={() => handleSubmit(tmpl)}
+                                            disabled={submittingId === tmpl._id}
+                                            className="flex items-center gap-1 px-2 py-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition cursor-pointer disabled:opacity-50"
+                                            title="Send this template to Meta for review"
+                                        >
+                                            <FiUploadCloud size={12} /> {submittingId === tmpl._id ? "Submitting..." : tmpl.meta_template_id && tmpl.status !== "DELETED" ? "Resubmit" : "Submit to Meta"}
+                                        </button>
+                                    )}
                                     <button onClick={() => setPreviewTemplate(tmpl)} className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition cursor-pointer" title="Preview">
                                         <FiEye size={13} />
                                     </button>
-                                    <button onClick={() => handleDelete(tmpl._id)} className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer" title="Delete">
+                                    <button onClick={() => handleDelete(tmpl)} className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer" title="Delete">
                                         <FiTrash2 size={13} />
                                     </button>
                                 </div>

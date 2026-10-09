@@ -11,8 +11,9 @@ from typing import Optional, Dict, Any
 
 from app.whatsapp.models import MessageStatus, MessageDirection, MessageType
 from app.whatsapp.repository import MessageRepository, AutomationLogRepository
-from app.whatsapp.providers.factory import get_provider
+from app.whatsapp.providers.factory import get_provider, get_provider_type
 from app.whatsapp.providers.simulation import SimulationProvider
+from app.whatsapp import numbers as number_registry
 
 logger = logging.getLogger("whatsapp.message_service")
 
@@ -30,78 +31,8 @@ def _generate_conversation_id(phone: str) -> str:
 
 
 def seed_default_conversations_if_empty():
-    """Seed initial simulation conversation messages if database collection is empty."""
-    from app.config.database import whatsapp_message_collection
-    if whatsapp_message_collection.count_documents({}) > 0:
-        return
-
-    now_iso = datetime.utcnow().isoformat()
-    seed_conversations = [
-        {
-            "recipient": "Rahul Sharma",
-            "recipient_phone": "+91 98765 43210",
-            "messages": [
-                {"direction": "outbound", "sender": "DelegateX", "content": "Hello Rahul, thank you for your enquiry.", "status": "read", "created_at": new_iso},
-                {"direction": "inbound", "sender": "Rahul Sharma", "content": "Thank you! Can we schedule a meeting tomorrow?", "status": "read", "created_at": new_iso}
-            ]
-        },
-        {
-            "recipient": "Priya Patel",
-            "recipient_phone": "+91 98765 43211",
-            "messages": [
-                {"direction": "outbound", "sender": "DelegateX", "content": "Your site visit has been scheduled.", "status": "read", "created_at": new_iso},
-                {"direction": "inbound", "sender": "Priya Patel", "content": "Please change the timing to 4 PM.", "status": "read", "created_at": new_iso}
-            ]
-        },
-        {
-            "recipient": "Amit Verma",
-            "recipient_phone": "+91 98765 43212",
-            "messages": [
-                {"direction": "outbound", "sender": "DelegateX", "content": "Your quotation has been shared.", "status": "read", "created_at": new_iso},
-                {"direction": "inbound", "sender": "Amit Verma", "content": "Can you send me the updated price?", "status": "read", "created_at": new_iso}
-            ]
-        },
-        {
-            "recipient": "Sneha Gupta",
-            "recipient_phone": "+91 98765 43213",
-            "messages": [
-                {"direction": "outbound", "sender": "DelegateX", "content": "Welcome to DelegateX.", "status": "read", "created_at": new_iso},
-                {"direction": "inbound", "sender": "Sneha Gupta", "content": "Thanks. I would like to know more about your services.", "status": "read", "created_at": new_iso}
-            ]
-        },
-        {
-            "recipient": "Rohit Singh",
-            "recipient_phone": "+91 98765 43214",
-            "messages": [
-                {"direction": "outbound", "sender": "DelegateX", "content": "Reminder for tomorrow's meeting.", "status": "read", "created_at": new_iso},
-                {"direction": "inbound", "sender": "Rohit Singh", "content": "Confirmed. See you tomorrow.", "status": "read", "created_at": new_iso}
-            ]
-        }
-    ]
-
-    for seed in seed_conversations:
-        conv_id = _generate_conversation_id(seed["recipient_phone"])
-        for msg in seed["messages"]:
-            isInbound = msg["direction"] == "inbound"
-            msg_doc = {
-                "conversation_id": conv_id,
-                "direction": msg["direction"],
-                "sender": msg["sender"],
-                "sender_phone": "+91-DELEGATEX" if not isInbound else seed["recipient_phone"],
-                "recipient": seed["recipient"] if not isInbound else "DelegateX",
-                "recipient_phone": seed["recipient_phone"] if not isInbound else "+91-DELEGATEX",
-                "content": msg["content"],
-                "message_type": "text",
-                "reply_type": "text",
-                "status": msg["status"],
-                "source": "simulation",
-                "mode": "simulation",
-                "campaign_name": "Welcome & Onboarding Campaign",
-                "template_name": "Welcome Message",
-                "created_at": msg["created_at"],
-                "updated_at": msg["created_at"],
-            }
-            whatsapp_message_collection.insert_one(msg_doc)
+    """No dummy conversations are seeded — real user system only displays authentic chats."""
+    return
 
 
 
@@ -116,6 +47,13 @@ async def _broadcast_whatsapp_event(event_type: str, data: dict):
         logger.warning(f"[WS Broadcast] Failed: {e}")
 
 
+def _number_fields(number: Optional[dict]) -> dict:
+    """Number association written on every message record."""
+    if not number:
+        return {"number_id": None, "phone_number_id": None}
+    return {"number_id": str(number["_id"]), "phone_number_id": number.get("phone_number_id")}
+
+
 async def _update_message_status_and_broadcast(message_id: str, status: MessageStatus):
     """Update message status in DB and broadcast the change via WebSocket."""
     timestamp_field_map = {
@@ -127,10 +65,12 @@ async def _update_message_status_and_broadcast(message_id: str, status: MessageS
     MessageRepository.update_status(message_id, status.value, timestamp_field)
     
     # Broadcast status update
+    msg = MessageRepository.find_by_id(message_id) or {}
     await _broadcast_whatsapp_event("message_status_updated", {
         "message_id": message_id,
         "status": status.value,
         "updated_at": datetime.utcnow().isoformat(),
+        "number_id": msg.get("number_id"),
     })
 
 
@@ -142,9 +82,11 @@ async def send_message(
     template_id: Optional[str] = None,
     automation_workflow: Optional[str] = None,
     metadata: Optional[Dict[str, Any]] = None,
+    number: Optional[dict] = None,
 ) -> dict:
     """
-    Send a WhatsApp message through the configured provider.
+    Send a WhatsApp message through the configured provider, from exactly `number`.
+    With Meta Cloud API the number must be active and configured; there is no fallback number.
     
     1. Pre-check Global DND / Blocklist
     2. Save message to MongoDB (status: queued)
@@ -153,6 +95,11 @@ async def send_message(
     5. Broadcast via WebSocket
     """
     from app.whatsapp.repository import DNDRepository
+
+    # 0. The sending number must be usable (Simulation Mode never reaches Meta).
+    if get_provider_type() == "meta_cloud":
+        number_registry.ensure_can_send(number)
+    number_fields = _number_fields(number)
 
     # 1. Global DND / Blocklist Auto-Exclusion Pre-check
     if DNDRepository.is_dnd(recipient_phone):
@@ -168,6 +115,7 @@ async def send_message(
             "execution_duration_ms": 0,
             "error_message": "Recipient phone number is blocked in Global DND list",
             "metadata": {"reason": "DND_BLOCKED", "phone": recipient_phone},
+            "number_id": number_fields["number_id"],
         })
         
         return {
@@ -191,6 +139,7 @@ async def send_message(
         "content": content,
         "message_type": message_type,
         "status": MessageStatus.QUEUED.value,
+        **number_fields,
         "template_id": template_id,
         "automation_workflow": automation_workflow,
         "metadata": metadata or {},
@@ -206,7 +155,7 @@ async def send_message(
     await _broadcast_whatsapp_event("new_message", saved_message)
     
     # Invoke provider
-    provider = get_provider()
+    provider = get_provider(number)
     result = await provider.send_message(
         recipient_phone=recipient_phone,
         content=content,
@@ -235,7 +184,8 @@ async def send_message(
                 conversation_id=conversation_id,
                 manager_identifier=mgr_id,
                 reply_message_id=message_id,
-                contact_phone=recipient_phone
+                contact_phone=recipient_phone,
+                scope={"number_id": number_fields["number_id"]},
             )
         except Exception as ex:
             logger.warning(f"[Chat Access Audit] Reply record linking error: {ex}")
@@ -249,15 +199,20 @@ async def send_message(
                 )
             )
         else:
-            # For real providers, mark as sent immediately with real wamid
-            MessageRepository.update_status(message_id, MessageStatus.SENT.value, "sent_at", extra_fields=extra_fields)
-            saved_message["status"] = MessageStatus.SENT.value
-            saved_message["sent_at"] = datetime.utcnow().isoformat()
+            # Meta returned a wamid: the API accepted the request. sent/delivered/read only come from webhooks.
+            extra_fields["status_rank"] = 2
+            MessageRepository.update_status(message_id, MessageStatus.ACCEPTED.value, "accepted_at", extra_fields=extra_fields)
+            saved_message["status"] = MessageStatus.ACCEPTED.value
+            saved_message["accepted_at"] = datetime.utcnow().isoformat()
+            if meta_msg_id:
+                from app.whatsapp.services import webhook_service
+                webhook_service.reapply_status_events_for(meta_msg_id)
             await _broadcast_whatsapp_event("message_status_updated", {
                 "message_id": message_id,
-                "status": MessageStatus.SENT.value,
+                "status": MessageStatus.ACCEPTED.value,
                 "wamid": meta_msg_id,
                 "updated_at": datetime.utcnow().isoformat(),
+                "number_id": number_fields["number_id"],
             })
 
     else:
@@ -274,13 +229,14 @@ async def send_message(
             "message_id": message_id,
             "status": MessageStatus.FAILED.value,
             "error": err_msg,
+            "number_id": number_fields["number_id"],
         })
         raise RuntimeError(f"WhatsApp API Error: {err_msg}")
     
     return saved_message
 
 
-def _associate_context_with_inbound_reply(sender_phone: str, conversation_id: str) -> dict:
+def _associate_context_with_inbound_reply(sender_phone: str, conversation_id: str, scope: Optional[dict] = None) -> dict:
     """
     Locate previous outbound message in the same conversation to extract campaign and template details,
     and query CRM lead for assigned agent details.
@@ -296,7 +252,7 @@ def _associate_context_with_inbound_reply(sender_phone: str, conversation_id: st
     
     # 1. Look up recent outbound message in the same conversation
     try:
-        messages = MessageRepository.find_by_conversation(conversation_id)
+        messages = MessageRepository.find_by_conversation(conversation_id, scope)
         outbound = [m for m in messages if m.get("direction") == "outbound"]
         if outbound:
             last_outbound = outbound[-1]
@@ -334,16 +290,26 @@ async def process_incoming_reply(
     mode: str = "simulation",
     wamid: Optional[str] = None,
     metadata: Optional[Dict[str, Any]] = None,
+    number: Optional[dict] = None,
 ) -> dict:
     """
     Unified entry point for saving incoming customer replies (Simulation Mode & Meta Webhooks).
     Enforces duplicate protection, resolves campaign/template context, saves to DB, and broadcasts via WS.
+    `number` is the business number that received the message; everything is stored against it.
     """
     from app.whatsapp.repository import DNDRepository
+    number_fields = _number_fields(number)
+    scope = {"number_id": number_fields["number_id"]}
 
     # 1. Duplicate Protection Check
+    # With a wamid, dedupe on it only — a customer may legitimately send the same text twice.
     if wamid or (sender_phone and content):
-        existing = MessageRepository.find_duplicate_message(wamid_or_id=wamid, sender_phone=sender_phone, content=content)
+        existing = MessageRepository.find_duplicate_message(
+            wamid_or_id=wamid,
+            sender_phone=None if wamid else sender_phone,
+            content=None if wamid else content,
+            scope=scope,
+        )
         if existing:
             logger.info(f"[Duplicate Protection] Intercepted duplicate incoming message wamid={wamid} from {sender_phone}")
             return existing
@@ -351,7 +317,7 @@ async def process_incoming_reply(
     conversation_id = _generate_conversation_id(sender_phone)
     
     # 2. Context Association (Campaign, Template, Assigned Agent)
-    context = _associate_context_with_inbound_reply(sender_phone, conversation_id)
+    context = _associate_context_with_inbound_reply(sender_phone, conversation_id, scope)
     
     meta = metadata or {}
 
@@ -388,6 +354,7 @@ async def process_incoming_reply(
         "sender_phone": sender_phone,
         "recipient": "DelegateX",
         "recipient_phone": "+91-DELEGATEX",
+        **number_fields,
         "content": content,
         "message_type": message_type,
         "reply_type": reply_type,
@@ -407,6 +374,14 @@ async def process_incoming_reply(
     
     saved_message = MessageRepository.create(message_data)
     await _broadcast_whatsapp_event("new_message", saved_message)
+
+    async def _confirm(text: str, workflow: str):
+        # Confirmation goes out from the same number the customer wrote to — never another number.
+        try:
+            await send_message(recipient_phone=sender_phone, recipient_name=sender_name, content=text,
+                               automation_workflow=workflow, number=number)
+        except Exception as e:
+            logger.warning(f"[Opt-out] Confirmation not sent: {e}")
     
     # Auto Opt-Out Listener Check
     clean_text = content.strip().upper()
@@ -421,25 +396,17 @@ async def process_incoming_reply(
             "notes": f"Triggered by keyword '{content}'",
         })
         
-        asyncio.create_task(
-            send_message(
-                recipient_phone=sender_phone,
-                recipient_name=sender_name,
-                content="🚫 You have been successfully unsubscribed and added to our Global DND list. You will not receive further campaign messages.",
-                automation_workflow="opt-out-confirmation"
-            )
-        )
+        asyncio.create_task(_confirm(
+            "🚫 You have been successfully unsubscribed and added to our Global DND list. You will not receive further campaign messages.",
+            "opt-out-confirmation",
+        ))
     elif clean_text == "START" or clean_text == "UNBLOCK":
         logger.info(f"[Inbound Opt-In] Removing DND for {sender_phone}")
         DNDRepository.remove_dnd(sender_phone)
-        asyncio.create_task(
-            send_message(
-                recipient_phone=sender_phone,
-                recipient_name=sender_name,
-                content="✅ You have been opted back in and removed from the DND list. Welcome back!",
-                automation_workflow="opt-in-confirmation"
-            )
-        )
+        asyncio.create_task(_confirm(
+            "✅ You have been opted back in and removed from the DND list. Welcome back!",
+            "opt-in-confirmation",
+        ))
     
     return saved_message
 
@@ -449,9 +416,10 @@ async def simulate_incoming_message(
     sender_name: str,
     content: str,
     metadata: Optional[Dict[str, Any]] = None,
+    number: Optional[dict] = None,
 ) -> dict:
     """
-    Simulate an incoming WhatsApp message (for demo/testing).
+    Simulate an incoming WhatsApp message (for demo/testing) to `number`.
     Uses process_incoming_reply with source='simulation' and mode='simulation'.
     """
     return await process_incoming_reply(
@@ -463,27 +431,61 @@ async def simulate_incoming_message(
         source="simulation",
         mode="simulation",
         metadata=metadata,
+        number=number,
     )
 
 
 
-def get_dashboard_stats() -> dict:
-    """Get aggregated statistics for the WhatsApp dashboard."""
-    today_count = MessageRepository.count_today()
-    pending_count = MessageRepository.count_by_status("queued")
-    sent_count = MessageRepository.count_by_status("sent")
-    delivered_count = MessageRepository.count_by_status("delivered")
-    read_count = MessageRepository.count_by_status("read")
-    failed_count = MessageRepository.count_by_status("failed")
-    total_messages = MessageRepository.count()
-    total_automations = AutomationLogRepository.count()
+def get_dashboard_stats(scope: Optional[dict] = None) -> dict:
+    """Get aggregated statistics for the WhatsApp dashboard, for one number (`scope` = {"number_id": ...})."""
+    scope = scope or {}
+    today_count = MessageRepository.count_today(scope)
+    pending_count = MessageRepository.count_by_status("queued", scope)
+    sent_count = MessageRepository.count_by_status("sent", scope)
+    delivered_count = MessageRepository.count_by_status("delivered", scope)
+    read_count = MessageRepository.count_by_status("read", scope)
+    failed_count = MessageRepository.count_by_status("failed", scope)
+    total_messages = MessageRepository.count(scope)
+    total_automations = AutomationLogRepository.count(scope)
     
-    success_automations = AutomationLogRepository.count_by_status("success")
-    failed_automations = AutomationLogRepository.count_by_status("failed")
+    success_automations = AutomationLogRepository.count_by_status("success", scope)
+    failed_automations = AutomationLogRepository.count_by_status("failed", scope)
     
-    recent_logs = AutomationLogRepository.get_latest(5)
-    
+    recent_logs = AutomationLogRepository.get_latest(5, scope)
+
+    # Real outbound outcomes over the last 30 days (status is updated only by Meta webhooks)
+    from datetime import timedelta
+    from app.config.database import whatsapp_message_collection, whatsapp_campaign_collection
+    since = (datetime.utcnow() - timedelta(days=30)).isoformat()
+    agg = list(whatsapp_message_collection.aggregate([
+        {"$match": {**scope, "direction": "outbound", "created_at": {"$gte": since}, "wamid": {"$nin": [None, ""]}}},
+        {"$group": {
+            "_id": None,
+            "accepted": {"$sum": 1},
+            "delivered": {"$sum": {"$cond": [{"$in": ["$status", ["delivered", "read"]]}, 1, 0]}},
+            "read": {"$sum": {"$cond": [{"$eq": ["$status", "read"]}, 1, 0]}},
+            "failed": {"$sum": {"$cond": [{"$eq": ["$status", "failed"]}, 1, 0]}},
+        }},
+    ]))
+    o = agg[0] if agg else {"accepted": 0, "delivered": 0, "read": 0, "failed": 0}
+    o.pop("_id", None)
+    replies_30d = whatsapp_message_collection.count_documents({**scope, "direction": "inbound", "created_at": {"$gte": since}})
+    outcomes_30d = {
+        **o,
+        "replies": replies_30d,
+        "delivery_rate": round(o["delivered"] / o["accepted"] * 100, 1) if o["accepted"] else None,
+        "read_rate": round(o["read"] / o["delivered"] * 100, 1) if o["delivered"] else None,
+        "failure_rate": round(o["failed"] / o["accepted"] * 100, 1) if o["accepted"] else None,
+    }
+    campaign_counts = {
+        "active": whatsapp_campaign_collection.count_documents({**scope, "status": {"$in": ["queued", "processing", "paused"]}}),
+        "scheduled": whatsapp_campaign_collection.count_documents({**scope, "status": "scheduled"}),
+        "completed": whatsapp_campaign_collection.count_documents({**scope, "status": {"$in": ["completed", "partially_failed"]}}),
+    }
+
     return {
+        "outcomes_30d": outcomes_30d,
+        "campaigns": campaign_counts,
         "messages_sent_today": today_count,
         "pending_messages": pending_count,
         "scheduled_messages": 0,  # Will be populated by scheduler
