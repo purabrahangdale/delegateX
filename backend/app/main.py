@@ -76,6 +76,7 @@ origins = [
     "http://127.0.0.1:5175",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "https://delegatexfrontend1.onrender.com",
     "https://delegatex-1-backend2.onrender.com",
     "https://delegatex-backend.onrender.com",
     "https://delegatex-1-y433.onrender.com",
@@ -105,6 +106,7 @@ async def unhandled_errors_as_json(request: Request, call_next):
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    allow_origin_regex=r"https://.*\.onrender\.com",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
