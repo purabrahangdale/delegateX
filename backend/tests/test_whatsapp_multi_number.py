@@ -7,7 +7,8 @@ import asyncio
 import hashlib
 import hmac
 import json
-from datetime import datetime
+import time
+from datetime import datetime, timedelta
 
 import pytest
 from bson import ObjectId
@@ -140,11 +141,12 @@ async def drain():
     campaign_service._finalize_campaigns()
 
 
-def inbound_payload(phone_number_id, waba_id, wamid, sender="919811111111", text="hello"):
+def inbound_payload(phone_number_id, waba_id, wamid, sender="919811111111", text="hello", timestamp=None):
+    timestamp = timestamp or str(int(time.time()))  # Meta sends whole UTC epoch seconds
     return {"object": "whatsapp_business_account", "entry": [{"id": waba_id, "changes": [{"field": "messages", "value": {
         "messaging_product": "whatsapp", "metadata": {"phone_number_id": phone_number_id, "display_phone_number": "x"},
         "contacts": [{"wa_id": sender, "profile": {"name": "Ravi"}}],
-        "messages": [{"from": sender, "id": wamid, "timestamp": "1700000000", "type": "text", "text": {"body": text}}]}}]}]}
+        "messages": [{"from": sender, "id": wamid, "timestamp": timestamp, "type": "text", "text": {"body": text}}]}}]}]}
 
 
 def hdr(number, **extra):
@@ -486,6 +488,43 @@ def test_inbound_webhooks_are_stored_against_the_receiving_number(three, client)
         assert [m["content"] for m in msgs] == [text]  # same customer, but no cross-number history
 
 
+def test_inbound_message_time_is_metas_timestamp_and_status_updates_keep_it(three, client):
+    a = three[0]
+    # Meta's 'timestamp' is UTC epoch seconds: 1700000000 == 2023-11-14T22:13:20Z (03:43 IST on the 15th).
+    webhook_service.ingest(inbound_payload("111111", "222222", "wamid.TS1", text="hi", timestamp="1700000000"), True)
+    run(webhook_service.process_pending_events())
+    convs = client.get("/api/whatsapp/messages/conversations", headers=hdr(a)).json()["conversations"]
+    assert convs[0]["last_message"]["created_at"] == "2023-11-14T22:13:20"
+    assert convs[0]["updated_at"] == "2023-11-14T22:13:20"
+
+    # An outbound reply: delivered/read webhooks must not replace its original send time.
+    sent_at = "2023-11-14T22:20:00.123456"
+    database.whatsapp_message_collection.insert_one({
+        "conversation_id": convs[0]["conversation_id"], "direction": "outbound", "sender": "DelegateX",
+        "recipient": "Ravi", "recipient_phone": "919811111111", "content": "hello back", "status": "accepted",
+        "status_rank": 2, "wamid": "wamid.OUT1", "number_id": str(a["_id"]), "created_at": sent_at, "updated_at": sent_at})
+    for st, ts in (("delivered", 1700000500), ("read", 1700000900)):
+        run(webhook_service.apply_status_event({"id": "wamid.OUT1", "status": st, "timestamp": str(ts)}))
+    convs = client.get("/api/whatsapp/messages/conversations", headers=hdr(a)).json()["conversations"]
+    assert convs[0]["last_message"]["status"] == "read"
+    assert convs[0]["last_message"]["created_at"] == sent_at and convs[0]["updated_at"] == sent_at
+    msgs = client.get(f"/api/whatsapp/messages/conversation/{convs[0]['conversation_id']}", headers=hdr(a)).json()["messages"]
+    assert [m["created_at"] for m in msgs] == ["2023-11-14T22:13:20", sent_at]
+
+
+def test_provider_time_normalization_and_safe_fallback(three):
+    t = message_service._provider_time_utc
+    assert t("1700000000") == t(1700000000) == t(1700000000000) == "2023-11-14T22:13:20"
+    assert t("2023-11-14T22:13:20Z") == t("2023-11-15T03:43:20+05:30") == t("2023-11-14T22:13:20") == "2023-11-14T22:13:20"
+    for bad in (None, "", "garbage", "2023-13-45T99:00:00", True):
+        assert t(bad) is None
+    before = datetime.utcnow().isoformat()
+    saved = run(message_service.process_incoming_reply(sender_phone="919822222222", content="x", source="meta_webhook",
+                                                       mode="meta_cloud", wamid="wamid.BADTS",
+                                                       metadata={"timestamp": "garbage"}, number=three[0]))
+    assert before <= saved["created_at"] <= datetime.utcnow().isoformat()
+
+
 def test_unknown_number_webhook_is_never_assigned(three):
     r = webhook_service.ingest(inbound_payload("999999", "222222", "wamid.X"), True)
     assert r["ignored"] == 1
@@ -598,3 +637,52 @@ def test_explicit_assignment_of_unassigned_legacy_records(three, client):
     r = client.post(f"/api/whatsapp/numbers/{a['_id']}/assign-legacy", headers=ADMIN, json={"confirm": True})
     assert r.json()["assigned"]["whatsapp_messages"] == 1
     assert database.whatsapp_message_collection.find_one({"content": "old"})["number_id"] == str(a["_id"])
+
+
+def test_customer_reply_reaches_inbox_once_unread_until_opened(three, meta, client):
+    """Campaign/inbox message → real-shaped signed webhook 'Hi' → conversation list, filters and thread."""
+    a = three[0]
+    database.automation_settings_collection.insert_one({"provider": "meta_cloud"})
+    assert client.post("/api/whatsapp/messages/send", headers=hdr(a), json={"to": "+919811111111", "message": "Offer"}).status_code == 200
+    # The offer went out a minute before the reply (inbound times are Meta's whole-second timestamps).
+    database.whatsapp_message_collection.update_one({"content": "Offer"}, {"$set": {"created_at": (datetime.utcnow() - timedelta(minutes=1)).isoformat()}})
+
+    def post(payload):
+        body = json.dumps(payload).encode()
+        sig = "sha256=" + hmac.new(b"test-app-secret", body, hashlib.sha256).hexdigest()
+        r = client.post("/api/whatsapp/webhook", content=body, headers={"X-Hub-Signature-256": sig, "Content-Type": "application/json"})
+        assert r.status_code == 200, r.text
+        run(webhook_service.process_pending_events())
+        return r.json()
+
+    def conv():
+        convs = client.get("/api/whatsapp/messages/conversations", headers=hdr(a)).json()["conversations"]
+        assert len(convs) == 1  # the reply joins the existing conversation, no duplicate contact
+        return convs[0]
+
+    hi = inbound_payload("111111", "222222", "wamid.HI1", text="Hi", timestamp=str(int(time.time()) - 30))
+    assert post(hi)["stored"] == 1
+    assert post(hi)["duplicates"] == 1  # Meta redelivery
+    assert database.whatsapp_message_collection.count_documents({"wamid": "wamid.HI1"}) == 1
+    c = conv()
+    assert c["has_reply"] and c["unread_count"] == 1 and c["recipient"] == "Ravi" and c["last_message"]["content"] == "Hi"
+
+    # A delivery status for the outbound message never becomes a customer message.
+    outbound = database.whatsapp_message_collection.find_one({"direction": "outbound"})
+    post({"object": "whatsapp_business_account", "entry": [{"id": "222222", "changes": [{"field": "messages", "value": {
+        "messaging_product": "whatsapp", "metadata": {"phone_number_id": "111111"},
+        "statuses": [{"id": outbound["wamid"], "status": "delivered", "timestamp": "1700000001", "recipient_id": "919811111111"}]}}]}]})
+    assert database.whatsapp_message_collection.count_documents({"direction": "inbound"}) == 1
+
+    # Opening the chat clears unread; the Replies filter still includes it after the agent answers.
+    assert client.post(f"/api/whatsapp/messages/conversation/{c['conversation_id']}/read", headers=hdr(a)).json()["marked_read"] == 1
+    client.post("/api/whatsapp/messages/send", headers=hdr(a), json={"to": "+919811111111", "message": "How can we help?"})
+    database.whatsapp_message_collection.update_one({"content": "How can we help?"}, {"$set": {"created_at": (datetime.utcnow() - timedelta(seconds=20)).isoformat()}})
+    c = conv()
+    assert c["unread_count"] == 0 and c["has_reply"] and c["last_message"]["direction"] == "outbound"
+
+    post(inbound_payload("111111", "222222", "wamid.HI2", text="Need pricing"))
+    c = conv()
+    assert c["unread_count"] == 1
+    msgs = client.get(f"/api/whatsapp/messages/conversation/{c['conversation_id']}", headers=hdr(a)).json()["messages"]
+    assert [m["content"] for m in msgs] == ["Offer", "Hi", "How can we help?", "Need pricing"]

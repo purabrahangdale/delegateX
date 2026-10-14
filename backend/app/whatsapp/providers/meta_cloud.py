@@ -52,8 +52,14 @@ class MetaCloudProvider(WhatsAppProvider):
                     "provider_response": {"error": "Invalid recipient phone number."}}
 
         tmpl_data = (metadata or {}).get("template")
+        media_url = (metadata or {}).get("image_url") or (metadata or {}).get("media_url")
         if isinstance(tmpl_data, dict) and tmpl_data.get("name") and (tmpl_data.get("language") or {}).get("code"):
             payload = {"to": cleaned_phone, "type": "template", "template": tmpl_data}
+        elif (message_type == "image" or media_url) and media_url:
+            image_obj = {"link": media_url}
+            if content:
+                image_obj["caption"] = content
+            payload = {"to": cleaned_phone, "type": "image", "image": image_obj}
         else:
             payload = {"to": cleaned_phone, "type": "text", "text": {"preview_url": False, "body": content}}
 

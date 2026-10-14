@@ -1,7 +1,8 @@
 import { useEffect, useState, useRef } from "react";
 import WhatsAppHeader from "../components/WhatsAppHeader";
-import { getConversations, getConversationMessages, sendWhatsAppMessage, simulateReply, logChatAccess, getWhatsAppDashboardStats, isEventForActiveNumber } from "../services/whatsappApi";
+import { getConversations, getConversationMessages, markConversationRead, sendWhatsAppMessage, simulateReply, logChatAccess, getWhatsAppDashboardStats, isEventForActiveNumber } from "../services/whatsappApi";
 import { useNumberSwitchGuard } from "../context/WhatsAppNumberContext";
+import { timestampMs, inboxDayKey, formatInboxTime, formatInboxDate, formatInboxListTime } from "../utils/inboxTime";
 
 import { useWebSockets } from "../../context/WebSocketContext";
 import {
@@ -103,6 +104,7 @@ function WhatsAppInbox() {
 
     // Helper: Mark conversation as READ persistently
     const markConversationAsRead = (convId) => {
+        if (convId) markConversationRead(convId);
         setConversations(prev => prev.map(c => {
             if (c.conversation_id === convId && (c.unread_count > 0 || c.unread_count === undefined)) {
                 return { ...c, unread_count: 0 };
@@ -136,7 +138,7 @@ function WhatsAppInbox() {
             });
 
             // Sort by latest updated_at
-            realList.sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0));
+            realList.sort((a, b) => timestampMs(b.updated_at) - timestampMs(a.updated_at));
             setConversations(realList);
 
             // Select active conversation
@@ -256,6 +258,7 @@ function WhatsAppInbox() {
                         if (prev.find(m => m._id === msg._id)) return prev;
                         return [...prev, msg];
                     });
+                    if (isReply && msg.conversation_id) markConversationRead(msg.conversation_id);
                 }
 
                 // Instantly update conversations list, unread badge & move to top
@@ -276,7 +279,7 @@ function WhatsAppInbox() {
                             unread_count: newUnread,
                             has_reply: isReply ? true : target.has_reply,
                         };
-                        updated.sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0));
+                        updated.sort((a, b) => timestampMs(b.updated_at) - timestampMs(a.updated_at));
                         return updated;
                     } else {
                         // Create brand new conversation entry
@@ -306,6 +309,14 @@ function WhatsAppInbox() {
         whatsappSocket.on("message", handleEvent);
         return () => whatsappSocket.off("message", handleEvent);
     }, [whatsappSocket, selectedConv]);
+
+    // Replies that arrived while the socket was disconnected are only in the DB — resync on reconnect.
+    useEffect(() => {
+        if (!whatsappSocket) return;
+        const handleReconnect = () => fetchConversations();
+        whatsappSocket.on("open", handleReconnect);
+        return () => whatsappSocket.off("open", handleReconnect);
+    }, [whatsappSocket]);
 
     useNumberSwitchGuard(!!newMessage.trim() || !!newChatMessage.trim(), "You have an unsent WhatsApp message.");
 
@@ -495,7 +506,7 @@ function WhatsAppInbox() {
                 updatedList.unshift(newConvObj);
             }
 
-            updatedList.sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0));
+            updatedList.sort((a, b) => timestampMs(b.updated_at) - timestampMs(a.updated_at));
             return updatedList;
         });
 
@@ -532,23 +543,11 @@ function WhatsAppInbox() {
         return true;
     });
 
-    const formatTime = (isoStr) => {
-        if (!isoStr) return "";
-        try { return new Date(isoStr).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } catch { return ""; }
-    };
-
-    const formatDate = (isoStr) => {
-        if (!isoStr) return "";
-        try {
-            const d = new Date(isoStr);
-            const today = new Date();
-            if (d.toDateString() === today.toDateString()) return "Today";
-            return d.toLocaleDateString();
-        } catch { return ""; }
-    };
+    const formatTime = formatInboxTime;
+    const formatDate = formatInboxDate;
 
     const groupedMessages = messages.reduce((groups, msg) => {
-        const dateKey = msg.created_at ? msg.created_at.split("T")[0] : "today";
+        const dateKey = inboxDayKey(msg.created_at) || "today";
         if (!groups[dateKey]) groups[dateKey] = [];
         groups[dateKey].push(msg);
         return groups;
@@ -680,7 +679,7 @@ function WhatsAppInbox() {
                                                             </span>
                                                         )}
                                                     </div>
-                                                    <span className="text-[9px] text-slate-400 font-medium shrink-0 ml-1">{formatTime(conv.updated_at)}</span>
+                                                    <span className="text-[9px] text-slate-400 font-medium shrink-0 ml-1">{formatInboxListTime(conv.updated_at)}</span>
                                                 </div>
 
                                                 {/* Latest Message Preview */}

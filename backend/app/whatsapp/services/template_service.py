@@ -15,6 +15,7 @@ share one catalogue; a number only ever sees, submits, syncs or sends templates 
 its own credentials. Delivery metrics are computed per number from that number's messages.
 """
 
+import os
 import re
 import logging
 from datetime import datetime, timedelta
@@ -351,7 +352,7 @@ def create_template(data: dict, number: Optional[dict] = None) -> dict:
     return TemplateRepository.create(data)
 
 
-CONTENT_FIELDS = {"content", "header", "footer", "response_buttons", "variable_examples", "meta_category"}
+CONTENT_FIELDS = {"content", "header", "footer", "response_buttons", "variable_examples", "meta_category", "attachment_type", "attachment_url", "attachment_filename"}
 
 
 def update_template(template_id: str, data: dict) -> Optional[dict]:
@@ -595,15 +596,45 @@ async def _resolve_media_header(client: MetaClient, tmpl: dict, payload: dict):
     fmt = (header.get("format") or "").upper()
     if fmt not in MEDIA_HEADER_FORMATS:
         return
-    import httpx
-    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as http:
-        resp = await http.get(header["sample_url"])
-    if resp.status_code != 200:
-        raise MetaApiError(message=f"Could not download the sample header media (HTTP {resp.status_code}).")
-    if len(resp.content) > 16 * 1024 * 1024:
+
+    sample_url = (header.get("sample_url") or tmpl.get("attachment_url") or "").strip()
+    if not sample_url:
+        raise MetaApiError(message=f"A sample {fmt.lower()} URL is required for media headers.")
+
+    file_bytes = None
+    mime = "application/octet-stream"
+
+    # If the file was saved to local static directory, read it directly
+    if "/static/" in sample_url:
+        static_rel = sample_url.split("/static/", 1)[1]
+        local_path = os.path.join("static", static_rel.replace("/", os.sep))
+        if os.path.exists(local_path):
+            try:
+                with open(local_path, "rb") as f:
+                    file_bytes = f.read()
+                import mimetypes
+                guessed_mime, _ = mimetypes.guess_type(local_path)
+                if guessed_mime:
+                    mime = guessed_mime
+            except Exception as e:
+                logger.warning(f"[Templates] Failed to read static media from disk: {e}")
+
+    if file_bytes is None:
+        import httpx
+        try:
+            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as http:
+                resp = await http.get(sample_url)
+        except httpx.HTTPError as e:
+            raise MetaApiError(message=f"Could not download the sample header media from {sample_url} ({type(e).__name__}).")
+        if resp.status_code != 200:
+            raise MetaApiError(message=f"Could not download the sample header media (HTTP {resp.status_code}).")
+        file_bytes = resp.content
+        mime = resp.headers.get("content-type", "").split(";")[0] or "application/octet-stream"
+
+    if len(file_bytes) > 16 * 1024 * 1024:
         raise MetaApiError(message="Sample header media must be smaller than 16 MB.")
-    mime = resp.headers.get("content-type", "").split(";")[0] or "application/octet-stream"
-    handle = await client.upload_sample_media(resp.content, mime)
+
+    handle = await client.upload_sample_media(file_bytes, mime)
     for comp in payload["components"]:
         if comp["type"] == "HEADER":
             comp["example"] = {"header_handle": [handle]}
@@ -832,7 +863,19 @@ def get_send_slots(tmpl: dict) -> List[Dict[str, Any]]:
     header_names = tmpl.get("header_param_names") or []
     examples = tmpl.get("variable_examples") or {}
 
-    for comp in tmpl.get("meta_components") or []:
+    comps = tmpl.get("meta_components")
+    if not comps:
+        comps = []
+        hdr = tmpl.get("header") or {}
+        hdr_fmt = (hdr.get("format") or "").upper()
+        if hdr_fmt and hdr_fmt != "NONE":
+            comps.append({"type": "HEADER", "format": hdr_fmt, "text": hdr.get("text")})
+        elif (tmpl.get("attachment_type") or "").upper() in MEDIA_HEADER_FORMATS:
+            comps.append({"type": "HEADER", "format": tmpl.get("attachment_type").upper()})
+        if tmpl.get("content"):
+            comps.append({"type": "BODY", "text": tmpl.get("content")})
+
+    for comp in comps:
         ctype = comp.get("type")
         if ctype == "HEADER":
             fmt = comp.get("format")
@@ -842,7 +885,8 @@ def get_send_slots(tmpl: dict) -> List[Dict[str, Any]]:
                     local = header_names[i] if i < len(header_names) else None
                     slots.append({"key": f"header.{p}", "component": "header", "param": p, "label": local or f"Header {{{{{p}}}}}", "local_name": local, "example": ex[0] if i == 0 else None, "kind": "text"})
             elif fmt in MEDIA_HEADER_FORMATS:
-                slots.append({"key": "header.media", "component": "header", "param": None, "label": f"Header {fmt.lower()} URL", "local_name": None, "example": (tmpl.get("header") or {}).get("sample_url"), "kind": "media", "media_format": fmt})
+                media_sample = (tmpl.get("header") or {}).get("sample_url") or tmpl.get("attachment_url")
+                slots.append({"key": "header.media", "component": "header", "param": None, "label": f"Header {fmt.lower()} URL", "local_name": None, "example": media_sample, "kind": "media", "media_format": fmt})
         elif ctype == "BODY":
             ex_rows = (comp.get("example") or {}).get("body_text") or [[]]
             ex = ex_rows[0] if ex_rows else []

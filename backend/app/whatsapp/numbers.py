@@ -29,7 +29,7 @@ from bson import ObjectId
 from pymongo import ReturnDocument
 
 from app.config.database import whatsapp_number_collection as numbers
-from app.whatsapp.meta_api import DEFAULT_GRAPH_VERSION, MetaApiError, MetaClient, MetaConfig, load_config
+from app.whatsapp.meta_api import DEFAULT_GRAPH_VERSION, MetaApiError, MetaClient, MetaConfig, load_config, webhook_health_warnings
 
 logger = logging.getLogger("whatsapp.numbers")
 
@@ -69,6 +69,8 @@ ENC_PREFIX = "enc:v1:"
 def _fernet():
     from cryptography.fernet import Fernet
     key = os.getenv("WHATSAPP_TOKEN_ENCRYPTION_KEY", "").strip()
+    if key and len(key) == 43 and not key.endswith("="):
+        key = key + "="
     if not key:
         # No key configured: keep one on the server's disk (never in the database), so a database
         # leak alone does not expose tokens. Set WHATSAPP_TOKEN_ENCRYPTION_KEY to manage it yourself.
@@ -546,6 +548,13 @@ async def test_connection(number_id: str, user: Optional[str]) -> dict:
     except MetaApiError as e:
         connection["webhook_subscribed"] = None
         checks.append({"key": "webhook", "ok": False, "detail": str(e)})
+
+    field_warnings = webhook_health_warnings(phone_info)
+    connection["webhook_warnings"] = field_warnings
+    if phone_info:
+        checks.append({"key": "webhook_fields", "ok": not field_warnings,
+                       "detail": " ".join(field_warnings) + " Delivery statuses will not arrive until the 'messages' webhook field is subscribed (Meta App Dashboard → WhatsApp → Configuration)."
+                       if field_warnings else "Meta reports no webhook subscription problems for this number."})
 
     ok = bool(phone_info) and in_waba is True
     connection["status"] = "connected" if ok else "error"

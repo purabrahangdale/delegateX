@@ -408,6 +408,16 @@ function WhatsAppTemplates() {
                             <button onClick={() => setPreviewTemplate(null)} className="text-slate-400 hover:text-slate-600"><FiX size={16} /></button>
                         </div>
                         <div className="bg-[#DCF8C6] text-slate-900 rounded-2xl rounded-tr-none p-4 shadow-xs border border-emerald-200">
+                            {(previewTemplate.header?.format === "IMAGE" || previewTemplate.attachment_type === "image") && (previewTemplate.header?.sample_url || previewTemplate.attachment_url) && (
+                                <div className="mb-2.5 -mx-1 -mt-1 rounded-xl overflow-hidden border border-emerald-300/40 bg-black/5 shadow-xs">
+                                    <img
+                                        src={previewTemplate.header?.sample_url || previewTemplate.attachment_url}
+                                        alt="Template header"
+                                        className="w-full max-h-48 object-cover block"
+                                        onError={(e) => { e.target.style.display = "none"; }}
+                                    />
+                                </div>
+                            )}
                             <p className="text-xs leading-relaxed whitespace-pre-wrap font-mono">{previewTemplate.content}</p>
                             
                             {previewTemplate.response_buttons?.length > 0 && (

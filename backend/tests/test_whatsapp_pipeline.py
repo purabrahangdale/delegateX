@@ -444,6 +444,15 @@ def test_duplicate_webhook_deliveries_are_ignored():
     assert webhook_service.ingest(other, True)["ignored"] == 1
 
 
+def test_inbound_message_without_sender_is_not_stored():
+    p = {"object": "whatsapp_business_account", "entry": [{"id": "222222", "changes": [{"field": "messages", "value": {
+        "metadata": {"phone_number_id": "111111"}, "messages": [{"id": "wamid.NOFROM", "type": "text", "text": {"body": "x"}}]}}]}]}
+    assert webhook_service.ingest(p, True)["stored"] == 1
+    run(webhook_service.process_pending_events())
+    assert database.whatsapp_message_collection.count_documents({}) == 0
+    assert database.whatsapp_webhook_event_collection.find_one({"wamid": "wamid.NOFROM"})["result"] == "invalid"
+
+
 def test_status_arriving_before_wamid_is_stored_is_applied_later(meta):
     camp = _campaign([{"name": "A", "phone": "9000000001", "project_type": "V"}])
     campaign_service.launch_campaign(camp["_id"], {"confirm_consent": True})
@@ -531,3 +540,110 @@ def test_binding_requires_approved_template_and_full_mapping():
     approved = make_template(meta_id="9202")
     with pytest.raises(ValueError, match="Map every template variable"):
         automation_service.save_binding("welcome_message", {"enabled": True, "template_id": approved, "variable_mapping": {}}, N())
+
+
+# ═══════════════════════════════════════════════════════════════════
+# DELIVERY CONFIRMATION (accepted ≠ delivered)
+# ═══════════════════════════════════════════════════════════════════
+
+# Shape returned by GET /{phone_number_id}?fields=health_status when the app's `messages` webhook field is
+# not subscribed, although GET /{waba_id}/subscribed_apps lists the app.
+UNSUBSCRIBED_HEALTH = {"health_status": {"can_send_message": "AVAILABLE", "entities": [
+    {"entity_type": "PHONE_NUMBER", "id": "111111", "can_send_message": "AVAILABLE"},
+    {"entity_type": "APP", "id": "333333", "can_send_message": "AVAILABLE", "additional_info": [
+        "Your app is not subscribed to the message webhook. This means you will not receive any messages sent to your phone number."]},
+]}}
+
+
+def test_webhook_health_warnings_detects_unsubscribed_messages_field():
+    from app.whatsapp.meta_api import webhook_health_warnings
+    warnings = webhook_health_warnings(UNSUBSCRIBED_HEALTH)
+    assert len(warnings) == 1 and "APP 333333" in warnings[0] and "not subscribed to the message webhook" in warnings[0]
+    assert webhook_health_warnings({"health_status": {"entities": [{"entity_type": "APP", "id": "1"}]}}) == []
+    assert webhook_health_warnings(None) == []
+
+
+def test_connection_test_flags_unsubscribed_messages_field(monkeypatch):
+    async def get_phone_number(client):
+        return {"id": "111111", "display_phone_number": "+91 1", "verified_name": "X", **UNSUBSCRIBED_HEALTH}
+
+    async def list_phone_numbers(client):
+        return [{"id": "111111"}]
+
+    async def get_subscribed_apps(client):
+        return [{"whatsapp_business_api_data": {"id": "333333", "name": "App"}}]
+
+    monkeypatch.setattr(MetaClient, "get_phone_number", get_phone_number)
+    monkeypatch.setattr(MetaClient, "list_phone_numbers", list_phone_numbers)
+    monkeypatch.setattr(MetaClient, "get_subscribed_apps", get_subscribed_apps)
+    out = run(numbers.test_connection(str(N()["_id"]), "admin@delegatex.com"))
+    checks = {c["key"]: c for c in out["checks"]}
+    assert checks["webhook"]["ok"] is True  # subscribed_apps alone looks healthy…
+    assert checks["webhook_fields"]["ok"] is False  # …but Meta says statuses will not be sent
+    assert out["number"]["connection"]["webhook_warnings"]
+
+
+def test_accepted_stays_pending_until_real_webhook_then_failure_details_are_kept(meta):
+    camp = _campaign([{"name": "A", "phone": "9000000001", "project_type": "V"},
+                      {"name": "B", "phone": "9000000002", "project_type": "V"}])
+    campaign_service.launch_campaign(camp["_id"], {"confirm_consent": True})
+    run(drain_worker())
+    jobs = database.whatsapp_campaign_recipient_collection
+    # Without any status webhook nothing is ever marked delivered.
+    assert {j["state"] for j in jobs.find({"campaign_id": camp["_id"]})} == {"accepted"}
+    assert not any(j.get("delivered_at") for j in jobs.find({"campaign_id": camp["_id"]}))
+
+    # Real-shaped Meta payloads through ingest → process (one delivered, one failed with error_data).
+    delivered = _status_payload("wamid.TEST1", "delivered", ts="1700000100")
+    failed = _status_payload("wamid.TEST2", "failed", ts="1700000100")
+    failed["entry"][0]["changes"][0]["value"]["statuses"][0]["errors"] = [{
+        "code": 131049, "title": "This message was not delivered to maintain healthy ecosystem engagement.",
+        "message": "This message was not delivered to maintain healthy ecosystem engagement.",
+        "error_data": {"details": "In order to maintain a healthy ecosystem engagement, the message failed to be delivered."}}]
+    webhook_service.ingest(delivered, True)
+    webhook_service.ingest(failed, True)
+    webhook_service.ingest(delivered, True)  # Meta retry: duplicate is ignored
+    run(webhook_service.process_pending_events())
+
+    j1 = jobs.find_one({"wamid": "wamid.TEST1"})
+    j2 = jobs.find_one({"wamid": "wamid.TEST2"})
+    assert j1["state"] == "delivered" and j1["delivered_at"] == datetime.utcfromtimestamp(1700000100).isoformat()
+    assert sum(1 for h in j1["status_history"] if h["state"] == "delivered") == 1
+    assert j2["state"] == "failed" and j2["error"]["code"] == 131049 and "healthy ecosystem" in j2["error"]["details"]
+    assert not j2.get("delivered_at")
+    counts = campaign_service.get_campaign(camp["_id"])["counts"]
+    assert (counts["accepted"], counts["delivered"], counts["failed"], counts["awaiting_status"]) == (2, 1, 1, 0)
+
+
+def test_meta_delivery_check_flags_accepted_messages_meta_never_delivered(monkeypatch):
+    from datetime import timezone
+    from app.whatsapp.routes import _add_meta_delivery_check
+    from app.whatsapp.numbers import NumberScope
+
+    sent_at = datetime.utcnow().replace(minute=0, second=0, microsecond=0) - timedelta(hours=2)
+    for i in range(4):
+        database.whatsapp_message_collection.insert_one({
+            "number_id": str(N()["_id"]), "direction": "outbound", "wamid": f"wamid.D{i}",
+            "status": "accepted", "created_at": (sent_at + timedelta(minutes=i)).isoformat(),
+        })
+    bucket = int(sent_at.replace(tzinfo=timezone.utc).timestamp())
+    delivered = {"n": 1}
+
+    async def get_message_analytics(client, display_phone, start, end):
+        assert display_phone == "+91 70241 12702" and start <= bucket < end
+        return [{"start": bucket, "end": bucket + 1800, "sent": delivered["n"], "delivered": delivered["n"]}]
+
+    monkeypatch.setattr(MetaClient, "get_message_analytics", get_message_analytics)
+    scope = NumberScope(N())
+
+    def check():
+        out = []
+        run(_add_meta_delivery_check(MetaClient(scope.config()), scope, {"display_phone_number": "+91 70241 12702"},
+                                     lambda *a: out.append(a)))
+        return out[0]
+
+    key, _, ok, detail, action = check()
+    assert key == "meta_delivery" and ok is False
+    assert "4 accepted, 1 delivered" in detail and "about 3 message(s)" in action
+    delivered["n"] = 4
+    assert check()[2] is True

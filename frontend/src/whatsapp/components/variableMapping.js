@@ -8,6 +8,8 @@ export const suggestMapping = (slots, fieldOptions, current = {}) => {
     for (const slot of slots || []) {
         if (current[slot.key]?.value) {
             next[slot.key] = current[slot.key];
+        } else if (slot.kind === "media" && slot.example) {
+            next[slot.key] = { source: "static", value: slot.example };
         } else if (slot.local_name && fieldValues.has(slot.local_name)) {
             next[slot.key] = { source: "field", value: slot.local_name };
         } else if (slot.local_name && /name/.test(slot.local_name) && fieldValues.has("name")) {

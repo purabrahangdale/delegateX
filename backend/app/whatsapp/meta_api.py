@@ -10,9 +10,13 @@ returned to callers.
 
 import os
 import re
+import json
+import time
 import logging
+import mimetypes
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 
 import httpx
 
@@ -126,6 +130,20 @@ def load_config() -> MetaConfig:
     )
 
 
+def webhook_health_warnings(phone_info: Optional[Dict[str, Any]]) -> List[str]:
+    """
+    Webhook problems Meta reports in the phone number's health_status, e.g. "Your app is not subscribed to
+    the message webhook". GET /{waba_id}/subscribed_apps can list the app while its `messages` webhook field
+    is unsubscribed — then Meta never sends sent/delivered/read/failed statuses or inbound messages.
+    """
+    out: List[str] = []
+    for entity in ((phone_info or {}).get("health_status") or {}).get("entities") or []:
+        for info in entity.get("additional_info") or []:
+            if isinstance(info, str) and "webhook" in info.lower():
+                out.append(f"{entity.get('entity_type', 'Entity')} {entity.get('id', '')}: {info}".strip())
+    return out
+
+
 def _parse_error(resp: httpx.Response) -> MetaApiError:
     try:
         data = resp.json()
@@ -145,6 +163,26 @@ def _parse_error(resp: httpx.Response) -> MetaApiError:
         retryable=retryable,
         raw=err,
     )
+
+
+MEDIA_TYPES = ("image", "video", "document", "audio", "sticker")
+LOCAL_MEDIA_DIR = os.path.join("static", "whatsapp_media")
+# Meta keeps uploaded media for 30 days; re-upload well before that.
+MEDIA_ID_TTL_SECONDS = 7 * 24 * 3600
+_media_id_cache: Dict[tuple, tuple] = {}
+
+
+def _local_media_path(link: str) -> Optional[str]:
+    """Local file behind a /static/whatsapp_media/<name> URL, if it exists on this server."""
+    path = urlparse(link).path or ""
+    prefix = "/static/whatsapp_media/"
+    if not path.startswith(prefix):
+        return None
+    name = os.path.basename(path[len(prefix):])
+    if not name:
+        return None
+    local = os.path.join(LOCAL_MEDIA_DIR, name)
+    return local if os.path.isfile(local) else None
 
 
 class MetaClient:
@@ -173,12 +211,12 @@ class MetaClient:
                 retryable=False,
             )
 
-    async def _request(self, method: str, path: str, *, params=None, json=None, content=None, headers=None) -> Dict[str, Any]:
+    async def _request(self, method: str, path: str, *, params=None, json=None, content=None, data=None, files=None, headers=None) -> Dict[str, Any]:
         url = path if path.startswith("http") else f"{self.config.base_url}/{path.lstrip('/')}"
         all_headers = {**self._headers(), **(headers or {})}
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
-                resp = await client.request(method, url, params=params, json=json, content=content, headers=all_headers)
+                resp = await client.request(method, url, params=params, json=json, content=content, data=data, files=files, headers=all_headers)
         except (httpx.ConnectError, httpx.ConnectTimeout) as e:
             # Request never reached Meta: safe to retry.
             raise MetaApiError(message=f"Could not connect to Meta Graph API: {type(e).__name__}", retryable=True)
@@ -205,6 +243,7 @@ class MetaClient:
     async def send_message(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """POST /{phone_number_id}/messages. Returns {'wamid', 'wa_id', 'raw'}."""
         self._require("access_token", "phone_number_id")
+        payload = await self.localize_media(payload)
         body = {"messaging_product": "whatsapp", "recipient_type": "individual", **payload}
         data = await self._request("POST", f"{self.config.phone_number_id}/messages", json=body)
         messages = data.get("messages") or []
@@ -217,6 +256,55 @@ class MetaClient:
             "message_status": messages[0].get("message_status"),
             "wa_id": contacts[0].get("wa_id") if contacts else None,
         }
+
+    async def upload_message_media(self, file_bytes: bytes, mime_type: str, filename: str) -> str:
+        """POST /{phone_number_id}/media → media ID usable in message/template payloads instead of a link."""
+        self._require("access_token", "phone_number_id")
+        data = await self._request(
+            "POST", f"{self.config.phone_number_id}/media",
+            data={"messaging_product": "whatsapp", "type": mime_type},
+            files={"file": (filename, file_bytes, mime_type)},
+        )
+        media_id = data.get("id")
+        if not media_id:
+            raise MetaApiError(message="Meta did not return a media ID for the uploaded file", raw=data)
+        return media_id
+
+    async def localize_media(self, payload: Any) -> Any:
+        """
+        Replace links to files served from our own /static/whatsapp_media/ with Meta media IDs.
+        Meta downloads `link` media itself, so a localhost/private URL is accepted by the send API but the
+        message then silently fails delivery. Uploading the file and sending its ID works from anywhere.
+        """
+        if isinstance(payload, list):
+            return [await self.localize_media(item) for item in payload]
+        if not isinstance(payload, dict):
+            return payload
+        out = {}
+        for key, value in payload.items():
+            if key in MEDIA_TYPES and isinstance(value, dict) and value.get("link"):
+                local = _local_media_path(value["link"])
+                if local:
+                    media_id = await self._media_id_for(local)
+                    value = {k: v for k, v in value.items() if k != "link"}
+                    value["id"] = media_id
+                out[key] = value
+            else:
+                out[key] = await self.localize_media(value)
+        return out
+
+    async def _media_id_for(self, path: str) -> str:
+        stat = os.stat(path)
+        cache_key = (self.config.phone_number_id, path, stat.st_mtime, stat.st_size)
+        cached = _media_id_cache.get(cache_key)
+        if cached and time.time() - cached[1] < MEDIA_ID_TTL_SECONDS:
+            return cached[0]
+        mime_type = mimetypes.guess_type(path)[0] or "application/octet-stream"
+        with open(path, "rb") as f:
+            media_id = await self.upload_message_media(f.read(), mime_type, os.path.basename(path))
+        _media_id_cache[cache_key] = (media_id, time.time())
+        logger.info(f"[MetaAPI] Uploaded local media {os.path.basename(path)} as media ID {media_id}")
+        return media_id
 
     # ── Templates ──────────────────────────────────────────────────
 
@@ -280,7 +368,7 @@ class MetaClient:
         self._require("access_token", "phone_number_id")
         return await self._request(
             "GET", self.config.phone_number_id,
-            params={"fields": "id,display_phone_number,verified_name,quality_rating,messaging_limit_tier,code_verification_status,name_status"},
+            params={"fields": "id,display_phone_number,verified_name,quality_rating,messaging_limit_tier,code_verification_status,name_status,health_status"},
         )
 
     async def get_token_identity(self) -> Dict[str, Any]:
@@ -305,6 +393,18 @@ class MetaClient:
             params={"fields": "id,display_phone_number,verified_name,quality_rating"},
         )
         return data.get("data", [])
+
+    async def get_message_analytics(self, display_phone: str, start: int, end: int) -> List[Dict[str, Any]]:
+        """
+        Meta's own sent/delivered counts for one business number in half-hour buckets (unix seconds):
+        [{'start', 'end', 'sent', 'delivered'}]. Independent of webhooks, so it shows whether accepted
+        messages were actually delivered. (template_analytics is not used: it under-counts utility sends.)
+        """
+        self._require("access_token", "waba_id")
+        digits = re.sub(r"\D", "", display_phone or "")
+        field_expr = f"analytics.start({start}).end({end}).granularity(HALF_HOUR).phone_numbers({json.dumps([digits] if digits else [])})"
+        data = await self._request("GET", self.config.waba_id, params={"fields": field_expr})
+        return (data.get("analytics") or {}).get("data_points", [])
 
     async def get_subscribed_apps(self) -> List[Dict[str, Any]]:
         self._require("access_token", "waba_id")

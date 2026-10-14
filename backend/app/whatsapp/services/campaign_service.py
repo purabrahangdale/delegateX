@@ -317,6 +317,28 @@ def create_campaign(payload: dict, user: Optional[str] = None, number: Optional[
     return get_campaign(str(cid))
 
 
+async def localize_campaign_media(campaign_id: str, number: Optional[dict]) -> dict:
+    """
+    Replace header media links to files on this server (e.g. http://localhost:8000/static/whatsapp_media/...)
+    with Meta media IDs in the campaign's stored send components. Meta cannot download such links: the send
+    is accepted but never delivered. Stored IDs work no matter which server's worker sends the job.
+    """
+    config = number_registry.config_for(number) if number else None
+    if config:
+        client = MetaClient(config)
+        for job in jobs.find({"campaign_id": campaign_id, "send_components": {"$ne": None}}, {"send_components": 1}):
+            try:
+                localized = await client.localize_media(job["send_components"])
+            except MetaApiError as e:
+                jobs.update_one({"_id": job["_id"]}, {"$set": {
+                    "state": "invalid", "send_components": None, "updated_at": _now(),
+                    "reason": f"Header media could not be uploaded to Meta: {e}"}})
+                continue
+            if localized != job["send_components"]:
+                jobs.update_one({"_id": job["_id"]}, {"$set": {"send_components": localized, "updated_at": _now()}})
+    return get_campaign(campaign_id)
+
+
 def launch_campaign(campaign_id: str, payload: dict, user: Optional[str] = None) -> dict:
     """
     Move a draft campaign to scheduled (future time) or queued (now).
@@ -725,15 +747,29 @@ async def _process_job(job: dict):
         "$unset": {"lease_until": ""},
         "$push": {"status_history": {"state": "accepted", "at": accepted_at, "source": "meta_api"}},
     })
+    logger.info(f"[Campaign Worker] accepted {_trace(job, config)} wamid={wamid} "
+                f"(Meta message_status={result.get('message_status')}; delivery is confirmed only by the status webhook)")
     # A status webhook may have arrived before the wamid was stored; apply any buffered events now.
     from app.whatsapp.services import webhook_service
     webhook_service.reapply_status_events_for(wamid)
+
+
+def _trace(job: dict, config=None) -> str:
+    """One-line identity of a recipient job for logs: no tokens, phone masked."""
+    phone = str(job.get("phone") or "")
+    masked = "*" * max(len(phone) - 4, 0) + phone[-4:]
+    tmpl = job.get("template") or {}
+    return (f"campaign={job.get('campaign_id')} job={job.get('_id')} to={masked} "
+            f"phone_number_id={getattr(config, 'phone_number_id', None) or job.get('phone_number_id')} "
+            f"template={tmpl.get('name')}/{tmpl.get('language')}")
 
 
 def _fail_job(job: dict, err: dict):
     now = _now()
     opt_out = err.get("code") in OPT_OUT_ERROR_CODES
     err = {**err, "opt_out": opt_out}
+    logger.warning(f"[Campaign Worker] failed {_trace(job)} http={err.get('http_status')} code={err.get('code')} "
+                   f"subcode={err.get('subcode')} error={err.get('message')}")
     jobs.update_one({"_id": job["_id"], "state": "sending"}, {
         "$set": {"state": "failed", "error": err, "reason": err.get("message"), "failed_at": now, "updated_at": now},
         "$push": {"errors": err, "status_history": {"state": "failed", "at": now, "source": "send"}},

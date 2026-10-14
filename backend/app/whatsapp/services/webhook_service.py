@@ -37,6 +37,13 @@ from app.config.database import (
 from app.whatsapp.meta_api import load_config, OPT_OUT_ERROR_CODES
 
 logger = logging.getLogger("whatsapp.webhook")
+if not logger.handlers:
+    # No app-wide logging config: without this, INFO diagnostics never reach the server log.
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
+    logger.addHandler(_handler)
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
 
 STATUS_RANK = {"accepted": 2, "sent": 3, "delivered": 4, "read": 5}
 MAX_EVENT_ATTEMPTS = 10
@@ -185,6 +192,10 @@ def ingest(payload: dict, signature_verified: bool, signer_wabas: Optional[set] 
             stored += 1 if belongs else 0
         except DuplicateKeyError:
             duplicates += 1
+            logger.info(f"[Webhook] duplicate event ignored key={ev['dedupe_key']}")
+            continue
+        logger.info(f"[Webhook] event received kind={ev['kind']} field={ev['field']} phone_number_id={ev['phone_number_id']} "
+                    f"wamid={ev.get('wamid')} number_id={ev.get('number_id')} result={doc['result'] or 'queued'}")
     return {"stored": stored, "duplicates": duplicates, "ignored": ignored}
 
 
@@ -235,14 +246,17 @@ async def process_pending_events(wamid: Optional[str] = None, limit: int = 200):
         try:
             if event["kind"] == "status":
                 result = await apply_status_event(event["payload"], number_id=event.get("number_id"))
+                err = ((event["payload"].get("errors") or [{}])[0])
+                logger.info(f"[Webhook] status wamid={event.get('wamid')} status={event['payload'].get('status')} "
+                            f"phone_number_id={event.get('phone_number_id')} result={result}"
+                            + (f" error_code={err.get('code')} error={err.get('title') or err.get('message')}" if err else ""))
                 if result == "no_match":
                     # The send may not have stored its wamid yet — retry for a while.
                     _retry_later(event, "no_match")
                 else:
                     _complete(event, result)
             elif event["kind"] == "message":
-                await _process_inbound_message(event)
-                _complete(event, "stored")
+                _complete(event, await _process_inbound_message(event))
             elif event["kind"] == "template_status":
                 from app.whatsapp.services.template_service import apply_template_status_webhook
                 _complete(event, "updated" if apply_template_status_webhook(event["payload"], waba_id=event.get("waba_id")) else "no_match")
@@ -349,9 +363,14 @@ async def apply_status_event(st: dict, number_id: Optional[str] = None) -> str:
     return "applied" if applied else "stale_or_duplicate"
 
 
-async def _process_inbound_message(event: dict):
+async def _process_inbound_message(event: dict) -> str:
     from app.whatsapp.services import message_service, automation_service
     from app.whatsapp import numbers as number_registry
+
+    if not event["payload"].get("id") or not event["payload"].get("from"):
+        # Malformed payload: storing it would create an inbox conversation with no sender.
+        logger.warning(f"[Webhook] inbound message without id/from ignored key={event.get('dedupe_key')}")
+        return "invalid"
 
     number = number_registry.get_number(event.get("number_id"), include_deleted=True) if event.get("number_id") else None
     if not number:
@@ -378,8 +397,11 @@ async def _process_inbound_message(event: dict):
     else:
         content = f"[{msg_type.upper()}]"
 
+    logger.info(f"[Webhook] inbound message wamid={msg.get('id')} from={sender_phone} type={msg_type} "
+                f"phone_number_id={event.get('phone_number_id')} number_id={number['_id']}")
     if messages.find_one({"wamid": msg.get("id"), "direction": "inbound", "number_id": str(number["_id"])}, {"_id": 1}):
-        return  # already stored (e.g. event replay after a crash mid-processing)
+        logger.info(f"[Webhook] inbound message wamid={msg.get('id')} already stored — duplicate ignored")
+        return "stored"  # already stored (e.g. event replay after a crash mid-processing)
 
     saved = await message_service.process_incoming_reply(
         sender_phone=sender_phone,
@@ -393,8 +415,11 @@ async def _process_inbound_message(event: dict):
         metadata={"context": msg.get("context"), "timestamp": _ts(msg.get("timestamp"))},
         number=number,
     )
+    logger.info(f"[Webhook] inbound message wamid={msg.get('id')} persisted id={(saved or {}).get('_id')} "
+                f"conversation_id={(saved or {}).get('conversation_id')}; 'new_message' broadcast on /ws/whatsapp")
     if saved and msg_type != "reaction":
         asyncio.create_task(automation_service.detect_intent_and_route(saved))
+    return "stored"
 
 
 # ═══════════════════════════════════════════════════════════════════

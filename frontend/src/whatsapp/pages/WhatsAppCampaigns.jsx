@@ -48,7 +48,7 @@ const RECIPIENT_STATE = {
     queued: { label: "Queued", cls: "text-amber-700 bg-amber-50 border-amber-200" },
     paused: { label: "Paused", cls: "text-orange-700 bg-orange-50 border-orange-200" },
     sending: { label: "Sending", cls: "text-blue-700 bg-blue-50 border-blue-200" },
-    accepted: { label: "Accepted by Meta", cls: "text-sky-700 bg-sky-50 border-sky-200", help: "Meta accepted the request. Waiting for a 'sent' / 'delivered' webhook." },
+    accepted: { label: "Accepted · awaiting delivery", cls: "text-sky-700 bg-sky-50 border-sky-200", help: "Meta accepted the request, but delivery is NOT confirmed yet. It becomes Delivered/Read/Failed only when Meta's status webhook arrives." },
     sent: { label: "Sent", cls: "text-teal-700 bg-teal-50 border-teal-200" },
     delivered: { label: "Delivered", cls: "text-emerald-700 bg-emerald-50 border-emerald-200" },
     read: { label: "Read", cls: "text-emerald-800 bg-emerald-100 border-emerald-300" },
@@ -245,8 +245,18 @@ function CampaignBuilder({ onClose, onCreated }) {
         }
     };
 
-    const renderPreviewBubble = (text) => (
+    const renderPreviewBubble = (text, mediaUrl = null) => (
         <div className="bg-[#DCF8C6] rounded-2xl rounded-tr-none p-3 border border-emerald-200 shadow-2xs">
+            {mediaUrl && (
+                <div className="mb-2 -mx-1 -mt-1 rounded-xl overflow-hidden border border-emerald-300/40 bg-black/5 shadow-xs">
+                    <img
+                        src={mediaUrl}
+                        alt="Header preview"
+                        className="w-full max-h-48 object-cover block"
+                        onError={(e) => { e.target.style.display = "none"; }}
+                    />
+                </div>
+            )}
             <p className="text-[11px] whitespace-pre-wrap leading-relaxed text-slate-900">{text}</p>
         </div>
     );
@@ -265,7 +275,7 @@ function CampaignBuilder({ onClose, onCreated }) {
         const header = comps.find((c) => c.type === "HEADER");
         const body = comps.find((c) => c.type === "BODY");
         const footer = comps.find((c) => c.type === "FOOTER");
-        return [header?.format === "TEXT" ? sub(header.text, "header") : header ? `[${header.format}]` : null, sub(body?.text, "body"), footer?.text]
+        return [header?.format === "TEXT" ? sub(header.text, "header") : (header && header.format !== "IMAGE" ? `[${header.format}]` : null), sub(body?.text, "body"), footer?.text]
             .filter(Boolean).join("\n\n");
     }, [template, mapping, firstContact]);
 
@@ -467,7 +477,7 @@ function CampaignBuilder({ onClose, onCreated }) {
                 <div className="space-y-2">
                     <p className="text-[10px] font-bold text-slate-500 uppercase">Live preview {firstContact && audienceSource === "contacts" ? `· ${firstContact.name}` : ""}</p>
                     <div className="bg-[#E5DDD5] rounded-2xl p-4 min-h-[180px]">
-                        {template ? renderPreviewBubble(livePreviewText) : <p className="text-[11px] text-slate-500">Select a template to see the message.</p>}
+                        {template ? renderPreviewBubble(livePreviewText, mapping["header.media"]?.value || template.slots?.find(s => s.kind === "media")?.example || template.header?.sample_url || template.attachment_url) : <p className="text-[11px] text-slate-500">Select a template to see the message.</p>}
                         {template && (template.components || []).find((c) => c.type === "BUTTONS")?.buttons?.map((b, i) => (
                             <div key={i} className="mt-1.5 bg-white rounded-xl text-center text-[11px] font-semibold text-sky-700 py-1.5">{b.text || b.type}</div>
                         ))}
@@ -658,7 +668,7 @@ function CampaignDetail({ campaignId, onClose, onChanged, refreshSignal }) {
                                         <td className="px-3 py-2 text-slate-500">{fmt(r.read_at)}</td>
                                         <td className="px-3 py-2 text-slate-500">{r.attempts || 0}</td>
                                         <td className="px-3 py-2 text-rose-600 max-w-[260px] truncate" title={r.error?.message || r.reason || ""}>
-                                            {r.error ? `${r.error.code ? `[${r.error.code}] ` : ""}${r.error.message || ""}${r.error.details ? ` — ${r.error.details}` : ""}` : (r.reason || "")}
+                                            {r.error ? `${r.error.code ? `[${r.error.code}] ` : ""}${r.error.message || ""}${r.error.details ? ` — ${r.error.details}` : ""}` : (r.reason || (r.state === "accepted" ? <span className="text-slate-400">No delivery status from Meta yet</span> : ""))}
                                         </td>
                                     </tr>
                                     {expanded === r._id && (

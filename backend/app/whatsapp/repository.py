@@ -28,6 +28,24 @@ def _serialize_doc(doc: dict) -> dict:
     return doc
 
 
+# Demo/seed contacts that never appear in the inbox.
+_DEMO_CONTACT_NAMES = ["Rahul Sharma", "Priya Patel", "Amit Verma", "Sneha Gupta", "Rohit Singh", "Customer"]
+_DEMO_CONTACT_PHONES = ["+91 98765 43210", "+91 98765 43211", "+91 98765 43212", "+91 98765 43213", "+91 98765 43214", "+91-9876543210", "+91-9876543211", "+91-9876543212", "+91-9876543213", "+91-9876543214", "+91-0000000000", "1234"]
+
+
+def _inbox_match(scope: Optional[dict] = None) -> dict:
+    """Messages visible in the inbox: real (non-simulated, non-demo) chats of the scoped number."""
+    return {
+        **(scope or {}),
+        "mode": {"$ne": "simulation"},
+        "source": {"$ne": "simulation"},
+        "recipient": {"$nin": _DEMO_CONTACT_NAMES},
+        "sender": {"$nin": _DEMO_CONTACT_NAMES},
+        "recipient_phone": {"$nin": _DEMO_CONTACT_PHONES},
+        "sender_phone": {"$nin": _DEMO_CONTACT_PHONES},
+    }
+
+
 # ═══════════════════════════════════════════════════════════════════
 # MESSAGE REPOSITORY
 # ═══════════════════════════════════════════════════════════════════
@@ -84,15 +102,7 @@ class MessageRepository:
         """Get the latest real message per conversation for the sidebar list."""
         try:
             pipeline = [
-                {"$match": {
-                    **(scope or {}),
-                    "mode": {"$ne": "simulation"},
-                    "source": {"$ne": "simulation"},
-                    "recipient": {"$nin": ["Rahul Sharma", "Priya Patel", "Amit Verma", "Sneha Gupta", "Rohit Singh", "Customer"]},
-                    "sender": {"$nin": ["Rahul Sharma", "Priya Patel", "Amit Verma", "Sneha Gupta", "Rohit Singh", "Customer"]},
-                    "recipient_phone": {"$nin": ["+91 98765 43210", "+91 98765 43211", "+91 98765 43212", "+91 98765 43213", "+91 98765 43214", "+91-9876543210", "+91-9876543211", "+91-9876543212", "+91-9876543213", "+91-9876543214", "+91-0000000000", "1234"]},
-                    "sender_phone": {"$nin": ["+91 98765 43210", "+91 98765 43211", "+91 98765 43212", "+91 98765 43213", "+91 98765 43214", "+91-9876543210", "+91-9876543211", "+91-9876543212", "+91-9876543213", "+91-9876543214", "+91-0000000000", "1234"]},
-                }},
+                {"$match": _inbox_match(scope)},
                 {"$sort": {"created_at": -1}},
                 {"$group": {
                     "_id": "$conversation_id",
@@ -106,7 +116,8 @@ class MessageRepository:
                             1, 0
                         ]}
                     },
-                    "message_count": {"$sum": 1}
+                    "message_count": {"$sum": 1},
+                    "has_reply": {"$max": {"$eq": ["$direction", "inbound"]}},
                 }},
                 {"$sort": {"last_message.created_at": -1}},
                 {"$limit": 100}
@@ -132,6 +143,7 @@ class MessageRepository:
                     "last_message": msg,
                     "unread_count": r["unread_count"],
                     "message_count": r["message_count"],
+                    "has_reply": bool(r.get("has_reply")),
                     "recipient": contact_name or "Unknown",
                     "recipient_phone": contact_phone or "",
                     "updated_at": msg.get("created_at", ""),
@@ -141,6 +153,29 @@ class MessageRepository:
         except Exception as e:
             print(f"[MongoDB Error] get_conversations failed: {e}", flush=True)
             return []
+
+    @staticmethod
+    def mark_conversation_read(conversation_id: str, scope: Optional[dict] = None) -> int:
+        """Mark the customer's unread messages in a conversation as read by an agent."""
+        result = whatsapp_message_collection.update_many(
+            {**(scope or {}), "conversation_id": conversation_id, "direction": "inbound", "status": {"$ne": "read"}},
+            {"$set": {"status": "read", "updated_at": datetime.utcnow().isoformat()}},
+        )
+        return result.modified_count
+
+    @staticmethod
+    def get_inbox_messages(scope: Optional[dict] = None, from_date: str = None, to_date: str = None, limit: int = 50000) -> List[dict]:
+        """Every inbox chat message (both directions), grouped by conversation in chronological order."""
+        query = _inbox_match(scope)
+        if from_date or to_date:
+            date_cond = {}
+            if from_date:
+                date_cond["$gte"] = f"{from_date}T00:00:00" if len(from_date) == 10 else from_date
+            if to_date:
+                date_cond["$lte"] = f"{to_date}T23:59:59.999999" if len(to_date) == 10 else to_date
+            query["created_at"] = date_cond
+        docs = whatsapp_message_collection.find(query).sort([("conversation_id", 1), ("created_at", 1)]).limit(limit)
+        return [_serialize_doc(d) for d in docs]
 
     @staticmethod
     def update_status(message_id: str, status: str, timestamp_field: str = None, extra_fields: dict = None) -> bool:

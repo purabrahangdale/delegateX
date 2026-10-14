@@ -133,6 +133,9 @@ class WhatsAppTemplateCreate(BaseModel):
     header: Optional[Dict[str, Any]] = None       # {"format": "NONE|TEXT|IMAGE|VIDEO|DOCUMENT", "text", "sample_url"}
     footer: Optional[str] = ""
     variable_examples: Optional[Dict[str, str]] = {}  # {"client_name": "John"} — required by Meta review
+    attachment_type: Optional[str] = "none"
+    attachment_url: Optional[str] = None
+    attachment_filename: Optional[str] = None
 
 
 class WhatsAppTemplateUpdate(BaseModel):
@@ -152,6 +155,9 @@ class WhatsAppTemplateUpdate(BaseModel):
     header: Optional[Dict[str, Any]] = None
     footer: Optional[str] = None
     variable_examples: Optional[Dict[str, str]] = None
+    attachment_type: Optional[str] = None
+    attachment_url: Optional[str] = None
+    attachment_filename: Optional[str] = None
 
 
 class WhatsAppTemplate(BaseModel):
@@ -163,6 +169,9 @@ class WhatsAppTemplate(BaseModel):
     variables: List[str] = []
     description: str = ""
     is_active: bool = True
+    attachment_type: Optional[str] = "none"
+    attachment_url: Optional[str] = None
+    attachment_filename: Optional[str] = None
     is_favorite: bool = False
     response_buttons: List[Dict[str, Any]] = []
     views: int = 0

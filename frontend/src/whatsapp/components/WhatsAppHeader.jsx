@@ -25,8 +25,8 @@ function WhatsAppHeader({ activeTab = "dashboard", onSearchChange, searchQuery =
                 const { exportChatAccessLogsExcel } = await import("../services/whatsappApi");
                 await exportChatAccessLogsExcel();
             } else {
-                const { exportCustomerRepliesExcel } = await import("../services/whatsappApi");
-                await exportCustomerRepliesExcel();
+                const { exportInboxChatsExcel } = await import("../services/whatsappApi");
+                await exportInboxChatsExcel();
             }
         } catch (err) {
             console.error("Export report error:", err);

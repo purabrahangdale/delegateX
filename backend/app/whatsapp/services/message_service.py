@@ -6,7 +6,7 @@ Core service: compose messages, invoke provider, save to DB, broadcast via WebSo
 import asyncio
 import hashlib
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 
 from app.whatsapp.models import MessageStatus, MessageDirection, MessageType
@@ -19,6 +19,31 @@ logger = logging.getLogger("whatsapp.message_service")
 
 
 import re
+
+
+def _provider_time_utc(value: Any) -> Optional[str]:
+    """Normalize a provider-supplied message time to the stored format (naive UTC ISO).
+
+    Accepts Unix epoch seconds/milliseconds or ISO 8601 (naive = UTC, 'Z' or offset-aware).
+    Returns None for missing/malformed values so callers can fall back to the receive time.
+    """
+    if value is None or value == "" or isinstance(value, bool):
+        return None
+    try:
+        if isinstance(value, (int, float)) or (isinstance(value, str) and value.strip().isdigit()):
+            epoch = float(value)
+            if epoch > 1e11:  # milliseconds
+                epoch /= 1000
+            dt = datetime.fromtimestamp(epoch, timezone.utc)
+        elif isinstance(value, datetime):
+            dt = value
+        else:
+            dt = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+        return dt.isoformat()
+    except (TypeError, ValueError, OverflowError, OSError):
+        return None
 
 
 def _generate_conversation_id(phone: str) -> str:
@@ -320,6 +345,7 @@ async def process_incoming_reply(
     context = _associate_context_with_inbound_reply(sender_phone, conversation_id, scope)
     
     meta = metadata or {}
+    received_at = datetime.utcnow().isoformat()
 
     # Detect Button Response Color (Green vs Red)
     button_color = meta.get("button_color")
@@ -358,7 +384,8 @@ async def process_incoming_reply(
         "content": content,
         "message_type": message_type,
         "reply_type": reply_type,
-        "status": MessageStatus.READ.value,
+        # Unread until an agent opens the chat (POST /messages/conversation/{id}/read).
+        "status": MessageStatus.DELIVERED.value,
         "source": source,
         "mode": mode,
         "wamid": wamid or "",
@@ -368,8 +395,9 @@ async def process_incoming_reply(
         "template_name": context.get("template_name", ""),
         "assigned_agent": context.get("assigned_agent", ""),
         "metadata": meta,
-        "created_at": datetime.utcnow().isoformat(),
-        "updated_at": datetime.utcnow().isoformat(),
+        # The customer's original send time (Meta webhook 'timestamp'), not when we processed the event.
+        "created_at": _provider_time_utc(meta.get("timestamp")) or received_at,
+        "updated_at": received_at,
     }
     
     saved_message = MessageRepository.create(message_data)

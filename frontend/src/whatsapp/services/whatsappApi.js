@@ -105,6 +105,14 @@ export const getConversationMessages = async (conversationId) => {
     }
 };
 
+export const markConversationRead = async (conversationId) => {
+    try {
+        await API.post(`/api/whatsapp/messages/conversation/${conversationId}/read`);
+    } catch (error) {
+        console.error("WhatsApp mark-read error:", error);
+    }
+};
+
 export const sendWhatsAppMessage = async (data) => {
     try {
         const response = await API.post("/api/whatsapp/messages/send", data);
@@ -212,6 +220,20 @@ export const seedWhatsAppTemplates = async () => {
         return response.data;
     } catch (error) {
         console.error("WhatsApp seed templates error:", error);
+        throw error;
+    }
+};
+
+export const uploadWhatsAppMedia = async (file) => {
+    try {
+        const formData = new FormData();
+        formData.append("file", file);
+        const response = await API.post("/api/whatsapp/templates/upload-media", formData, {
+            headers: { "Content-Type": "multipart/form-data" },
+        });
+        return response.data;
+    } catch (error) {
+        console.error("WhatsApp upload media error:", error);
         throw error;
     }
 };
@@ -423,6 +445,37 @@ export const exportCustomerRepliesExcel = async (params = {}) => {
         return true;
     } catch (error) {
         console.error("WhatsApp reply export error:", error);
+        throw error;
+    }
+};
+
+// Downloads every inbox chat (sent + received) of the selected number as .xlsx.
+export const exportInboxChatsExcel = async (params = {}) => {
+    try {
+        const response = await API.get("/api/whatsapp/messages/export", {
+            // Server stores UTC; send the viewer's offset so Date/Time match the inbox.
+            params: { tz_offset: -new Date().getTimezoneOffset(), ...params },
+            responseType: "blob",
+        });
+
+        const blob = new Blob([response.data], {
+            type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        });
+        let fileName = `WhatsApp_Inbox_Chats_${new Date().toISOString().slice(0, 10)}.xlsx`;
+        const match = (response.headers["content-disposition"] || "").match(/filename="?([^"]+)"?/);
+        if (match && match[1]) fileName = match[1];
+
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.setAttribute("download", fileName);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
+        return true;
+    } catch (error) {
+        console.error("WhatsApp inbox chats export error:", error);
         throw error;
     }
 };

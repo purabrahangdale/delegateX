@@ -1,6 +1,6 @@
 import { useState, useRef, useMemo, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { createWhatsAppTemplate, submitWhatsAppTemplate, apiErrorMessage } from "../services/whatsappApi";
+import { createWhatsAppTemplate, submitWhatsAppTemplate, apiErrorMessage, uploadWhatsAppMedia } from "../services/whatsappApi";
 import { useToast } from "../../context/ToastContext";
 import WhatsAppAiAssistant from "../components/WhatsAppAiAssistant";
 import { SelectedNumberBadge } from "../components/WhatsAppNumberSelector";
@@ -333,14 +333,125 @@ function CreateWhatsAppTemplate() {
         insertTextAtCursor(`{{${varKey}}}`);
     };
 
+    // Synchronize Section 1.5 Header Format and Section 3 Attachments
+    const handleHeaderFormatChange = (fmt) => {
+        setHeaderFormat(fmt);
+        if (fmt === "IMAGE") {
+            setAttachmentType("image");
+        } else if (fmt === "DOCUMENT") {
+            setAttachmentType("pdf");
+        } else if (fmt === "VIDEO") {
+            setAttachmentType("video");
+        } else if (fmt === "NONE" || fmt === "TEXT") {
+            if (["image", "pdf", "video"].includes(attachmentType)) {
+                setAttachmentType("none");
+            }
+        }
+    };
+
+    const handleSelectAttachmentType = (typeId) => {
+        setAttachmentType(typeId);
+        if (typeId === "image") {
+            setHeaderFormat("IMAGE");
+        } else if (typeId === "pdf") {
+            setHeaderFormat("DOCUMENT");
+        } else if (typeId === "video") {
+            setHeaderFormat("VIDEO");
+        } else if (typeId === "none") {
+            if (["IMAGE", "VIDEO", "DOCUMENT"].includes(headerFormat)) {
+                setHeaderFormat("NONE");
+            }
+            if (attachmentFile?.previewUrl?.startsWith("blob:")) {
+                URL.revokeObjectURL(attachmentFile.previewUrl);
+            }
+            setAttachmentFile(null);
+            setHeaderSampleUrl("");
+        }
+    };
+
+    const processFile = async (file) => {
+        if (!file) return;
+
+        if (attachmentFile?.previewUrl?.startsWith("blob:")) {
+            URL.revokeObjectURL(attachmentFile.previewUrl);
+        }
+
+        const isImg = file.type.startsWith("image/") || attachmentType === "image";
+        const isDoc = file.type === "application/pdf" || attachmentType === "pdf";
+        const isVid = file.type.startsWith("video/") || attachmentType === "video";
+
+        if (isImg) {
+            setAttachmentType("image");
+            setHeaderFormat("IMAGE");
+        } else if (isDoc) {
+            setAttachmentType("pdf");
+            setHeaderFormat("DOCUMENT");
+        } else if (isVid) {
+            setAttachmentType("video");
+            setHeaderFormat("VIDEO");
+        }
+
+        const objectUrl = URL.createObjectURL(file);
+        setAttachmentFile({
+            file,
+            name: file.name,
+            size: (file.size / 1024).toFixed(1) + " KB",
+            type: file.type,
+            previewUrl: objectUrl,
+            uploading: true,
+            serverUrl: null,
+        });
+
+        try {
+            const uploaded = await uploadWhatsAppMedia(file);
+            setAttachmentFile((prev) => ({
+                ...prev,
+                uploading: false,
+                serverUrl: uploaded.url,
+            }));
+            setHeaderSampleUrl(uploaded.url);
+            if (errors.header) {
+                setErrors((prev) => ({ ...prev, header: null }));
+            }
+            showToast("Attachment uploaded successfully", "success");
+        } catch (err) {
+            console.error("Failed to upload attachment", err);
+            setAttachmentFile((prev) => ({
+                ...prev,
+                uploading: false,
+                error: apiErrorMessage(err),
+            }));
+            showToast(`Attachment upload failed: ${apiErrorMessage(err)}`, "error");
+        }
+    };
+
+    const handleFileSelect = async (e) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            await processFile(file);
+        }
+    };
+
+    const handleRemoveFile = () => {
+        if (attachmentFile?.previewUrl?.startsWith("blob:")) {
+            URL.revokeObjectURL(attachmentFile.previewUrl);
+        }
+        setAttachmentFile(null);
+        setHeaderSampleUrl("");
+        if (["IMAGE", "VIDEO", "DOCUMENT"].includes(headerFormat)) {
+            setHeaderFormat("NONE");
+        }
+        setAttachmentType("none");
+    };
+
     // Real-Time Preview Generator (Memoized)
     const resolvedPreview = useMemo(() => {
-        if (!content.trim()) return "";
+        if (!content.trim() && !headerText.trim()) return "";
         const fill = (text) => text.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key) => {
             const v = variableExamples[key] ?? SAMPLE_DATA[key];
             return v ? v : `[${key}]`;
         });
-        const header = headerFormat === "TEXT" && headerText.trim() ? `*${fill(headerText.trim())}*` : headerFormat !== "NONE" ? `[${headerFormat}]` : null;
+        const header = headerFormat === "TEXT" && headerText.trim() ? `*${fill(headerText.trim())}*` : null;
         return [header, fill(content), footer.trim() ? `_${footer.trim()}_` : null].filter(Boolean).join("\n\n");
     }, [content, variableExamples, headerFormat, headerText, footer]);
 
@@ -390,8 +501,13 @@ function CreateWhatsAppTemplate() {
         if (headerFormat === "TEXT" && !headerText.trim()) {
             newErrors.header = "Header text is required (or choose no header)";
         }
-        if (["IMAGE", "VIDEO", "DOCUMENT"].includes(headerFormat) && !/^https:\/\//.test(headerSampleUrl.trim())) {
-            newErrors.header = "A public HTTPS sample URL is required for media headers";
+        if (["IMAGE", "VIDEO", "DOCUMENT"].includes(headerFormat)) {
+            const sample = (headerSampleUrl || attachmentFile?.serverUrl || "").trim();
+            if (!sample && !attachmentFile) {
+                newErrors.header = `An attached file or sample URL is required for ${headerFormat.toLowerCase()} headers`;
+            } else if (sample && !/^(https?:\/\/|\/static\/)/i.test(sample)) {
+                newErrors.header = `A valid URL is required for ${headerFormat.toLowerCase()} headers`;
+            }
         }
 
         setErrors(newErrors);
@@ -403,6 +519,11 @@ function CreateWhatsAppTemplate() {
         e?.preventDefault();
         if (!validate()) {
             showToast("Please fix the errors before saving", "error");
+            return;
+        }
+
+        if (attachmentFile?.uploading) {
+            showToast("Please wait for the media attachment to finish uploading", "warning");
             return;
         }
 
@@ -426,6 +547,13 @@ function CreateWhatsAppTemplate() {
         })).filter(b => b.text) : [];
 
         const examples = Object.fromEntries(allVariables.map((v) => [v, (variableExamples[v] || "").trim()]));
+        const sampleMediaUrl = (headerSampleUrl || attachmentFile?.serverUrl || "").trim();
+        const headerPayload = {
+            format: headerFormat,
+            text: headerText.trim(),
+            sample_url: ["IMAGE", "VIDEO", "DOCUMENT"].includes(headerFormat) ? sampleMediaUrl : "",
+        };
+
         let created;
         try {
             const res = await createWhatsAppTemplate({
@@ -435,13 +563,16 @@ function CreateWhatsAppTemplate() {
                 meta_category: metaCategory,
                 language,
                 content: content.trim(),
-                header: { format: headerFormat, text: headerText.trim(), sample_url: headerSampleUrl.trim() },
+                header: headerPayload,
                 footer: footer.trim(),
                 variable_examples: examples,
                 variables: extractedVars,
                 description: description.trim(),
                 is_active: isActive,
                 response_buttons: responseButtons,
+                attachment_type: attachmentType,
+                attachment_url: sampleMediaUrl,
+                attachment_filename: attachmentFile?.name || "",
             });
             created = res.template;
         } catch (err) {
@@ -462,17 +593,6 @@ function CreateWhatsAppTemplate() {
         }
         setSaving(false);
         navigate("/whatsapp/templates");
-    };
-
-    const handleFileSelect = (e) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            setAttachmentFile({
-                name: file.name,
-                size: (file.size / 1024).toFixed(1) + " KB",
-                type: file.type,
-            });
-        }
     };
 
     return (
@@ -682,7 +802,7 @@ function CreateWhatsAppTemplate() {
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                             <div>
                                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Header</label>
-                                <select value={headerFormat} onChange={(e) => setHeaderFormat(e.target.value)} className="w-full px-3.5 py-2.5 text-xs bg-white border border-slate-200 rounded-xl cursor-pointer">
+                                <select value={headerFormat} onChange={(e) => handleHeaderFormatChange(e.target.value)} className="w-full px-3.5 py-2.5 text-xs bg-white border border-slate-200 rounded-xl cursor-pointer">
                                     <option value="NONE">None</option>
                                     <option value="TEXT">Text</option>
                                     <option value="IMAGE">Image</option>
@@ -699,9 +819,28 @@ function CreateWhatsAppTemplate() {
                                 )}
                                 {["IMAGE", "VIDEO", "DOCUMENT"].includes(headerFormat) && (
                                     <>
-                                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Sample {headerFormat.toLowerCase()} URL (public HTTPS)</label>
-                                        <input value={headerSampleUrl} onChange={(e) => setHeaderSampleUrl(e.target.value)} placeholder="https://..." className="w-full px-3.5 py-2.5 text-xs border border-slate-200 rounded-xl font-mono" />
-                                        <p className="text-[10px] text-slate-400 mt-1">Meta reviews this sample. Requires META_APP_ID on the server. Campaigns can send a different file.</p>
+                                        <div className="flex items-center justify-between mb-1">
+                                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Sample {headerFormat.toLowerCase()} URL (public HTTPS)</label>
+                                            {attachmentFile && (
+                                                <span className="text-[9px] text-emerald-600 font-semibold flex items-center gap-0.5">
+                                                    <FiCheck size={10} /> Using attached file
+                                                </span>
+                                            )}
+                                        </div>
+                                        <input
+                                            value={headerSampleUrl}
+                                            onChange={(e) => {
+                                                setHeaderSampleUrl(e.target.value);
+                                                if (errors.header) setErrors((prev) => ({ ...prev, header: null }));
+                                            }}
+                                            placeholder={attachmentFile?.serverUrl || "https://..."}
+                                            className="w-full px-3.5 py-2.5 text-xs border border-slate-200 rounded-xl font-mono"
+                                        />
+                                        <p className="text-[10px] text-slate-400 mt-1">
+                                            {attachmentFile?.serverUrl
+                                                ? "Auto-filled from your attached file. Meta will review this media sample."
+                                                : "Enter a public HTTPS URL or choose a file in Attachments below."}
+                                        </p>
                                     </>
                                 )}
                             </div>
@@ -1114,7 +1253,7 @@ function CreateWhatsAppTemplate() {
                                     <button
                                         key={item.id}
                                         type="button"
-                                        onClick={() => setAttachmentType(item.id)}
+                                        onClick={() => handleSelectAttachmentType(item.id)}
                                         className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium transition cursor-pointer border ${selected
                                             ? "bg-green-50 border-green-300 text-green-700 font-semibold shadow-sm"
                                             : "bg-slate-50/50 border-slate-200/80 text-slate-600 hover:bg-slate-100"
@@ -1128,7 +1267,15 @@ function CreateWhatsAppTemplate() {
                         </div>
 
                         {attachmentType !== "none" && (
-                            <div className="p-4 bg-slate-50 border-2 border-dashed border-slate-200 rounded-xl flex flex-col items-center justify-center text-center gap-2">
+                            <div
+                                onDragOver={(e) => e.preventDefault()}
+                                onDrop={(e) => {
+                                    e.preventDefault();
+                                    const f = e.dataTransfer.files?.[0];
+                                    if (f) processFile(f);
+                                }}
+                                className="p-4 bg-slate-50 border-2 border-dashed border-slate-200 rounded-xl flex flex-col items-center justify-center text-center gap-2 transition hover:border-green-300"
+                            >
                                 <FiUpload className="text-slate-400" size={20} />
                                 <div>
                                     <p className="text-xs font-semibold text-slate-700">
@@ -1138,15 +1285,34 @@ function CreateWhatsAppTemplate() {
                                         Drag and drop or click to attach media for this template
                                     </p>
                                 </div>
-                                <label className="mt-1 px-3 py-1.5 bg-white border border-slate-200 text-slate-700 rounded-lg text-xs font-semibold hover:bg-slate-100 transition cursor-pointer">
+                                <label className="mt-1 px-3 py-1.5 bg-white border border-slate-200 text-slate-700 rounded-lg text-xs font-semibold hover:bg-slate-100 transition cursor-pointer shadow-2xs">
                                     Choose File
-                                    <input type="file" onChange={handleFileSelect} className="hidden" />
+                                    <input
+                                        type="file"
+                                        accept={attachmentType === "image" ? "image/*" : attachmentType === "pdf" ? ".pdf,application/pdf" : attachmentType === "video" ? "video/*" : "*/*"}
+                                        onChange={handleFileSelect}
+                                        className="hidden"
+                                    />
                                 </label>
                                 {attachmentFile && (
-                                    <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-slate-200 text-xs mt-2">
-                                        <span className="font-medium text-slate-700">{attachmentFile.name}</span>
+                                    <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-slate-200 text-xs mt-2 shadow-2xs">
+                                        <span className="font-medium text-slate-700 max-w-[180px] truncate">{attachmentFile.name}</span>
                                         <span className="text-[9px] text-slate-400 font-mono">({attachmentFile.size})</span>
-                                        <button type="button" onClick={() => setAttachmentFile(null)} className="text-slate-400 hover:text-rose-500 ml-1">
+                                        {attachmentFile.uploading ? (
+                                            <span className="text-[10px] text-amber-600 font-semibold flex items-center gap-1">
+                                                <FiUpload className="animate-spin" size={10} /> Uploading...
+                                            </span>
+                                        ) : attachmentFile.serverUrl ? (
+                                            <span className="text-[10px] text-emerald-600 font-semibold flex items-center gap-0.5">
+                                                <FiCheck size={11} /> Ready
+                                            </span>
+                                        ) : null}
+                                        <button
+                                            type="button"
+                                            onClick={handleRemoveFile}
+                                            className="text-slate-400 hover:text-rose-500 ml-1 cursor-pointer"
+                                            title="Remove attachment"
+                                        >
                                             <FiX size={12} />
                                         </button>
                                     </div>
@@ -1289,28 +1455,51 @@ function CreateWhatsAppTemplate() {
 
                             {/* Chat Body Wallpaper */}
                             <div
-                                className="bg-[#e5ddd5] p-3.5 min-h-[220px] max-h-[360px] overflow-y-auto flex flex-col justify-end"
+                                className="bg-[#e5ddd5] p-3.5 min-h-[240px] max-h-[460px] overflow-y-auto"
                                 style={{
                                     backgroundImage: "url(\"data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23000000' fill-opacity='0.04'%3E%3Ccircle cx='7' cy='7' r='1'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E\")"
                                 }}
                             >
-                                {resolvedPreview ? (
-                                    <div className="bg-[#dcf8c6] text-slate-800 p-3 rounded-2xl rounded-tr-none shadow-sm max-w-[92%] ml-auto animate-fade-in border border-emerald-200/50">
-                                        {/* Optional Attachment Card */}
-                                        {attachmentType !== "none" && (
+                                {(resolvedPreview || attachmentFile || ((attachmentType === "image" || headerFormat === "IMAGE") && headerSampleUrl)) ? (
+                                    <div className="bg-[#dcf8c6] text-slate-800 p-2.5 rounded-2xl rounded-tr-none shadow-sm max-w-[92%] ml-auto animate-fade-in border border-emerald-200/50">
+                                        {/* Real-time WhatsApp Image Attachment Header */}
+                                        {((attachmentType === "image" || headerFormat === "IMAGE") && (attachmentFile?.previewUrl || attachmentFile?.serverUrl || headerSampleUrl)) ? (
+                                            <div className="mb-2 -mx-1 -mt-1 rounded-xl overflow-hidden border border-emerald-300/40 bg-black/5 shadow-xs relative">
+                                                <img
+                                                    src={attachmentFile?.previewUrl || attachmentFile?.serverUrl || headerSampleUrl}
+                                                    alt="WhatsApp attachment preview"
+                                                    className="w-full max-h-56 object-cover block"
+                                                    onError={(e) => {
+                                                        e.target.style.display = "none";
+                                                    }}
+                                                />
+                                                {attachmentFile?.uploading && (
+                                                    <div className="absolute inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center gap-1.5 text-white text-[10px] font-semibold">
+                                                        <FiUpload className="animate-spin" size={13} />
+                                                        <span>Uploading image...</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : attachmentType !== "none" ? (
                                             <div className="mb-2 p-2 bg-emerald-100/80 rounded-xl border border-emerald-200 flex items-center gap-2">
-                                                <FiPaperclip size={14} className="text-emerald-700" />
-                                                <span className="text-[10px] font-bold text-emerald-800 uppercase">
-                                                    [{attachmentType} Attachment]
+                                                <FiPaperclip size={14} className="text-emerald-700 shrink-0" />
+                                                <span className="text-[10px] font-bold text-emerald-800 uppercase truncate">
+                                                    [{attachmentType} Attachment {attachmentFile?.name ? `· ${attachmentFile.name}` : ""}]
                                                 </span>
                                             </div>
-                                        )}
+                                        ) : null}
 
-                                        {/* Rendered HTML */}
-                                        <div
-                                            className="text-[11px] leading-relaxed whitespace-pre-wrap font-sans text-slate-900"
-                                            dangerouslySetInnerHTML={{ __html: formatPreviewHtml(resolvedPreview) }}
-                                        />
+                                        {/* Rendered HTML Body */}
+                                        {resolvedPreview ? (
+                                            <div
+                                                className="text-[11px] leading-relaxed whitespace-pre-wrap font-sans text-slate-900 px-0.5"
+                                                dangerouslySetInnerHTML={{ __html: formatPreviewHtml(resolvedPreview) }}
+                                            />
+                                        ) : (
+                                            <p className="text-[11px] text-slate-500 italic px-0.5">
+                                                Type message content in the editor to see your live text preview...
+                                            </p>
+                                        )}
 
                                         {/* Dynamic Interactive Response Buttons Preview */}
                                         {showResponseButtons && buttonsList.length > 0 && (
@@ -1368,7 +1557,7 @@ function CreateWhatsAppTemplate() {
                                 ) : (
                                     <div className="bg-white/80 backdrop-blur-xs p-4 rounded-xl text-center shadow-xs border border-white/50">
                                         <p className="text-[11px] text-slate-400 italic">
-                                            Start typing in the editor to see your WhatsApp message live preview...
+                                            Start typing in the editor or attach media to see your WhatsApp message live preview...
                                         </p>
                                     </div>
                                 )}

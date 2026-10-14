@@ -11,7 +11,11 @@ import os
 import hmac
 import json
 import asyncio
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, Body
+import httpx
+import shutil
+import re
+import uuid
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, Body, UploadFile, File
 from fastapi.responses import StreamingResponse
 from typing import Optional
 from datetime import datetime
@@ -43,7 +47,7 @@ from app.whatsapp.services import campaign_service
 from app.whatsapp.services import webhook_service
 from app.whatsapp.services.scheduler_service import get_scheduler_status
 from app.whatsapp.providers.factory import get_provider_info
-from app.whatsapp.meta_api import MetaApiError, MetaClient, load_config
+from app.whatsapp.meta_api import MetaApiError, MetaClient, load_config, webhook_health_warnings
 from app.whatsapp import numbers as number_registry
 from app.whatsapp.numbers import NumberError, NumberScope
 
@@ -119,6 +123,30 @@ async def get_conversations(scope: NumberScope = Depends(number_scope)):
     return {"conversations": conversations}
 
 
+@router.get("/messages/export")
+async def export_inbox_chats(
+    from_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD, UTC)"),
+    to_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD, UTC)"),
+    tz_offset: int = Query(0, ge=-840, le=840, description="Viewer's offset east of UTC in minutes (IST = 330)"),
+    scope: NumberScope = Depends(number_scope),
+):
+    """Download every inbox chat (sent and received messages) of the selected number as Excel."""
+    from app.whatsapp.services.report_service import generate_inbox_chats_excel
+
+    messages = MessageRepository.get_inbox_messages(scope.match(), from_date=from_date, to_date=to_date)
+    excel_bytes = generate_inbox_chats_excel(messages, tz_offset_minutes=tz_offset).getvalue()
+
+    filename = f"WhatsApp_Inbox_Chats_{datetime.utcnow().strftime('%Y-%m-%d')}.xlsx"
+    return Response(
+        content=excel_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Access-Control-Expose-Headers": "Content-Disposition",
+        },
+    )
+
+
 @router.get("/messages/conversation/{conversation_id}")
 async def get_conversation_messages(conversation_id: str, scope: NumberScope = Depends(number_scope)):
     """Get all messages of a conversation with the selected number."""
@@ -128,6 +156,12 @@ async def get_conversation_messages(conversation_id: str, scope: NumberScope = D
         "messages": messages,
         "total": len(messages),
     }
+
+
+@router.post("/messages/conversation/{conversation_id}/read")
+async def mark_conversation_read(conversation_id: str, scope: NumberScope = Depends(number_scope)):
+    """Mark a conversation's customer replies as read (clears its unread count)."""
+    return {"conversation_id": conversation_id, "marked_read": MessageRepository.mark_conversation_read(conversation_id, scope.match())}
 
 
 @router.post("/messages/send")
@@ -289,6 +323,43 @@ async def increment_template_view(template_id: str, scope: NumberScope = Depends
     if not tmpl:
         raise HTTPException(status_code=404, detail="Template not found")
     return {"message": "View count incremented", "template": tmpl}
+
+
+@router.post("/templates/upload-media")
+@router.post("/media/upload")
+async def upload_template_media(request: Request, file: UploadFile = File(...)):
+    """Upload media file (image, document, video) for a template header or message attachment."""
+    if not file:
+        raise HTTPException(status_code=400, detail="No file provided")
+
+    upload_dir = os.path.join("static", "whatsapp_media")
+    os.makedirs(upload_dir, exist_ok=True)
+
+    raw_name = file.filename or "media"
+    clean_name = re.sub(r"[^a-zA-Z0-9_\.-]", "_", raw_name)
+    safe_name = f"{uuid.uuid4().hex[:12]}_{clean_name}"
+    file_path = os.path.join(upload_dir, safe_name)
+
+    try:
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
+
+    req_base = str(request.base_url).rstrip("/")
+    rel_url = f"/static/whatsapp_media/{safe_name}"
+    # Prefer request.base_url for local dev so browser can display the image without remote 404
+    is_local_request = request.base_url.hostname in ("localhost", "127.0.0.1")
+    public_base = req_base if is_local_request else (os.getenv("BACKEND_PUBLIC_URL") or req_base)
+    full_url = f"{public_base}{rel_url}"
+
+    return {
+        "url": full_url,
+        "relative_url": rel_url,
+        "filename": raw_name,
+        "content_type": file.content_type,
+        "size": os.path.getsize(file_path),
+    }
 
 
 @router.get("/templates/{template_id}")
@@ -607,6 +678,60 @@ async def assign_legacy_records(number_id: str, request: Request, payload: dict 
 # DIAGNOSTICS (credentials, WABA subscription, webhook health)
 # ═══════════════════════════════════════════════════════════════════
 
+async def _add_meta_delivery_check(client: MetaClient, scope: NumberScope, phone_info: Optional[dict], add, days: int = 7):
+    """
+    Compare messages Meta accepted from this number (they have a wamid) with Meta's own sent/delivered analytics.
+    Webhooks are the only per-message status source, so this is how silent drops show up while webhooks are broken.
+    Only whole half-hours that ended at least 30 minutes ago are compared, because Meta's analytics lag behind.
+    """
+    from datetime import timedelta, timezone
+    from app.config.database import whatsapp_message_collection
+
+    label = f"Meta-reported delivery (last {days} days)"
+    now = datetime.now(timezone.utc)
+    since = (now - timedelta(days=days - 1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    cutoff = now - timedelta(minutes=30)
+    cutoff = cutoff.replace(minute=0 if cutoff.minute < 30 else 30, second=0, microsecond=0)
+    try:
+        points = await client.get_message_analytics((phone_info or {}).get("display_phone_number", ""),
+                                                    int(since.timestamp()), int(cutoff.timestamp()))
+    except MetaApiError as e:
+        add("meta_delivery", label, False, f"Could not read message analytics from Meta: {e}")
+        return
+
+    # Records store naive UTC ISO strings.
+    to_iso = lambda d: d.replace(tzinfo=None).isoformat()
+    accepted = {}
+    for m in whatsapp_message_collection.find(
+        {**scope.match(), "direction": "outbound", "wamid": {"$nin": [None, ""]},
+         "created_at": {"$gte": to_iso(since), "$lt": to_iso(cutoff)}},
+        {"created_at": 1},
+    ):
+        day = str(m.get("created_at"))[:10]
+        accepted[day] = accepted.get(day, 0) + 1
+    meta = {}
+    for p in points:
+        if int(p.get("start") or 0) >= int(cutoff.timestamp()):
+            continue
+        day = datetime.fromtimestamp(int(p["start"]), timezone.utc).strftime("%Y-%m-%d")
+        row = meta.setdefault(day, {"sent": 0, "delivered": 0})
+        row["sent"] += int(p.get("sent") or 0)
+        row["delivered"] += int(p.get("delivered") or 0)
+
+    short = {d: n - meta.get(d, {}).get("delivered", 0) for d, n in accepted.items() if n > meta.get(d, {}).get("delivered", 0)}
+    total_accepted = sum(accepted.values())
+    total_delivered = sum(r["delivered"] for r in meta.values())
+    detail = f"This app recorded {total_accepted} message(s) accepted by Meta; Meta reports {sum(r['sent'] for r in meta.values())} sent and {total_delivered} delivered for this number."
+    if short:
+        detail += " Shortfall by day (UTC): " + ", ".join(
+            f"{d}: {accepted[d]} accepted, {meta.get(d, {}).get('delivered', 0)} delivered" for d in sorted(short))
+    add("meta_delivery", label, not short, detail,
+        None if not short else
+        f"Meta accepted about {sum(short.values())} message(s) but never delivered them, so they did not reach the phone. "
+        "Meta reports the reason only in a 'failed' status webhook (for example 131049: per-user marketing limit, "
+        "common when the same people get several marketing templates close together). Fix the webhook checks above to see it for each recipient.")
+
+
 @router.get("/diagnostics")
 async def get_diagnostics(request: Request, scope: NumberScope = Depends(number_scope)):
     """Health of the selected number: credentials, WABA membership, webhook subscription and events."""
@@ -665,6 +790,25 @@ async def get_diagnostics(request: Request, scope: NumberScope = Depends(number_
         except MetaApiError as e:
             add("subscription", "App subscribed to WABA webhooks", False, str(e))
 
+    if phone_info:
+        field_warnings = webhook_health_warnings(phone_info)
+        add("webhook_fields", "'messages' webhook field subscribed (Meta health status)", not field_warnings,
+            " ".join(field_warnings) if field_warnings else "Meta reports no webhook subscription problems for this number.",
+            "Meta App Dashboard → WhatsApp → Configuration → Webhook fields: subscribe 'messages' (and the template fields). "
+            "Without it Meta sends no sent/delivered/read/failed statuses, so recipients stay 'Accepted'." if field_warnings else None)
+
+    callback_url = f"{public_url}/api/whatsapp/webhook"
+    try:
+        async with httpx.AsyncClient(timeout=15.0, follow_redirects=False) as http:
+            probe = await http.get(callback_url)
+        reachable = probe.status_code == 200 and "WhatsApp Webhook" in probe.text
+        add("callback_reachable", "Callback URL reachable", reachable,
+            f"GET {callback_url} → HTTP {probe.status_code}" + ("" if reachable else " (this app's webhook endpoint did not answer there)"),
+            None if reachable else "Deploy this backend at BACKEND_PUBLIC_URL (or point BACKEND_PUBLIC_URL and the Meta callback URL at a public HTTPS URL that serves it).")
+    except httpx.HTTPError as e:
+        add("callback_reachable", "Callback URL reachable", False, f"GET {callback_url} failed: {type(e).__name__}",
+            "Deploy this backend at BACKEND_PUBLIC_URL (or point BACKEND_PUBLIC_URL and the Meta callback URL at a public HTTPS URL that serves it).")
+
     mode = webhook_service.signature_mode()
     add("app_secret", "Webhook signature validation", mode == "enforced",
         {"enforced": "META_APP_SECRET set — X-Hub-Signature-256 is verified on every POST.",
@@ -680,6 +824,9 @@ async def get_diagnostics(request: Request, scope: NumberScope = Depends(number_
         f"Last status event: {stats['last_status_event_at']}" if stats["last_status_event_at"] else
         "No delivery status event has been received yet. Verification alone does not prove status webhooks work — send a test message and check again.",
         None if stats["last_status_event_at"] else "In the Meta App Dashboard → WhatsApp → Configuration, subscribe the 'messages' webhook field.")
+
+    if not config.missing("access_token", "waba_id"):
+        await _add_meta_delivery_check(client, scope, phone_info, add)
 
     fresh = number_registry.get_number(scope.id) or scope.number
     return {
@@ -773,7 +920,8 @@ async def preview_campaign(payload: CampaignPreview, scope: NumberScope = Depend
 @router.post("/campaigns")
 async def create_campaign(payload: CampaignCreate, request: Request, scope: NumberScope = Depends(number_scope)):
     try:
-        return campaign_service.create_campaign(payload.dict(), user=_user(request), number=scope.number)
+        campaign = campaign_service.create_campaign(payload.dict(), user=_user(request), number=scope.number)
+        return await campaign_service.localize_campaign_media(campaign["_id"], scope.number)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -1397,7 +1545,7 @@ async def receive_meta_webhook(request: Request):
     mode = webhook_service.signature_mode()
     if mode == "missing_secret":
         # Non-200 makes Meta retry later, so no events are lost while the secret is being configured.
-        print("[Meta Webhook] Rejected: META_APP_SECRET is not configured", flush=True)
+        print("[Meta Webhook] Rejected with 503: META_APP_SECRET is not configured — delivery statuses cannot be recorded until it is set", flush=True)
         raise HTTPException(status_code=503, detail="Webhook signature secret not configured")
     verified = False
     signer_wabas = None
