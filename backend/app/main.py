@@ -45,15 +45,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.routes.employee_routes import router as employee_router
-from app.routes.project_routes import router as project_router
-from app.routes.task_routes import router as task_router
-from app.websocket.delegation_socket import router as delegation_ws_router
-from app.websocket.crm_socket import router as crm_ws_router
 from app.websocket.notifications import router as notifications_router
-from app.routes.crm_routes import router as crm_router
-from app.routes.email_routes import router as email_router
-from delegation_forms.routes import router as delegation_form_router
 from app.chatbot.routes import router as chatbot_router
 from app.whatsapp.routes import router as whatsapp_router
 from app.whatsapp.websocket import router as whatsapp_ws_router
@@ -114,15 +106,7 @@ app.add_middleware(
 
 # Routes
 
-app.include_router(employee_router)
-app.include_router(project_router)
-app.include_router(task_router)
-app.include_router(delegation_ws_router)
-app.include_router(crm_ws_router)
 app.include_router(notifications_router)
-app.include_router(crm_router)
-app.include_router(email_router)
-app.include_router(delegation_form_router)
 app.include_router(chatbot_router)
 app.include_router(whatsapp_router)
 app.include_router(whatsapp_ws_router)
@@ -130,45 +114,55 @@ app.include_router(whatsapp_ws_router)
 
 @app.on_event("startup")
 async def startup_whatsapp_automation():
-    """Seed default WhatsApp templates and start background schedulers."""
-    try:
+    """Seed default WhatsApp templates and start background schedulers.
+
+    The setup runs in the background so the API answers requests immediately: the database steps
+    (legacy migration, index creation) take over a minute against a remote Atlas cluster."""
+    import asyncio
+
+    def _blocking_setup():
         from app.whatsapp.services.template_service import seed_default_templates
-        from app.whatsapp.services.scheduler_service import start_schedulers
-        import asyncio
         from app.whatsapp.indexes import ensure_indexes
-        from app.whatsapp.services.campaign_service import start_worker
         from app.whatsapp.numbers import run_startup_migration
         seed_default_templates()
         # Multi-number upgrade: move the single legacy Meta config into the number registry (once) and
         # attach existing records to their number where the owning phone number ID is recorded.
         print(f"[WhatsApp] Number registry migration: {run_startup_migration()}")
         ensure_indexes()
-        start_schedulers()
-        start_worker()
-        print("[WhatsApp] Indexes ensured, schedulers and campaign worker started.")
 
-        async def _initial_template_sync():
-            from app.whatsapp.services.template_service import sync_templates_from_meta
-            from app.whatsapp.numbers import all_numbers
-            # One sync per WABA: numbers in the same WABA share the template catalogue.
-            seen_wabas = set()
-            for number in all_numbers(active_only=True):
-                if not number.get("waba_id") or number["waba_id"] in seen_wabas:
-                    continue
-                seen_wabas.add(number["waba_id"])
-                try:
-                    summary = await sync_templates_from_meta(number)
-                    print(f"[WhatsApp] Template sync from Meta (WABA {number['waba_id']}): {summary}")
-                except Exception as sync_err:
-                    print(f"[WhatsApp] Template sync skipped for WABA {number['waba_id']}: {sync_err}")
+    async def _initial_template_sync():
+        from app.whatsapp.services.template_service import sync_templates_from_meta
+        from app.whatsapp.numbers import all_numbers
+        # One sync per WABA: numbers in the same WABA share the template catalogue.
+        seen_wabas = set()
+        for number in await asyncio.to_thread(all_numbers, active_only=True):
+            if not number.get("waba_id") or number["waba_id"] in seen_wabas:
+                continue
+            seen_wabas.add(number["waba_id"])
+            try:
+                summary = await sync_templates_from_meta(number)
+                print(f"[WhatsApp] Template sync from Meta (WABA {number['waba_id']}): {summary}")
+            except Exception as sync_err:
+                print(f"[WhatsApp] Template sync skipped for WABA {number['waba_id']}: {sync_err}")
 
-        asyncio.create_task(_initial_template_sync())
-    except Exception as e:
-        err_msg = str(e)
-        if "bad auth" in err_msg or "8000" in err_msg:
-            print(f"[WhatsApp] Startup Error: MongoDB Atlas authentication failed. Please check DATABASE_URL in backend/.env. Details: {e}")
-        else:
-            print(f"[WhatsApp] Startup initialization error: {e}")
+    async def _setup():
+        try:
+            from app.whatsapp.services.scheduler_service import start_schedulers
+            from app.whatsapp.services.campaign_service import start_worker
+            await asyncio.to_thread(_blocking_setup)
+            start_schedulers()
+            start_worker()
+            print("[WhatsApp] Indexes ensured, schedulers and campaign worker started.")
+            await _initial_template_sync()
+        except Exception as e:
+            err_msg = str(e)
+            if "bad auth" in err_msg or "8000" in err_msg:
+                print(f"[WhatsApp] Startup Error: MongoDB Atlas authentication failed. Please check DATABASE_URL in backend/.env. Details: {e}")
+            else:
+                print(f"[WhatsApp] Startup initialization error: {e}")
+
+    # Keep a reference so the task is not garbage-collected while it runs.
+    app.state.whatsapp_setup_task = asyncio.create_task(_setup())
 
 
 @app.get("/")

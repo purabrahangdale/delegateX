@@ -26,7 +26,9 @@ def sanitize_mongo_url(url: str) -> str:
     return url
 
 MONGO_URL = sanitize_mongo_url(MONGO_URL)
-client = MongoClient(MONGO_URL)
+# Opening a connection to Atlas costs several round trips (TLS + auth), so keep a warm pool for the
+# endpoints that run their reads concurrently, and let the pool grow quickly under load.
+client = MongoClient(MONGO_URL, minPoolSize=16, maxConnecting=8)
 db = client["delegation_system"]
 
 employee_collection = db["employees"]

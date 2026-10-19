@@ -1,62 +1,32 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { lazy } from "react";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
 import AdminLayout from "../layouts/AdminLayout";
-import Dashboard from "../pages/Dashboard";
-import Employees from "../pages/Employees";
-import Projects from "../pages/Projects";
-import Tasks from "../pages/Tasks";
 import Login from "../pages/Login";
-import TaskDetailsPage from "../pages/TaskDetailsPage";
-import CreateDelegation from "../pages/CreateDelegation";
-import DelegationDashboard from "../pages/DelegationDashboard";
-import CRMView from "../pages/CRMView";
-import EmployeeWorkInsights from "../pages/EmployeeWorkInsights";
-import UserManagement from "../pages/UserManagement";
-import TemplatesView from "../pages/TemplatesView";
-import FormTemplatesView from "../pages/FormTemplatesView";
-import CreateFormTemplateView from "../pages/CreateFormTemplateView";
-import DelegationFormsPage from "../delegation/delegation-form/pages/DelegationFormsPage";
-import CreateDelegationFormPage from "../delegation/delegation-form/pages/CreateDelegationFormPage";
-import DelegationResponsesPage from "../delegation/delegation-form/pages/DelegationResponsesPage";
-import PublicDelegationFormPage from "../delegation/delegation-form/pages/PublicDelegationFormPage";
-import WhatsAppDashboard from "../whatsapp/pages/WhatsAppDashboard";
-import WhatsAppInbox from "../whatsapp/pages/WhatsAppInbox";
-import WhatsAppTemplates from "../whatsapp/pages/WhatsAppTemplates";
-import CreateWhatsAppTemplate from "../whatsapp/pages/CreateWhatsAppTemplate";
-import WhatsAppLogs from "../whatsapp/pages/WhatsAppLogs";
-import WhatsAppSettings from "../whatsapp/pages/WhatsAppSettings";
-import WhatsAppCampaigns from "../whatsapp/pages/WhatsAppCampaigns";
-import WhatsAppContacts from "../whatsapp/pages/WhatsAppContacts";
-import WhatsAppAutomation from "../whatsapp/pages/WhatsAppAutomation";
-import WhatsAppReports from "../whatsapp/pages/WhatsAppReports";
-import WhatsAppTemplateInsights from "../whatsapp/pages/WhatsAppTemplateInsights";
-import WhatsAppDND from "../whatsapp/pages/WhatsAppDND";
-import ChatAccessHistory from "../whatsapp/pages/ChatAccessHistory";
 import { WhatsAppNumberLayout } from "../whatsapp/context/WhatsAppNumberContext";
+
+// Pages load on demand, so the first screen does not download every page and its libraries.
+const WhatsAppDashboard = lazy(() => import("../whatsapp/pages/WhatsAppDashboard"));
+const WhatsAppInbox = lazy(() => import("../whatsapp/pages/WhatsAppInbox"));
+const WhatsAppTemplates = lazy(() => import("../whatsapp/pages/WhatsAppTemplates"));
+const CreateWhatsAppTemplate = lazy(() => import("../whatsapp/pages/CreateWhatsAppTemplate"));
+const WhatsAppLogs = lazy(() => import("../whatsapp/pages/WhatsAppLogs"));
+const WhatsAppSettings = lazy(() => import("../whatsapp/pages/WhatsAppSettings"));
+const WhatsAppCampaigns = lazy(() => import("../whatsapp/pages/WhatsAppCampaigns"));
+const WhatsAppContacts = lazy(() => import("../whatsapp/pages/WhatsAppContacts"));
+const WhatsAppAutomation = lazy(() => import("../whatsapp/pages/WhatsAppAutomation"));
+const WhatsAppReports = lazy(() => import("../whatsapp/pages/WhatsAppReports"));
+const WhatsAppTemplateInsights = lazy(() => import("../whatsapp/pages/WhatsAppTemplateInsights"));
+const WhatsAppDND = lazy(() => import("../whatsapp/pages/WhatsAppDND"));
+const ChatAccessHistory = lazy(() => import("../whatsapp/pages/ChatAccessHistory"));
 
 function AppRoutes() {
     return (
         <BrowserRouter>
             <Routes>
                 <Route path="/login" element={<Login />} />
-                <Route path="/delegation/form/:formId" element={<PublicDelegationFormPage />} />
                 <Route element={<AdminLayout />}>
-                    <Route path="/" element={<Dashboard />} />
-                    <Route path="/employees" element={<Employees />} />
-                    <Route path="/projects" element={<Projects />} />
-                    <Route path="/tasks" element={<Tasks />} />
-                    <Route path="/tasks/:taskId" element={<TaskDetailsPage />} />
-                    <Route path="/dashboard-delegation" element={<DelegationDashboard />} />
-                    <Route path="/employees/dashboard" element={<EmployeeWorkInsights />} />
-
-                    <Route path="/create-delegation" element={<CreateDelegation />} />
-
-                    <Route path="/delegation/delegation-form" element={<DelegationFormsPage />} />
-                    <Route path="/delegation/delegation-form/create" element={<CreateDelegationFormPage />} />
-                    <Route path="/delegation/forms/edit/:id" element={<CreateDelegationFormPage />} />
-                    <Route path="/delegation/delegation-form/responses" element={<DelegationResponsesPage />} />
-
-                    <Route path="/crm/:view" element={<CRMView />} />
+                    <Route path="/" element={<Navigate to="/whatsapp/dashboard" replace />} />
 
                     {/* WhatsApp Automation — every page works on the globally selected business number */}
                     <Route element={<WhatsAppNumberLayout />}>
@@ -77,13 +47,6 @@ function AppRoutes() {
                     <Route path="/whatsapp/logs" element={<WhatsAppLogs />} />
                     <Route path="/whatsapp/settings" element={<WhatsAppSettings />} />
                     </Route>
-
-
-                    <Route path="/settings/users" element={<UserManagement />} />
-                    <Route path="/templates/form-templates" element={<FormTemplatesView />} />
-                    <Route path="/templates/form-templates/create" element={<CreateFormTemplateView />} />
-                    <Route path="/templates" element={<TemplatesView />} />
-                    <Route path="/templates/:view" element={<TemplatesView />} />
                 </Route>
             </Routes>
         </BrowserRouter>

@@ -1,7 +1,5 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import axios from "axios";
-import { createDelegationSocket } from "../websocket/delegationSocket";
-import { createCrmSocket } from "../websocket/crmSocket";
 import { createNotificationSocket } from "../websocket/notificationSocket";
 import { createWhatsappSocket } from "../websocket/whatsappSocket";
 
@@ -10,8 +8,6 @@ const WebSocketContext = createContext(null);
 const API = import.meta.env.VITE_API_BASE_URL || "https://delegatex-1-backend2.onrender.com";
 
 export const WebSocketProvider = ({ children }) => {
-    const [delegationSocket, setDelegationSocket] = useState(null);
-    const [crmSocket, setCrmSocket] = useState(null);
     const [notificationSocket, setNotificationSocket] = useState(null);
     const [whatsappSocket, setWhatsappSocket] = useState(null);
     const [notifications, setNotifications] = useState([]);
@@ -30,18 +26,12 @@ export const WebSocketProvider = ({ children }) => {
     };
 
     useEffect(() => {
-        const delSock = createDelegationSocket();
-        const crmSock = createCrmSocket();
         const notifSock = createNotificationSocket();
         const whatsappSock = createWhatsappSocket();
 
-        delSock.connect();
-        crmSock.connect();
         notifSock.connect();
         whatsappSock.connect();
 
-        setDelegationSocket(delSock);
-        setCrmSocket(crmSock);
         setNotificationSocket(notifSock);
         setWhatsappSocket(whatsappSock);
 
@@ -99,8 +89,6 @@ export const WebSocketProvider = ({ children }) => {
     return (
         <WebSocketContext.Provider
             value={{
-                delegationSocket,
-                crmSocket,
                 notificationSocket,
                 whatsappSocket,
                 notifications,

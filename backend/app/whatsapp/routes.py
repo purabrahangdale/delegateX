@@ -18,7 +18,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, Body, UploadFile, File
 from fastapi.responses import StreamingResponse
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 
 
 from app.whatsapp.models import (
@@ -46,7 +46,8 @@ from app.whatsapp.services import automation_service
 from app.whatsapp.services import campaign_service
 from app.whatsapp.services import webhook_service
 from app.whatsapp.services.scheduler_service import get_scheduler_status
-from app.whatsapp.providers.factory import get_provider_info
+from app.whatsapp.providers.factory import get_provider_info, get_provider_type
+from app.whatsapp.concurrency import gather
 from app.whatsapp.meta_api import MetaApiError, MetaClient, load_config, webhook_health_warnings
 from app.whatsapp import numbers as number_registry
 from app.whatsapp.numbers import NumberError, NumberScope
@@ -72,11 +73,12 @@ def number_scope(request: Request) -> NumberScope:
 # ═══════════════════════════════════════════════════════════════════
 
 @router.get("/dashboard/stats")
-async def get_dashboard_stats(scope: NumberScope = Depends(number_scope)):
+def get_dashboard_stats(scope: NumberScope = Depends(number_scope)):
     """Get aggregated WhatsApp automation dashboard statistics for the selected number."""
-    stats = message_service.get_dashboard_stats(scope.match())
+    r = gather(stats=lambda: message_service.get_dashboard_stats(scope.match()), provider_info=get_provider_info)
+    stats = r["stats"]
     scheduler_status = get_scheduler_status()
-    provider_info = get_provider_info()
+    provider_info = r["provider_info"]
     
     return {
         **stats,
@@ -91,7 +93,7 @@ async def get_dashboard_stats(scope: NumberScope = Depends(number_scope)):
 # ═══════════════════════════════════════════════════════════════════
 
 @router.get("/messages")
-async def get_messages(
+def get_messages(
     limit: int = Query(100, ge=1, le=500),
     skip: int = Query(0, ge=0),
     status: Optional[str] = None,
@@ -105,8 +107,12 @@ async def get_messages(
     if direction:
         filters["direction"] = direction
     
-    messages = MessageRepository.get_all(limit=limit, skip=skip, filters=filters if filters else None)
-    total = MessageRepository.count(filters if filters else None)
+    r = gather(
+        messages=lambda: MessageRepository.get_all(limit=limit, skip=skip, filters=filters if filters else None),
+        total=lambda: MessageRepository.count(filters if filters else None),
+    )
+    messages = r["messages"]
+    total = r["total"]
     
     return {
         "messages": messages,
@@ -117,14 +123,14 @@ async def get_messages(
 
 
 @router.get("/messages/conversations")
-async def get_conversations(scope: NumberScope = Depends(number_scope)):
+def get_conversations(scope: NumberScope = Depends(number_scope)):
     """Get conversation list for inbox sidebar (selected number only)."""
     conversations = MessageRepository.get_conversations(scope.match())
     return {"conversations": conversations}
 
 
 @router.get("/messages/export")
-async def export_inbox_chats(
+def export_inbox_chats(
     from_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD, UTC)"),
     to_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD, UTC)"),
     tz_offset: int = Query(0, ge=-840, le=840, description="Viewer's offset east of UTC in minutes (IST = 330)"),
@@ -148,7 +154,7 @@ async def export_inbox_chats(
 
 
 @router.get("/messages/conversation/{conversation_id}")
-async def get_conversation_messages(conversation_id: str, scope: NumberScope = Depends(number_scope)):
+def get_conversation_messages(conversation_id: str, scope: NumberScope = Depends(number_scope)):
     """Get all messages of a conversation with the selected number."""
     messages = MessageRepository.find_by_conversation(conversation_id, scope.match())
     return {
@@ -159,7 +165,7 @@ async def get_conversation_messages(conversation_id: str, scope: NumberScope = D
 
 
 @router.post("/messages/conversation/{conversation_id}/read")
-async def mark_conversation_read(conversation_id: str, scope: NumberScope = Depends(number_scope)):
+def mark_conversation_read(conversation_id: str, scope: NumberScope = Depends(number_scope)):
     """Mark a conversation's customer replies as read (clears its unread count)."""
     return {"conversation_id": conversation_id, "marked_read": MessageRepository.mark_conversation_read(conversation_id, scope.match())}
 
@@ -174,6 +180,20 @@ async def send_message(payload: WhatsAppMessageCreate, scope: NumberScope = Depe
         raise HTTPException(status_code=400, detail="Recipient phone number ('to' or 'recipient_phone') is required.")
     if not content:
         raise HTTPException(status_code=400, detail="Message content ('message' or 'content') is required.")
+
+    # Meta accepts free-form messages outside the 24h customer service window, then fails them via webhook
+    # (131047). Reject up front so the user isn't told "sent" for a message that can never be delivered.
+    tmpl = (payload.metadata or {}).get("template")
+    if get_provider_type() == "meta_cloud" and not (isinstance(tmpl, dict) and tmpl.get("name")):
+        digits = campaign_service.normalize_phone(recipient_phone) or re.sub(r"\D", "", recipient_phone)
+        conversation_id = message_service._generate_conversation_id(digits)
+        last_inbound = MessageRepository.last_inbound_at(conversation_id, scope.match())
+        if not last_inbound or datetime.fromisoformat(last_inbound) < datetime.utcnow() - timedelta(hours=24):
+            raise HTTPException(
+                status_code=400,
+                detail="This contact has not messaged this number in the last 24 hours, so WhatsApp will not "
+                       "deliver a free-form message. Send an approved template instead.",
+            )
 
     try:
         message = await message_service.send_message(
@@ -248,7 +268,7 @@ def _template_or_404(template_id: str, scope: NumberScope) -> dict:
 
 
 @router.get("/templates")
-async def get_templates(
+def get_templates(
     active_only: bool = False,
     content_type: Optional[str] = None,
     category: Optional[str] = None,
@@ -275,7 +295,7 @@ async def get_templates(
 
 
 @router.get("/templates/sendable")
-async def get_sendable_templates(scope: NumberScope = Depends(number_scope)):
+def get_sendable_templates(scope: NumberScope = Depends(number_scope)):
     """Templates of the selected number's WABA approved by Meta, with the parameter slots needed to send them."""
     return {"templates": template_service.get_sendable_templates(scope.number)}
 
@@ -292,21 +312,21 @@ async def sync_templates(scope: NumberScope = Depends(number_scope)):
 
 
 @router.get("/templates/names")
-async def get_template_names(scope: NumberScope = Depends(number_scope)):
+def get_template_names(scope: NumberScope = Depends(number_scope)):
     """Get dynamic list of template names of the selected number's WABA."""
     names = template_service.get_template_names(scope.number)
     return {"names": names}
 
 
 @router.get("/templates/insights")
-async def get_template_insights(scope: NumberScope = Depends(number_scope)):
+def get_template_insights(scope: NumberScope = Depends(number_scope)):
     """Get comprehensive analytics, KPIs, chart metrics, and performance rankings for templates."""
     insights = template_service.get_template_insights(scope.number)
     return insights
 
 
 @router.post("/templates/{template_id}/favorite")
-async def toggle_template_favorite(template_id: str, scope: NumberScope = Depends(number_scope)):
+def toggle_template_favorite(template_id: str, scope: NumberScope = Depends(number_scope)):
     """Toggle template favorite status."""
     _template_or_404(template_id, scope)
     tmpl = template_service.toggle_template_favorite(template_id)
@@ -316,7 +336,7 @@ async def toggle_template_favorite(template_id: str, scope: NumberScope = Depend
 
 
 @router.post("/templates/{template_id}/view")
-async def increment_template_view(template_id: str, scope: NumberScope = Depends(number_scope)):
+def increment_template_view(template_id: str, scope: NumberScope = Depends(number_scope)):
     """Increment view count for a template."""
     _template_or_404(template_id, scope)
     tmpl = template_service.increment_template_views(template_id)
@@ -327,7 +347,7 @@ async def increment_template_view(template_id: str, scope: NumberScope = Depends
 
 @router.post("/templates/upload-media")
 @router.post("/media/upload")
-async def upload_template_media(request: Request, file: UploadFile = File(...)):
+def upload_template_media(request: Request, file: UploadFile = File(...)):
     """Upload media file (image, document, video) for a template header or message attachment."""
     if not file:
         raise HTTPException(status_code=400, detail="No file provided")
@@ -363,7 +383,7 @@ async def upload_template_media(request: Request, file: UploadFile = File(...)):
 
 
 @router.get("/templates/{template_id}")
-async def get_template(template_id: str, scope: NumberScope = Depends(number_scope)):
+def get_template(template_id: str, scope: NumberScope = Depends(number_scope)):
     """Get a single template by ID."""
     _template_or_404(template_id, scope)
     template = template_service.get_template_by_id(template_id, scope.number)
@@ -373,7 +393,7 @@ async def get_template(template_id: str, scope: NumberScope = Depends(number_sco
 
 
 @router.post("/templates")
-async def create_template(payload: WhatsAppTemplateCreate, scope: NumberScope = Depends(number_scope)):
+def create_template(payload: WhatsAppTemplateCreate, scope: NumberScope = Depends(number_scope)):
     """Save a new template as a local DRAFT in the selected number's WABA (use /submit to send it to Meta)."""
     template_data = payload.dict()
     template = template_service.create_template(template_data, scope.number)
@@ -381,7 +401,7 @@ async def create_template(payload: WhatsAppTemplateCreate, scope: NumberScope = 
 
 
 @router.put("/templates/{template_id}")
-async def update_template(template_id: str, payload: WhatsAppTemplateUpdate, scope: NumberScope = Depends(number_scope)):
+def update_template(template_id: str, payload: WhatsAppTemplateUpdate, scope: NumberScope = Depends(number_scope)):
     """Update an existing WhatsApp template."""
     _template_or_404(template_id, scope)
     update_data = {k: v for k, v in payload.dict().items() if v is not None}
@@ -412,7 +432,7 @@ async def delete_template(template_id: str, local_only: bool = False, scope: Num
 
 
 @router.post("/templates/{template_id}/validate")
-async def validate_template(template_id: str, scope: NumberScope = Depends(number_scope)):
+def validate_template(template_id: str, scope: NumberScope = Depends(number_scope)):
     """Check a template against Meta's rules without submitting it."""
     _template_or_404(template_id, scope)
     try:
@@ -439,7 +459,7 @@ async def submit_template(template_id: str, scope: NumberScope = Depends(number_
 
 
 @router.post("/templates/seed")
-async def seed_templates():
+def seed_templates():
     """Seed default WhatsApp templates."""
     created = template_service.seed_default_templates()
     return {
@@ -453,7 +473,7 @@ async def seed_templates():
 # ═══════════════════════════════════════════════════════════════════
 
 @router.get("/logs")
-async def get_automation_logs(
+def get_automation_logs(
     limit: int = Query(50, ge=1, le=500),
     skip: int = Query(0, ge=0),
     status: Optional[str] = None,
@@ -492,14 +512,16 @@ CREDENTIAL_FIELDS = ("api_url", "api_key", "phone_number_id", "business_account_
 
 
 @router.get("/settings")
-async def get_settings(scope: NumberScope = Depends(number_scope)):
+def get_settings(scope: NumberScope = Depends(number_scope)):
     """
     Global WhatsApp settings (provider, webhook URL) plus the selected number's effective Meta
     configuration. Access tokens are never returned to the browser.
     """
-    settings = SettingsRepository.get()
-    provider_info = get_provider_info()
-    base = load_config()
+    r = gather(settings=SettingsRepository.get, provider_info=get_provider_info, base=load_config,
+               numbers_configured=number_registry.count_numbers)
+    settings = r["settings"]
+    provider_info = r["provider_info"]
+    base = r["base"]
     settings.pop("automation_bindings", None)
     settings.pop("last_template_sync", None)
     settings["api_key"] = _mask_secret(settings.get("api_key", ""))
@@ -515,12 +537,12 @@ async def get_settings(scope: NumberScope = Depends(number_scope)):
         "verify_token_configured": bool(base.verify_token),
     }
     settings["number"] = number
-    settings["numbers_configured"] = number_registry.count_numbers()
+    settings["numbers_configured"] = r["numbers_configured"]
     return {**settings, "provider_info": provider_info}
 
 
 @router.put("/settings")
-async def update_settings(payload: AutomationSettingsUpdate):
+def update_settings(payload: AutomationSettingsUpdate):
     """
     Update global WhatsApp settings (provider, webhook URL, active flag). Meta credentials are configured
     per business number (/api/whatsapp/numbers). Before any number exists, credentials saved here are
@@ -570,11 +592,12 @@ def _number_call(fn, *args):
 
 
 @router.get("/numbers")
-async def list_numbers(request: Request):
+def list_numbers(request: Request):
     """Business numbers the current user may use (credentials are never included)."""
     user = _user(request)
-    docs = [d for d in number_registry.all_numbers() if number_registry.can_access(d, user)]
-    default = number_registry.default_number()
+    r = gather(all_numbers=number_registry.all_numbers, default=number_registry.default_number)
+    docs = [d for d in r["all_numbers"] if number_registry.can_access(d, user)]
+    default = r["default"]
     return {
         "numbers": [_number_out(d) for d in docs],
         "default_number_id": str(default["_id"]) if default and number_registry.can_access(default, user) else None,
@@ -585,7 +608,7 @@ async def list_numbers(request: Request):
 
 
 @router.get("/numbers/legacy/unassigned")
-async def unassigned_legacy_records(request: Request):
+def unassigned_legacy_records(request: Request):
     """Records created before multi-number support whose number could not be determined."""
     _number_call(number_registry.require_admin, _user(request))
     return number_registry.unassigned_counts()
@@ -622,7 +645,7 @@ async def create_number(payload: WhatsAppNumberCreate, request: Request):
 
 
 @router.get("/numbers/{number_id}")
-async def get_number(number_id: str, request: Request):
+def get_number(number_id: str, request: Request):
     doc = number_registry.get_number(number_id)
     if not doc or not number_registry.can_access(doc, _user(request)):
         raise HTTPException(status_code=404, detail="WhatsApp number not found")
@@ -630,7 +653,7 @@ async def get_number(number_id: str, request: Request):
 
 
 @router.put("/numbers/{number_id}")
-async def update_number(number_id: str, payload: WhatsAppNumberUpdate, request: Request):
+def update_number(number_id: str, payload: WhatsAppNumberUpdate, request: Request):
     data = {k: v for k, v in payload.dict().items() if v is not None}
     doc = _number_call(number_registry.update_number, number_id, data, _user(request))
     return {"message": "WhatsApp number updated", "number": _number_out(doc)}
@@ -646,28 +669,28 @@ async def test_number_connection(number_id: str, request: Request):
 
 
 @router.post("/numbers/{number_id}/activate")
-async def activate_number(number_id: str, request: Request):
+def activate_number(number_id: str, request: Request):
     return {"number": _number_out(_number_call(number_registry.set_active, number_id, True, _user(request)))}
 
 
 @router.post("/numbers/{number_id}/deactivate")
-async def deactivate_number(number_id: str, request: Request):
+def deactivate_number(number_id: str, request: Request):
     return {"number": _number_out(_number_call(number_registry.set_active, number_id, False, _user(request)))}
 
 
 @router.post("/numbers/{number_id}/default")
-async def make_default_number(number_id: str, request: Request):
+def make_default_number(number_id: str, request: Request):
     return {"number": _number_out(_number_call(number_registry.set_default, number_id, _user(request)))}
 
 
 @router.delete("/numbers/{number_id}")
-async def remove_number(number_id: str, request: Request):
+def remove_number(number_id: str, request: Request):
     """Remove a number configuration. Its messages and campaigns are kept (and are never reassigned)."""
     return _number_call(number_registry.remove_number, number_id, _user(request))
 
 
 @router.post("/numbers/{number_id}/assign-legacy")
-async def assign_legacy_records(number_id: str, request: Request, payload: dict = Body(default={})):
+def assign_legacy_records(number_id: str, request: Request, payload: dict = Body(default={})):
     """Explicitly attach every record without a number (pre-upgrade history) to this number."""
     if not payload.get("confirm"):
         raise HTTPException(status_code=400, detail="Confirmation required: send {\"confirm\": true}.")
@@ -855,7 +878,7 @@ async def subscribe_app_to_waba(scope: NumberScope = Depends(number_scope)):
 
 
 @router.post("/diagnostics/test-message")
-async def send_test_template(request: Request, payload: dict = Body(...), scope: NumberScope = Depends(number_scope)):
+def send_test_template(request: Request, payload: dict = Body(...), scope: NumberScope = Depends(number_scope)):
     """Send one approved template from the selected number to a test number through the real queue."""
     phone = (payload.get("phone") or "").strip()
     template_id = payload.get("template_id")
@@ -880,7 +903,7 @@ async def send_test_template(request: Request, payload: dict = Body(...), scope:
 
 
 @router.get("/send-jobs/{job_id}")
-async def get_send_job(job_id: str, scope: NumberScope = Depends(number_scope)):
+def get_send_job(job_id: str, scope: NumberScope = Depends(number_scope)):
     from bson import ObjectId
     from app.config.database import whatsapp_campaign_recipient_collection
     from app.whatsapp.repository import _serialize_doc
@@ -908,7 +931,7 @@ def _campaign_or_404(campaign_id: str, scope: NumberScope) -> dict:
 
 
 @router.post("/campaigns/preview")
-async def preview_campaign(payload: CampaignPreview, scope: NumberScope = Depends(number_scope)):
+def preview_campaign(payload: CampaignPreview, scope: NumberScope = Depends(number_scope)):
     """Validate recipients and render sample messages without saving anything."""
     try:
         recipients = campaign_service.load_audience(payload.audience_source, payload.recipients)
@@ -927,7 +950,7 @@ async def create_campaign(payload: CampaignCreate, request: Request, scope: Numb
 
 
 @router.get("/campaigns")
-async def list_campaigns(
+def list_campaigns(
     limit: int = Query(100, ge=1, le=500),
     skip: int = Query(0, ge=0),
     status: Optional[str] = None,
@@ -938,12 +961,12 @@ async def list_campaigns(
 
 
 @router.get("/campaigns/{campaign_id}")
-async def get_campaign(campaign_id: str, scope: NumberScope = Depends(number_scope)):
+def get_campaign(campaign_id: str, scope: NumberScope = Depends(number_scope)):
     return _campaign_or_404(campaign_id, scope)
 
 
 @router.get("/campaigns/{campaign_id}/recipients")
-async def get_campaign_recipients(
+def get_campaign_recipients(
     campaign_id: str,
     state: Optional[str] = None,
     search: Optional[str] = None,
@@ -956,7 +979,7 @@ async def get_campaign_recipients(
 
 
 @router.post("/campaigns/{campaign_id}/launch")
-async def launch_campaign(campaign_id: str, payload: CampaignLaunch, request: Request, scope: NumberScope = Depends(number_scope)):
+def launch_campaign(campaign_id: str, payload: CampaignLaunch, request: Request, scope: NumberScope = Depends(number_scope)):
     _campaign_or_404(campaign_id, scope)
     try:
         return campaign_service.launch_campaign(campaign_id, payload.dict(), user=_user(request))
@@ -965,7 +988,7 @@ async def launch_campaign(campaign_id: str, payload: CampaignLaunch, request: Re
 
 
 @router.post("/campaigns/{campaign_id}/cancel")
-async def cancel_campaign(campaign_id: str, request: Request, scope: NumberScope = Depends(number_scope)):
+def cancel_campaign(campaign_id: str, request: Request, scope: NumberScope = Depends(number_scope)):
     _campaign_or_404(campaign_id, scope)
     try:
         return campaign_service.cancel_campaign(campaign_id, user=_user(request))
@@ -974,19 +997,19 @@ async def cancel_campaign(campaign_id: str, request: Request, scope: NumberScope
 
 
 @router.post("/campaigns/{campaign_id}/pause")
-async def pause_campaign(campaign_id: str, scope: NumberScope = Depends(number_scope)):
+def pause_campaign(campaign_id: str, scope: NumberScope = Depends(number_scope)):
     _campaign_or_404(campaign_id, scope)
     return campaign_service.pause_campaign(campaign_id)
 
 
 @router.post("/campaigns/{campaign_id}/resume")
-async def resume_campaign(campaign_id: str, scope: NumberScope = Depends(number_scope)):
+def resume_campaign(campaign_id: str, scope: NumberScope = Depends(number_scope)):
     _campaign_or_404(campaign_id, scope)
     return campaign_service.resume_campaign(campaign_id)
 
 
 @router.post("/campaigns/{campaign_id}/retry-failed")
-async def retry_failed_recipients(campaign_id: str, scope: NumberScope = Depends(number_scope)):
+def retry_failed_recipients(campaign_id: str, scope: NumberScope = Depends(number_scope)):
     """Re-queue failed recipients that Meta never accepted (no wamid) — cannot create duplicates."""
     _campaign_or_404(campaign_id, scope)
     try:
@@ -996,7 +1019,7 @@ async def retry_failed_recipients(campaign_id: str, scope: NumberScope = Depends
 
 
 @router.delete("/campaigns/{campaign_id}")
-async def delete_campaign(campaign_id: str, scope: NumberScope = Depends(number_scope)):
+def delete_campaign(campaign_id: str, scope: NumberScope = Depends(number_scope)):
     """Delete a draft campaign. Launched campaigns are kept as history."""
     from bson import ObjectId
     from app.config.database import whatsapp_campaign_collection, whatsapp_campaign_recipient_collection
@@ -1013,12 +1036,12 @@ async def delete_campaign(campaign_id: str, scope: NumberScope = Depends(number_
 # ═══════════════════════════════════════════════════════════════════
 
 @router.get("/automations")
-async def list_automations(scope: NumberScope = Depends(number_scope)):
+def list_automations(scope: NumberScope = Depends(number_scope)):
     return {"workflows": automation_service.describe_workflows(scope.number), "number_id": scope.id}
 
 
 @router.put("/automations/{workflow_key}")
-async def save_automation_binding(workflow_key: str, payload: AutomationBindingUpdate, scope: NumberScope = Depends(number_scope)):
+def save_automation_binding(workflow_key: str, payload: AutomationBindingUpdate, scope: NumberScope = Depends(number_scope)):
     try:
         binding = automation_service.save_binding(workflow_key, payload.dict(), scope.number)
     except ValueError as e:
@@ -1027,7 +1050,7 @@ async def save_automation_binding(workflow_key: str, payload: AutomationBindingU
 
 
 @router.get("/automations/runs")
-async def list_automation_runs(
+def list_automation_runs(
     limit: int = Query(100, ge=1, le=500),
     skip: int = Query(0, ge=0),
     workflow: Optional[str] = None,
@@ -1106,7 +1129,7 @@ async def trigger_automation(workflow_name: str, payload: dict = None, scope: Nu
 # ═══════════════════════════════════════════════════════════════════
 
 @router.post("/ai-assistant")
-async def process_ai_assistant(payload: dict):
+def process_ai_assistant(payload: dict):
     """
     Process AI Writing Assistant requests for WhatsApp Templates using Gemini 2.5 Flash.
     Supports fix_grammar, rewrite, friendly, formal, shorten, expand, translate,
@@ -1217,7 +1240,7 @@ async def process_ai_assistant(payload: dict):
 # ═══════════════════════════════════════════════════════════════════
 
 @router.get("/dnd")
-async def get_dnd_list(
+def get_dnd_list(
     search: Optional[str] = Query(None, description="Search phone number or notes"),
     reason: Optional[str] = Query(None, description="Filter by block reason"),
     source: Optional[str] = Query(None, description="Filter by entry source"),
@@ -1230,7 +1253,7 @@ async def get_dnd_list(
 
 
 @router.post("/dnd")
-async def add_dnd_number(payload: dict):
+def add_dnd_number(payload: dict):
     """Add or update a single phone number in the Global DND list."""
     from app.whatsapp.repository import DNDRepository
     phone_number = payload.get("phone_number")
@@ -1245,7 +1268,7 @@ async def add_dnd_number(payload: dict):
 
 
 @router.post("/dnd/bulk")
-async def add_bulk_dnd_numbers(payload: dict):
+def add_bulk_dnd_numbers(payload: dict):
     """Bulk import phone numbers into the Global DND list."""
     from app.whatsapp.repository import DNDRepository
     items = payload.get("items", [])
@@ -1257,7 +1280,7 @@ async def add_bulk_dnd_numbers(payload: dict):
 
 
 @router.delete("/dnd/{phone_number}")
-async def remove_dnd_number(phone_number: str):
+def remove_dnd_number(phone_number: str):
     """Unblock / remove a phone number from the Global DND list."""
     from app.whatsapp.repository import DNDRepository
     success = DNDRepository.remove_dnd(phone_number)
@@ -1267,7 +1290,7 @@ async def remove_dnd_number(phone_number: str):
 
 
 @router.post("/dnd/check-batch")
-async def check_dnd_batch(payload: dict):
+def check_dnd_batch(payload: dict):
     """Batch verify target phone numbers against Global DND list before campaign dispatch."""
     from app.whatsapp.repository import DNDRepository
     phone_numbers = payload.get("phone_numbers", [])
@@ -1282,7 +1305,7 @@ async def check_dnd_batch(payload: dict):
 # ═══════════════════════════════════════════════════════════════════
 
 @router.get("/replies")
-async def get_customer_replies(
+def get_customer_replies(
     from_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
     to_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD)"),
     campaign: Optional[str] = Query(None, description="Campaign filter"),
@@ -1315,9 +1338,14 @@ async def get_customer_replies(
     # Remove None values
     clean_filters = {k: v for k, v in filters.items() if v is not None}
 
-    replies = MessageRepository.get_customer_replies(filters=clean_filters, limit=limit, skip=skip, scope=scope.match())
-    total = MessageRepository.count_customer_replies(filters=clean_filters, scope=scope.match())
-    stats = MessageRepository.get_reply_stats(scope.match())
+    r = gather(
+        replies=lambda: MessageRepository.get_customer_replies(filters=clean_filters, limit=limit, skip=skip, scope=scope.match()),
+        total=lambda: MessageRepository.count_customer_replies(filters=clean_filters, scope=scope.match()),
+        stats=lambda: MessageRepository.get_reply_stats(scope.match()),
+    )
+    replies = r["replies"]
+    total = r["total"]
+    stats = r["stats"]
 
     return {
         "replies": replies,
@@ -1329,13 +1357,13 @@ async def get_customer_replies(
 
 
 @router.get("/replies/stats")
-async def get_customer_reply_stats(scope: NumberScope = Depends(number_scope)):
+def get_customer_reply_stats(scope: NumberScope = Depends(number_scope)):
     """Get aggregated statistics for customer replies of the selected number."""
     return MessageRepository.get_reply_stats(scope.match())
 
 
 @router.get("/replies/export")
-async def export_customer_replies(
+def export_customer_replies(
     from_date: Optional[str] = Query(None),
     to_date: Optional[str] = Query(None),
     campaign: Optional[str] = Query(None),
@@ -1395,7 +1423,7 @@ async def export_customer_replies(
 # ═══════════════════════════════════════════════════════════════════
 
 @router.post("/conversations/{conversation_id}/access")
-async def log_chat_access_event(
+def log_chat_access_event(
     conversation_id: str,
     request: Request,
     payload: Optional[dict] = Body(None),
@@ -1411,7 +1439,7 @@ async def log_chat_access_event(
 
 
 @router.get("/access-logs")
-async def get_chat_access_logs(
+def get_chat_access_logs(
     manager: Optional[str] = Query(None),
     customer: Optional[str] = Query(None),
     phone: Optional[str] = Query(None),
@@ -1448,14 +1476,14 @@ async def get_chat_access_logs(
 
 
 @router.get("/access-logs/stats")
-async def get_chat_access_stats(scope: NumberScope = Depends(number_scope)):
+def get_chat_access_stats(scope: NumberScope = Depends(number_scope)):
     """Get aggregated metrics for chat access history audit of the selected number."""
     from app.whatsapp.repository import ChatAccessLogRepository
     return ChatAccessLogRepository.get_stats(scope.match())
 
 
 @router.get("/access-logs/export")
-async def export_chat_access_logs(
+def export_chat_access_logs(
     manager: Optional[str] = Query(None),
     customer: Optional[str] = Query(None),
     phone: Optional[str] = Query(None),
@@ -1507,7 +1535,7 @@ async def export_chat_access_logs(
 # ═══════════════════════════════════════════════════════════════════
 
 @router.get("/webhook")
-async def verify_meta_webhook(request: Request):
+def verify_meta_webhook(request: Request):
     """
     Meta webhook verification handshake (hub.mode / hub.verify_token / hub.challenge).
     Without those parameters, returns a health response. A successful verification does NOT prove

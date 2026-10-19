@@ -63,7 +63,7 @@ async def create_notification(payload: dict):
     return notif
 
 @router.get("/notifications")
-async def get_notifications():
+def get_notifications():
     notifications = []
     for n in notification_collection.find().sort("timestamp", -1).limit(50):
         n["_id"] = str(n["_id"])

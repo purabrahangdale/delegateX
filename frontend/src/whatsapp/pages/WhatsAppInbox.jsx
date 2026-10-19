@@ -43,6 +43,14 @@ function MessageStatus({ status }) {
     return null;
 }
 
+// Webhook status updates can arrive in any order (and before the send request returns) — never move a message backwards.
+const STATUS_RANK = { sending: 0, queued: 0, accepted: 2, sent: 3, delivered: 4, read: 5 };
+function newerStatus(...statuses) {
+    const known = statuses.filter(Boolean);
+    if (known.includes("failed")) return "failed";
+    return known.reduce((best, s) => ((STATUS_RANK[s] ?? -1) > (STATUS_RANK[best] ?? -1) ? s : best), known[0]);
+}
+
 const EMOJIS = ["😊", "👋", "✅", "🚀", "💬", "📌", "👍", "❤️", "📍", "🎉"];
 
 // Dummy phone and name filters to ensure only real chats are displayed
@@ -100,6 +108,8 @@ function WhatsAppInbox() {
     const [simulating, setSimulating] = useState(false);
 
     const chatEndRef = useRef(null);
+    // Latest status seen per message id / wamid, so updates that beat the send response aren't lost.
+    const statusUpdatesRef = useRef({});
     const { whatsappSocket } = useWebSockets();
 
     // Helper: Mark conversation as READ persistently
@@ -302,8 +312,11 @@ function WhatsAppInbox() {
                 });
             }
             if (data.event === "message_status_updated") {
-                const { message_id, status } = data.data;
-                setMessages(prev => prev.map(m => (m._id === message_id || m.wamid === message_id || m.metadata?.wamid === message_id) ? { ...m, status } : m));
+                const { message_id, wamid, status } = data.data;
+                const seen = statusUpdatesRef.current;
+                [message_id, wamid].filter(Boolean).forEach(id => { seen[id] = newerStatus(seen[id], status); });
+                const ids = [message_id, wamid].filter(Boolean);
+                setMessages(prev => prev.map(m => ids.some(id => m._id === id || m.wamid === id || m.metadata?.wamid === id) ? { ...m, status: newerStatus(m.status, status) } : m));
             }
         };
         whatsappSocket.on("message", handleEvent);
@@ -354,7 +367,9 @@ function WhatsAppInbox() {
 
             const realMsg = res.data || res;
             const realId = realMsg._id || res.message_id || tempId;
-            const realStatus = realMsg.status || "sent";
+            const realWamid = realMsg.wamid || res.message_id;
+            const seen = statusUpdatesRef.current;
+            const realStatus = newerStatus(realMsg.status || "sent", seen[realId], seen[realWamid]);
 
             // Update optimistic message with real message response from backend & Meta Cloud API
             setMessages(prev => prev.map(m => m._id === tempId ? {
@@ -362,7 +377,7 @@ function WhatsAppInbox() {
                 ...realMsg,
                 _id: realId,
                 status: realStatus,
-                wamid: realMsg.wamid || res.message_id,
+                wamid: realWamid,
             } : m));
 
             // Refresh conversations so list shows latest outbound message
@@ -775,6 +790,16 @@ function WhatsAppInbox() {
                                                         }`}>
                                                         {msg.direction === "inbound" && (
                                                             <p className="text-[9px] font-bold text-emerald-700 mb-0.5">{msg.sender || selectedConv.recipient}</p>
+                                                        )}
+                                                        {msg.media_url && (
+                                                            <a href={msg.media_url} target="_blank" rel="noreferrer" className="block mb-1.5 -mx-1 -mt-1 rounded-xl overflow-hidden bg-black/5">
+                                                                <img
+                                                                    src={msg.media_url}
+                                                                    alt="Attachment"
+                                                                    className="w-full max-h-64 object-cover block"
+                                                                    onError={(e) => { e.currentTarget.parentElement.style.display = "none"; }}
+                                                                />
+                                                            </a>
                                                         )}
                                                         <p className="text-xs leading-relaxed whitespace-pre-wrap font-sans">{msg.content}</p>
                                                         <div className="flex items-center justify-end gap-1 mt-1">

@@ -435,15 +435,18 @@ def event_stats(number: Optional[dict] = None) -> dict:
         doc = events.find_one(query, sort=[("received_at", -1)])
         return doc.get("received_at") if doc else None
 
+    from app.whatsapp.concurrency import gather
     return {
-        "last_event_at": last({"$or": [scope, {**waba_scope, "kind": "template_status"}]} if number else {}),
-        "last_status_event_at": last({**scope, "kind": "status"}),
-        "last_inbound_message_at": last({**scope, "kind": "message"}),
-        "last_template_event_at": last({**waba_scope, "kind": "template_status"}),
-        "pending_events": events.count_documents({**scope, "processed": False}),
-        "unmatched_status_events": events.count_documents({**scope, "kind": "status", "result": "no_match"}),
-        "ignored_other_account": events.count_documents({"result": {"$in": ["ignored_other_account", "ignored_signature_account_mismatch"]}}),
-        "ignored_unmapped_number": events.count_documents({"result": "ignored_unmapped_number"}),
+        **gather(
+            last_event_at=lambda: last({"$or": [scope, {**waba_scope, "kind": "template_status"}]} if number else {}),
+            last_status_event_at=lambda: last({**scope, "kind": "status"}),
+            last_inbound_message_at=lambda: last({**scope, "kind": "message"}),
+            last_template_event_at=lambda: last({**waba_scope, "kind": "template_status"}),
+            pending_events=lambda: events.count_documents({**scope, "processed": False}),
+            unmatched_status_events=lambda: events.count_documents({**scope, "kind": "status", "result": "no_match"}),
+            ignored_other_account=lambda: events.count_documents({"result": {"$in": ["ignored_other_account", "ignored_signature_account_mismatch"]}}),
+            ignored_unmapped_number=lambda: events.count_documents({"result": "ignored_unmapped_number"}),
+        ),
         "rejected_signatures": _rejected_signature_count,
         "last_rejected_signature_at": _last_rejected_at,
     }

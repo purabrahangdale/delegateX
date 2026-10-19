@@ -10,6 +10,7 @@ from typing import Optional, List, Dict, Any
 from bson import ObjectId
 
 
+from app.whatsapp.concurrency import gather
 from app.config.database import (
     whatsapp_message_collection,
     whatsapp_template_collection,
@@ -65,6 +66,16 @@ class MessageRepository:
     def find_by_id(message_id: str) -> Optional[dict]:
         doc = whatsapp_message_collection.find_one({"_id": ObjectId(message_id)})
         return _serialize_doc(doc) if doc else None
+
+    @staticmethod
+    def last_inbound_at(conversation_id: str, scope: Optional[dict] = None) -> Optional[str]:
+        """created_at (naive UTC ISO) of the customer's latest message in this conversation, or None."""
+        doc = whatsapp_message_collection.find_one(
+            {**(scope or {}), "conversation_id": conversation_id, "direction": "inbound"},
+            {"created_at": 1},
+            sort=[("created_at", -1)],
+        )
+        return doc.get("created_at") if doc else None
 
     @staticmethod
     def find_by_conversation(conversation_id: str, scope: Optional[dict] = None) -> List[dict]:
@@ -387,23 +398,29 @@ class MessageRepository:
         """Calculate summary KPIs for customer replies."""
         today_str = datetime.utcnow().strftime("%Y-%m-%d")
         inbound = {"direction": "inbound", **(scope or {})}
-        total_replies = whatsapp_message_collection.count_documents(inbound)
-        today_replies = whatsapp_message_collection.count_documents({
-            **inbound,
-            "created_at": {"$regex": f"^{today_str}"}
-        })
-        unread_replies = whatsapp_message_collection.count_documents({
-            **inbound,
-            "status": {"$ne": "read"}
-        })
-        text_replies = whatsapp_message_collection.count_documents({
-            **inbound,
-            "message_type": "text"
-        })
+        r = gather(
+            total_replies=lambda: whatsapp_message_collection.count_documents(inbound),
+            today_replies=lambda: whatsapp_message_collection.count_documents({
+                **inbound,
+                "created_at": {"$regex": f"^{today_str}"}
+            }),
+            unread_replies=lambda: whatsapp_message_collection.count_documents({
+                **inbound,
+                "status": {"$ne": "read"}
+            }),
+            text_replies=lambda: whatsapp_message_collection.count_documents({
+                **inbound,
+                "message_type": "text"
+            }),
+            # Unique customer count
+            distinct_senders=lambda: whatsapp_message_collection.distinct("sender_phone", inbound),
+        )
+        total_replies = r["total_replies"]
+        today_replies = r["today_replies"]
+        unread_replies = r["unread_replies"]
+        text_replies = r["text_replies"]
         media_replies = total_replies - text_replies
-
-        # Unique customer count
-        distinct_senders = whatsapp_message_collection.distinct("sender_phone", inbound)
+        distinct_senders = r["distinct_senders"]
 
         return {
             "total_replies": total_replies,
@@ -662,14 +679,19 @@ class DNDRepository:
                 {"notes": {"$regex": s, "$options": "i"}},
             ]
 
-        total = whatsapp_dnd_collection.count_documents(query)
-        docs = whatsapp_dnd_collection.find(query).sort("created_at", -1).skip(skip).limit(limit)
-        items = [_serialize_doc(d) for d in docs]
-        
-        # Calculate summary statistics
-        total_optouts = whatsapp_dnd_collection.count_documents({"is_active": True, "source": "Inbox Keyword"})
-        total_manual = whatsapp_dnd_collection.count_documents({"is_active": True, "source": "Manual Entry"})
-        total_csv = whatsapp_dnd_collection.count_documents({"is_active": True, "source": "CSV Upload"})
+        r = gather(
+            total=lambda: whatsapp_dnd_collection.count_documents(query),
+            items=lambda: [_serialize_doc(d) for d in whatsapp_dnd_collection.find(query).sort("created_at", -1).skip(skip).limit(limit)],
+            # Summary statistics
+            total_optouts=lambda: whatsapp_dnd_collection.count_documents({"is_active": True, "source": "Inbox Keyword"}),
+            total_manual=lambda: whatsapp_dnd_collection.count_documents({"is_active": True, "source": "Manual Entry"}),
+            total_csv=lambda: whatsapp_dnd_collection.count_documents({"is_active": True, "source": "CSV Upload"}),
+        )
+        total = r["total"]
+        items = r["items"]
+        total_optouts = r["total_optouts"]
+        total_manual = r["total_manual"]
+        total_csv = r["total_csv"]
 
         return {
             "items": items,
@@ -879,12 +901,18 @@ class ChatAccessLogRepository:
     def get_stats(scope: Optional[dict] = None) -> dict:
         """Calculate aggregated KPI metrics for Chat Access History."""
         base = dict(scope or {})
-        total_openings = chat_access_log_collection.count_documents(base)
-        replied_count = chat_access_log_collection.count_documents({**base, "replied_to_customer": True})
-        unreplied_count = chat_access_log_collection.count_documents({**base, "replied_to_customer": False})
-        
-        distinct_managers = chat_access_log_collection.distinct("manager_email", base)
-        distinct_customers = chat_access_log_collection.distinct("contact_phone", base)
+        r = gather(
+            total_openings=lambda: chat_access_log_collection.count_documents(base),
+            replied_count=lambda: chat_access_log_collection.count_documents({**base, "replied_to_customer": True}),
+            unreplied_count=lambda: chat_access_log_collection.count_documents({**base, "replied_to_customer": False}),
+            distinct_managers=lambda: chat_access_log_collection.distinct("manager_email", base),
+            distinct_customers=lambda: chat_access_log_collection.distinct("contact_phone", base),
+        )
+        total_openings = r["total_openings"]
+        replied_count = r["replied_count"]
+        unreplied_count = r["unreplied_count"]
+        distinct_managers = r["distinct_managers"]
+        distinct_customers = r["distinct_customers"]
         
         reply_rate = round((replied_count / total_openings * 100), 1) if total_openings > 0 else 0.0
 

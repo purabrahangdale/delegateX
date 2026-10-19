@@ -1,61 +1,17 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { FiPieChart, FiUsers, FiBriefcase, FiCheckSquare, FiChevronLeft, FiChevronRight, FiGrid, FiPlusSquare, FiLayers, FiChevronDown, FiCalendar, FiX, FiBarChart2, FiFileText, FiSettings, FiMail, FiClipboard, FiMessageCircle, FiSend, FiZap, FiSlash, FiEye } from "react-icons/fi";
+import { FiUsers, FiChevronLeft, FiChevronRight, FiGrid, FiPlusSquare, FiChevronDown, FiBarChart2, FiFileText, FiSettings, FiClipboard, FiMessageCircle, FiSend, FiZap, FiSlash, FiEye } from "react-icons/fi";
 import dtableLogo from "../assets/dtable-logo.png";
 
 
 function Sidebar({ isCollapsed, setIsCollapsed, onClose }) {
     const location = useLocation();
 
-    const isDelegationActive = location.pathname.startsWith("/tasks") ||
-        location.pathname.startsWith("/dashboard-delegation") ||
-        location.pathname.startsWith("/create-delegation") ||
-        location.pathname.startsWith("/delegation");
-
-    const isCrmActive = location.pathname.startsWith("/crm");
-    const isEmployeesActive = location.pathname.startsWith("/employees");
-    const isSettingsActive = location.pathname.startsWith("/settings");
-    const isTemplatesActive = location.pathname.startsWith("/templates");
     const isWhatsappActive = location.pathname.startsWith("/whatsapp");
 
-    const [isDelegationOpen, setIsDelegationOpen] = useState(isDelegationActive);
-    const [isCrmOpen, setIsCrmOpen] = useState(isCrmActive);
-    const [isEmployeesOpen, setIsEmployeesOpen] = useState(isEmployeesActive);
-    const [isSettingsOpen, setIsSettingsOpen] = useState(isSettingsActive);
-    const [isTemplatesOpen, setIsTemplatesOpen] = useState(isTemplatesActive);
     const [isWhatsappOpen, setIsWhatsappOpen] = useState(isWhatsappActive);
 
     // Keep submenu open if a child route becomes active
-    useEffect(() => {
-        if (isDelegationActive) {
-            setIsDelegationOpen(true);
-        }
-    }, [location.pathname, isDelegationActive]);
-
-    useEffect(() => {
-        if (isCrmActive) {
-            setIsCrmOpen(true);
-        }
-    }, [location.pathname, isCrmActive]);
-
-    useEffect(() => {
-        if (isEmployeesActive) {
-            setIsEmployeesOpen(true);
-        }
-    }, [location.pathname, isEmployeesActive]);
-
-    useEffect(() => {
-        if (isSettingsActive) {
-            setIsSettingsOpen(true);
-        }
-    }, [location.pathname, isSettingsActive]);
-
-    useEffect(() => {
-        if (isTemplatesActive) {
-            setIsTemplatesOpen(true);
-        }
-    }, [location.pathname, isTemplatesActive]);
-
     useEffect(() => {
         if (isWhatsappActive) {
             setIsWhatsappOpen(true);
@@ -63,141 +19,6 @@ function Sidebar({ isCollapsed, setIsCollapsed, onClose }) {
     }, [location.pathname, isWhatsappActive]);
 
     const menuItems = [
-        /*
-        {
-            title: "Dashboard",
-            path: "/",
-            icon: FiPieChart,
-        },
-        {
-            title: "Employees",
-            icon: FiUsers,
-            isDropdown: true,
-            children: [
-                {
-                    title: "Employees",
-                    path: "/employees",
-                    icon: FiUsers,
-                },
-                {
-                    title: "Dashboard",
-                    path: "/employees/dashboard",
-                    icon: FiBarChart2,
-                },
-            ]
-        },
-        {
-            title: "Projects",
-            path: "/projects",
-            icon: FiBriefcase,
-        },
-        {
-            title: "Delegation",
-            icon: FiLayers,
-            isDropdown: true,
-            children: [
-                {
-                    title: "Dashboard Delegation",
-                    path: "/dashboard-delegation",
-                    icon: FiGrid,
-                },
-                {
-                    title: "Create Delegation",
-                    path: "/create-delegation",
-                    icon: FiPlusSquare,
-                },
-                {
-                    title: "Delegation List",
-                    path: "/tasks",
-                    icon: FiCheckSquare,
-                },
-                {
-                    title: "Delegation Form",
-                    path: "/delegation/delegation-form",
-                    icon: FiFileText,
-                },
-            ]
-        },
-        {
-            title: "CRM",
-            icon: FiBriefcase,
-            isDropdown: true,
-            children: [
-                {
-                    title: "CRM Dashboard",
-                    path: "/crm/dashboard",
-                    icon: FiGrid,
-                },
-                {
-                    title: "Create New Lead",
-                    path: "/crm/create-lead",
-                    icon: FiPlusSquare,
-                },
-                {
-                    title: "Meetings",
-                    path: "/crm/meetings",
-                    icon: FiCalendar,
-                },
-                {
-                    title: "Converted",
-                    path: "/crm/converted",
-                    icon: FiCheckSquare,
-                },
-                {
-                    title: "Lost",
-                    path: "/crm/lost",
-                    icon: FiX,
-                },
-                {
-                    title: "All Leads",
-                    path: "/crm/leads",
-                    icon: FiUsers,
-                },
-            ]
-        },
-        {
-            title: "Templates",
-            icon: FiFileText,
-            isDropdown: true,
-            children: [
-                {
-                    title: "Email Templates",
-                    path: "/templates/email",
-                    icon: FiMail,
-                },
-                {
-                    title: "Reusable Layouts",
-                    path: "/templates/layouts",
-                    icon: FiLayers,
-                },
-                {
-                    title: "CRM Notification Templates",
-                    path: "/templates/crm",
-                    icon: FiBriefcase,
-                },
-                {
-                    title: "Client Emails",
-                    path: "/templates/client",
-                    icon: FiUsers,
-                },
-                {
-                    title: "Employee Emails",
-                    path: "/templates/employee",
-                    icon: FiUsers,
-                },
-                {
-                    title: "Form Templates",
-                    path: "/templates/form-templates",
-                    icon: FiClipboard,
-                },
-                {
-                    title: "WhatsApp Templates",
-                    path: "/templates/whatsapp",
-                    icon: FiMessageCircle,
-                },
-            ]
-        },
-        */
         {
             title: "WhatsApp Automation",
             icon: FiMessageCircle,
@@ -272,45 +93,20 @@ function Sidebar({ isCollapsed, setIsCollapsed, onClose }) {
                 },
             ]
         },
-        /*
-        {
-            title: "Settings",
-            icon: FiSettings,
-            isDropdown: true,
-            children: [
-                {
-                    title: "User Management",
-                    path: "/settings/users",
-                    icon: FiUsers,
-                },
-            ]
-        }
-        */
     ];
 
     const isActive = (path) => {
         if (path === "/") return location.pathname === "/";
-        if (path === "/employees") return location.pathname === "/employees";
         return location.pathname.startsWith(path);
     };
 
     const getDropdownOpen = (title) => {
-        if (title === "Delegation") return isDelegationOpen;
-        if (title === "CRM") return isCrmOpen;
-        if (title === "Employees") return isEmployeesOpen;
-        if (title === "Settings") return isSettingsOpen;
-        if (title === "Templates") return isTemplatesOpen;
         if (title === "WhatsApp Automation") return isWhatsappOpen;
         return false;
     };
 
     const handleDropdownToggle = (title) => {
-        if (title === "Delegation") setIsDelegationOpen(v => !v);
-        else if (title === "CRM") setIsCrmOpen(v => !v);
-        else if (title === "Employees") setIsEmployeesOpen(v => !v);
-        else if (title === "Settings") setIsSettingsOpen(v => !v);
-        else if (title === "Templates") setIsTemplatesOpen(v => !v);
-        else if (title === "WhatsApp Automation") setIsWhatsappOpen(v => !v);
+        if (title === "WhatsApp Automation") setIsWhatsappOpen(v => !v);
     };
 
     return (

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { Outlet } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
@@ -57,7 +57,14 @@ function AdminLayout() {
                 <Navbar onToggleMobileMenu={() => setIsMobileMenuOpen(true)} />
 
                 <main className="flex-1 p-3 sm:p-4 md:p-6 lg:p-8 overflow-y-auto max-w-7xl w-full mx-auto animate-fade-in">
-                    <Outlet />
+                    {/* Pages are lazy-loaded; keep the sidebar and navbar on screen while one downloads */}
+                    <Suspense fallback={
+                        <div className="flex items-center justify-center py-24">
+                            <div className="w-6 h-6 border-2 border-slate-200 border-t-indigo-500 rounded-full animate-spin" />
+                        </div>
+                    }>
+                        <Outlet />
+                    </Suspense>
                 </main>
                 <AIChatbot />
             </div>

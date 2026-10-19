@@ -64,6 +64,7 @@ INDEXES = [
     # Number-scoped queries (inbox, dashboards, reports, logs)
     (whatsapp_message_collection, [("number_id", ASCENDING), ("conversation_id", ASCENDING), ("created_at", DESCENDING)], {"name": "number_conversation"}),
     (whatsapp_message_collection, [("number_id", ASCENDING), ("direction", ASCENDING), ("created_at", DESCENDING)], {"name": "number_direction_created"}),
+    (whatsapp_message_collection, [("number_id", ASCENDING), ("created_at", DESCENDING)], {"name": "number_created_at"}),
     (whatsapp_template_collection, [("waba_id", ASCENDING), ("status", ASCENDING)], {"name": "waba_status"}),
     (whatsapp_campaign_collection, [("number_id", ASCENDING), ("created_at", DESCENDING)], {"name": "number_created_at"}),
     (whatsapp_campaign_recipient_collection, [("number_id", ASCENDING), ("state", ASCENDING)], {"name": "number_state"}),

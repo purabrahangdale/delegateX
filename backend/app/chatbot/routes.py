@@ -14,7 +14,7 @@ class QueryRequest(BaseModel):
     query: str
 
 @router.post("/query")
-async def query_chatbot(
+def query_chatbot(
     request: QueryRequest,
     x_user_email: str = Header("admin@delegatex.com", alias="X-User-Email"),
     x_user_role: str = Header("Administrator", alias="X-User-Role")
@@ -38,7 +38,7 @@ async def query_chatbot(
         raise HTTPException(status_code=500, detail="Error generating chatbot response")
 
 @router.post("/upload-document")
-async def upload_document(file: UploadFile = File(...)):
+def upload_document(file: UploadFile = File(...)):
     """
     Uploads and indexes a custom PDF/DOCX/TXT/MD document.
     Saves it to the knowledge_base folder and triggers RAG indexer.
@@ -72,7 +72,7 @@ async def upload_document(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=f"Failed to upload document: {str(e)}")
 
 @router.get("/documents")
-async def get_documents():
+def get_documents():
     """Returns a list of all currently indexed documents."""
     return {
         "documents": [
@@ -86,7 +86,7 @@ async def get_documents():
     }
 
 @router.delete("/clear")
-async def clear_index():
+def clear_index():
     """Clears all indexed documents from vector store and index metadata."""
     try:
         rag_manager.clear_index()

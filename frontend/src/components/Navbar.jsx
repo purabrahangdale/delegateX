@@ -1,19 +1,11 @@
 import { useState, useRef, useEffect } from "react";
-import { useLocation, Link, useNavigate } from "react-router-dom";
-import { FiBell, FiSearch, FiChevronDown, FiUser, FiSettings, FiLogOut, FiMenu, FiX, FiBriefcase, FiUsers, FiCheckSquare, FiAlertCircle } from "react-icons/fi";
-import { getEmployees } from "../services/employeeApi";
-import { getProjects } from "../services/projectApi";
-import { getTasks } from "../services/taskApi";
+import { useLocation, Link } from "react-router-dom";
+import { FiBell, FiChevronDown, FiLogOut, FiMenu, FiX } from "react-icons/fi";
 import { useWebSockets } from "../context/WebSocketContext";
 
 
 function Navbar({ onToggleMobileMenu }) {
     const location = useLocation();
-    const navigate = useNavigate();
-    const [searchQuery, setSearchQuery] = useState("");
-    const [isSearchOpen, setIsSearchOpen] = useState(false);
-    const [searchResults, setSearchResults] = useState({ employees: [], projects: [], tasks: [] });
-    const [allData, setAllData] = useState({ employees: [], projects: [], tasks: [] });
     const [showNotifications, setShowNotifications] = useState(false);
     const [showProfileMenu, setShowProfileMenu] = useState(false);
 
@@ -33,8 +25,6 @@ function Navbar({ onToggleMobileMenu }) {
     // Dynamic breadcrumbs clickable links
     const getBreadcrumbs = () => {
         const path = location.pathname;
-        if (path.startsWith("/crm") || path.startsWith("/settings")) return [];
-        if (path === "/") return [{ label: "Workspace", path: "/" }, { label: "Dashboard", path: "/" }];
         const segments = path.split("/").filter(Boolean);
         return [
             { label: "Workspace", path: "/" },
@@ -46,61 +36,6 @@ function Navbar({ onToggleMobileMenu }) {
     };
 
     const breadcrumbs = getBreadcrumbs();
-
-    // Fetch all resources on search open
-    const fetchSearchData = async () => {
-        try {
-            const [empRes, projRes, taskRes] = await Promise.all([
-                getEmployees(),
-                getProjects(),
-                getTasks()
-            ]);
-            setAllData({
-                employees: Array.isArray(empRes) ? empRes : (empRes?.data || []),
-                projects: projRes.data || [],
-                tasks: taskRes.data || []
-            });
-        } catch (err) {
-            console.error("Failed to load search context resources", err);
-        }
-    };
-
-    useEffect(() => {
-        if (isSearchOpen) {
-            fetchSearchData();
-        }
-    }, [isSearchOpen]);
-
-    // Handle search filtering
-    useEffect(() => {
-        if (!searchQuery.trim()) {
-            setSearchResults({ employees: [], projects: [], tasks: [] });
-            return;
-        }
-
-        const query = searchQuery.toLowerCase();
-        const filteredEmployees = allData.employees.filter(e => e.name.toLowerCase().includes(query) || e.role.toLowerCase().includes(query));
-        const filteredProjects = allData.projects.filter(p => p.name.toLowerCase().includes(query) || (p.description && p.description.toLowerCase().includes(query)));
-        const filteredTasks = allData.tasks.filter(t => t.title.toLowerCase().includes(query) || (t.description && t.description.toLowerCase().includes(query)));
-
-        setSearchResults({
-            employees: filteredEmployees,
-            projects: filteredProjects,
-            tasks: filteredTasks
-        });
-    }, [searchQuery, allData]);
-
-    // Hotkey listener (Cmd/Ctrl + K)
-    useEffect(() => {
-        const handleKeyDown = (e) => {
-            if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-                e.preventDefault();
-                setIsSearchOpen((prev) => !prev);
-            }
-        };
-        window.addEventListener("keydown", handleKeyDown);
-        return () => window.removeEventListener("keydown", handleKeyDown);
-    }, []);
 
     // Close menus on click outside
     useEffect(() => {
@@ -122,12 +57,6 @@ function Navbar({ onToggleMobileMenu }) {
 
     const clearNotification = (id) => {
         deleteNotification(id);
-    };
-
-    const handleSearchItemClick = (path) => {
-        setIsSearchOpen(false);
-        setSearchQuery("");
-        navigate(path);
     };
 
     return (
@@ -164,18 +93,6 @@ function Navbar({ onToggleMobileMenu }) {
 
                 {/* Right section: Search button, Notifications, Profile */}
                 <div className="flex items-center gap-1.5 sm:gap-3">
-                    {/* Search trigger (Cmd+K design) */}
-                    <button
-                        onClick={() => setIsSearchOpen(true)}
-                        className="flex items-center gap-2.5 px-2.5 sm:px-3 py-2 border border-slate-200 hover:border-slate-300 bg-slate-50/50 hover:bg-slate-50 text-slate-400 hover:text-slate-600 rounded-xl transition text-left text-xs cursor-pointer w-auto sm:w-56"
-                    >
-                        <FiSearch size={14} />
-                        <span className="hidden sm:inline flex-1 text-[11px] font-sans">Search workspace...</span>
-                        <kbd className="hidden sm:inline-flex items-center bg-white px-1.5 py-0.5 border border-slate-200 text-[9px] font-bold text-slate-400 rounded-md font-sans shadow-sm select-none">
-                            Ctrl K
-                        </kbd>
-                    </button>
-
                     {/* Notifications Widget */}
                     <div className="relative" ref={notifRef}>
                         <button
@@ -281,22 +198,6 @@ function Navbar({ onToggleMobileMenu }) {
                                     <p className="text-xs font-semibold text-slate-800">Admin User</p>
                                     <p className="text-[9px] text-slate-400 truncate">admin@delegatex.com</p>
                                 </div>
-                                <div className="py-1">
-                                    <button 
-                                        onClick={() => { setShowProfileMenu(false); navigate('/employees'); }}
-                                        className="w-full text-left px-4 py-2 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition cursor-pointer"
-                                    >
-                                        <FiUser size={13} className="text-slate-400" />
-                                        Team Directory
-                                    </button>
-                                    <button 
-                                        onClick={() => { setShowProfileMenu(false); navigate('/projects'); }}
-                                        className="w-full text-left px-4 py-2 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition cursor-pointer"
-                                    >
-                                        <FiSettings size={13} className="text-slate-400" />
-                                        Projects Dashboard
-                                    </button>
-                                </div>
                                 <div className="border-t border-slate-100 pt-1">
                                     <button className="w-full text-left px-4 py-2 text-xs text-rose-600 hover:bg-rose-50 flex items-center gap-2 transition font-medium cursor-pointer">
                                         <FiLogOut size={13} className="text-rose-400" />
@@ -309,126 +210,6 @@ function Navbar({ onToggleMobileMenu }) {
                 </div>
             </header>
 
-            {/* Global command palette search modal */}
-            {isSearchOpen && (
-                <div className="fixed inset-0 z-55 overflow-hidden flex items-start justify-center pt-24 p-4">
-                    {/* Backdrop */}
-                    <div 
-                        className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity"
-                        onClick={() => setIsSearchOpen(false)}
-                    ></div>
-
-                    {/* Spotlight Command Box */}
-                    <div className="relative bg-white border border-slate-200 w-full max-w-xl rounded-2xl shadow-2xl flex flex-col z-10 animate-slide-up overflow-hidden">
-                        <div className="p-4 border-b border-slate-100 flex items-center gap-3">
-                            <FiSearch className="text-slate-400" size={18} />
-                            <input
-                                type="text"
-                                placeholder="Search tasks, team members, or project boards..."
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                className="flex-1 bg-transparent text-slate-800 text-xs outline-none border-none placeholder-slate-400 font-sans"
-                                autoFocus
-                            />
-                            <button
-                                onClick={() => setIsSearchOpen(false)}
-                                className="p-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-500 transition text-[10px] font-bold font-sans cursor-pointer"
-                            >
-                                ESC
-                            </button>
-                        </div>
-
-                        {/* Search Results Display */}
-                        <div className="max-h-96 overflow-y-auto p-2">
-                            {!searchQuery.trim() ? (
-                                <div className="p-8 text-center text-slate-400 text-xs flex flex-col items-center justify-center gap-2">
-                                    <FiSearch size={24} className="text-slate-300 animate-pulse" />
-                                    <span>Type query keywords or press Esc to dismiss command.</span>
-                                </div>
-                            ) : (searchResults.employees.length === 0 && searchResults.projects.length === 0 && searchResults.tasks.length === 0) ? (
-                                <div className="p-8 text-center text-slate-400 text-xs flex flex-col items-center justify-center gap-2">
-                                    <FiAlertCircle size={24} className="text-slate-300" />
-                                    <span>No matching items found in directory tags.</span>
-                                </div>
-                            ) : (
-                                <div className="space-y-4 p-2">
-                                    {/* Employees Results */}
-                                    {searchResults.employees.length > 0 && (
-                                        <div>
-                                            <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider px-2 block mb-1">Team Directory</span>
-                                            <div className="space-y-0.5">
-                                                {searchResults.employees.map(e => (
-                                                    <button
-                                                        key={e._id}
-                                                        onClick={() => handleSearchItemClick('/employees')}
-                                                        className="w-full flex items-center gap-3 p-2 rounded-xl hover:bg-slate-50 text-left transition cursor-pointer text-xs"
-                                                    >
-                                                        <div className="w-7 h-7 bg-indigo-50 text-indigo-600 rounded-lg flex items-center justify-center font-bold">
-                                                            <FiUsers size={12} />
-                                                        </div>
-                                                        <div className="flex-1 min-w-0">
-                                                            <p className="font-semibold text-slate-800 truncate">{e.name}</p>
-                                                            <p className="text-[10px] text-slate-400 truncate">{e.role}</p>
-                                                        </div>
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* Projects Results */}
-                                    {searchResults.projects.length > 0 && (
-                                        <div>
-                                            <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider px-2 block mb-1">Projects Registry</span>
-                                            <div className="space-y-0.5">
-                                                {searchResults.projects.map(p => (
-                                                    <button
-                                                        key={p._id}
-                                                        onClick={() => handleSearchItemClick('/projects')}
-                                                        className="w-full flex items-center gap-3 p-2 rounded-xl hover:bg-slate-50 text-left transition cursor-pointer text-xs"
-                                                    >
-                                                        <div className="w-7 h-7 bg-indigo-50 text-indigo-600 rounded-lg flex items-center justify-center font-bold">
-                                                            <FiBriefcase size={12} />
-                                                        </div>
-                                                        <div className="flex-1 min-w-0">
-                                                            <p className="font-semibold text-slate-800 truncate">{p.name}</p>
-                                                            <p className="text-[10px] text-slate-400 truncate">{p.status}</p>
-                                                        </div>
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* Tasks Results */}
-                                    {searchResults.tasks.length > 0 && (
-                                        <div>
-                                            <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider px-2 block mb-1">Delegated Tasks</span>
-                                            <div className="space-y-0.5">
-                                                {searchResults.tasks.map(t => (
-                                                    <button
-                                                        key={t._id}
-                                                        onClick={() => handleSearchItemClick('/tasks')}
-                                                        className="w-full flex items-center gap-3 p-2 rounded-xl hover:bg-slate-50 text-left transition cursor-pointer text-xs"
-                                                    >
-                                                        <div className="w-7 h-7 bg-indigo-50 text-indigo-600 rounded-lg flex items-center justify-center font-bold">
-                                                            <FiCheckSquare size={12} />
-                                                        </div>
-                                                        <div className="flex-1 min-w-0">
-                                                            <p className="font-semibold text-slate-800 truncate">{t.title}</p>
-                                                            <p className="text-[10px] text-slate-400 truncate">{t.employee} &bull; {t.status}</p>
-                                                        </div>
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
         </>
     );
 }

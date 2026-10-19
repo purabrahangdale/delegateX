@@ -271,10 +271,8 @@ class NumberScope:
 
 
 def resolve_scope(requested_id: Optional[str], user: Optional[str]) -> NumberScope:
-    if count_numbers() == 0:
-        if requested_id:
-            raise NumberError("The selected WhatsApp number no longer exists. Select another number.", 404, "number_not_found")
-        return NumberScope(None)
+    # Look the number up first: the registry count is only needed to explain a miss, which saves a
+    # database round trip on every number-scoped request.
     if requested_id:
         doc = get_number(requested_id)
         if not doc:
@@ -282,6 +280,8 @@ def resolve_scope(requested_id: Optional[str], user: Optional[str]) -> NumberSco
     else:
         doc = default_number()
         if not doc:
+            if count_numbers() == 0:
+                return NumberScope(None)
             raise NumberError("No default WhatsApp number is set. Select a number to continue.", 409, "no_default_number")
     if not can_access(doc, user):
         raise NumberError("You do not have access to this WhatsApp number.", 403, "number_forbidden")

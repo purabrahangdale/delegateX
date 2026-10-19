@@ -150,6 +150,8 @@ def _evaluate_recipient(tmpl: dict, mapping: dict, raw: dict) -> dict:
         return result
     result["send_components"] = components
     result["preview"] = template_service.render_preview(tmpl, values)["text"]
+    # send_components may later carry a Meta media ID instead of the link; keep the link for the inbox.
+    result["media_url"] = values.get("header.media")
     return result
 
 
@@ -302,6 +304,7 @@ def create_campaign(payload: dict, user: Optional[str] = None, number: Optional[
             "phone_number_id": stamp["phone_number_id"],
             "send_components": ev.get("send_components"),
             "preview": ev.get("preview"),
+            "media_url": ev.get("media_url"),
             "state": ev["state"],
             "status_rank": 0,
             "reason": ev["reason"],
@@ -574,6 +577,7 @@ def enqueue_single(*, template_id: str, mapping: dict, recipient: dict, idempote
         "phone_number_id": stamp["phone_number_id"],
         "send_components": ev.get("send_components"),
         "preview": ev.get("preview"),
+        "media_url": ev.get("media_url"),
         "state": state,
         "status_rank": 0,
         "reason": ev["reason"],
@@ -796,6 +800,7 @@ def _record_outbound_message(job: dict, wamid: str, at: str, number: Optional[di
         "recipient_phone": "+" + job["phone"],
         "content": job.get("preview") or f"[Template: {job['template']['name']}]",
         "message_type": "template",
+        "media_url": job.get("media_url"),
         "status": "accepted",
         "status_rank": STATE_RANK["accepted"],
         "wamid": wamid,
