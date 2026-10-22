@@ -412,7 +412,7 @@ function WhatsAppTemplates() {
                                     <img
                                         src={previewTemplate.header?.sample_url || previewTemplate.attachment_url}
                                         alt="Template header"
-                                        className="w-full max-h-48 object-cover block"
+                                        className="w-full h-auto block"
                                         onError={(e) => { e.target.style.display = "none"; }}
                                     />
                                 </div>

@@ -252,7 +252,7 @@ function CampaignBuilder({ onClose, onCreated }) {
                     <img
                         src={mediaUrl}
                         alt="Header preview"
-                        className="w-full max-h-48 object-cover block"
+                        className="w-full h-auto block"
                         onError={(e) => { e.target.style.display = "none"; }}
                     />
                 </div>
@@ -432,7 +432,7 @@ function CampaignBuilder({ onClose, onCreated }) {
                                         {preview.samples.map((s) => (
                                             <div key={s.phone}>
                                                 <p className="text-[10px] text-slate-500 mb-1">{s.name} · <span className="font-mono">+{s.phone}</span></p>
-                                                {renderPreviewBubble(s.preview)}
+                                                {renderPreviewBubble(s.preview, mapping["header.media"]?.value || template?.slots?.find(slot => slot.kind === "media")?.example || template?.header?.sample_url || template?.attachment_url)}
                                             </div>
                                         ))}
                                     </div>

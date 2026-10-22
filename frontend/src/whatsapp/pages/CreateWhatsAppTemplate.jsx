@@ -1467,7 +1467,7 @@ function CreateWhatsAppTemplate() {
                                                 <img
                                                     src={attachmentFile?.previewUrl || attachmentFile?.serverUrl || headerSampleUrl}
                                                     alt="WhatsApp attachment preview"
-                                                    className="w-full max-h-56 object-cover block"
+                                                    className="w-full h-auto block"
                                                     onError={(e) => {
                                                         e.target.style.display = "none";
                                                     }}

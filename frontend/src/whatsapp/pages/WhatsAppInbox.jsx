@@ -796,7 +796,7 @@ function WhatsAppInbox() {
                                                                 <img
                                                                     src={msg.media_url}
                                                                     alt="Attachment"
-                                                                    className="w-full max-h-64 object-cover block"
+                                                                    className="w-full h-auto block"
                                                                     onError={(e) => { e.currentTarget.parentElement.style.display = "none"; }}
                                                                 />
                                                             </a>
