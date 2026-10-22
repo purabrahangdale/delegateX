@@ -89,7 +89,7 @@ function WhatsAppInbox() {
     const [sending, setSending] = useState(false);
     const [showMobileChat, setShowMobileChat] = useState(false);
     const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-    
+
     // Real WhatsApp Provider & New Chat States
     const [providerInfo, setProviderInfo] = useState(null);
     const [sendError, setSendError] = useState(null);
@@ -137,7 +137,7 @@ function WhatsAppInbox() {
     const fetchConversations = async () => {
         try {
             const apiData = await getConversations();
-            
+
             // Only keep real, valid conversations from the database
             let realList = (Array.isArray(apiData) ? apiData : []).filter(c => !isDummyConversation(c));
 
@@ -192,8 +192,8 @@ function WhatsAppInbox() {
         }
 
         // Keep strictly real messages, excluding any dummy or simulated data
-        const realMsgs = (Array.isArray(apiMsgs) ? apiMsgs : []).filter(m => 
-            m.source !== "simulation" && 
+        const realMsgs = (Array.isArray(apiMsgs) ? apiMsgs : []).filter(m =>
+            m.source !== "simulation" &&
             m.mode !== "simulation" &&
             !DUMMY_NAMES.has(m.sender) &&
             !DUMMY_PHONES.has(m.sender_phone)
@@ -273,7 +273,7 @@ function WhatsAppInbox() {
 
                 // Instantly update conversations list, unread badge & move to top
                 setConversations(prev => {
-                    const matchIdx = prev.findIndex(c => 
+                    const matchIdx = prev.findIndex(c =>
                         c.conversation_id === msg.conversation_id ||
                         (msgPhone && normalizePhone(c.recipient_phone) === msgPhone)
                     );
@@ -281,7 +281,7 @@ function WhatsAppInbox() {
                         const updated = [...prev];
                         const target = updated[matchIdx];
                         const newUnread = isReply ? (isCurrentActive ? 0 : (target.unread_count || 0) + 1) : target.unread_count;
-                        
+
                         updated[matchIdx] = {
                             ...target,
                             last_message: msg,
@@ -540,7 +540,7 @@ function WhatsAppInbox() {
     const filteredConversations = conversations.filter(conv => {
         if (isDummyConversation(conv)) return false;
         const query = searchQuery.toLowerCase();
-        const matchesSearch = 
+        const matchesSearch =
             conv.recipient?.toLowerCase().includes(query) ||
             conv.recipient_phone?.includes(query) ||
             conv.last_message?.content?.toLowerCase().includes(query) ||

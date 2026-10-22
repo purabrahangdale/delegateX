@@ -407,7 +407,7 @@ function CampaignBuilder({ onClose, onCreated }) {
                                 <>
                                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                                         {[["Selected", preview.total, "text-slate-800"], ["Eligible", preview.eligible, "text-emerald-700"],
-                                          ["Invalid", preview.invalid.length, "text-rose-600"], ["Skipped", preview.skipped.length + preview.duplicates_removed, "text-slate-600"]].map(([l, v, c]) => (
+                                        ["Invalid", preview.invalid.length, "text-rose-600"], ["Skipped", preview.skipped.length + preview.duplicates_removed, "text-slate-600"]].map(([l, v, c]) => (
                                             <div key={l} className="p-3 bg-slate-50 rounded-xl border border-slate-100">
                                                 <p className="text-[9px] uppercase font-bold text-slate-400">{l}</p>
                                                 <p className={`text-lg font-bold ${c}`}>{v}</p>

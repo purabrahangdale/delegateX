@@ -1096,9 +1096,8 @@ function CreateWhatsAppTemplate() {
                                                                         key={c.id}
                                                                         type="button"
                                                                         onClick={() => handleUpdateButton(btn.id, "color", c.id)}
-                                                                        className={`w-3.5 h-3.5 rounded-full ${c.bg} transition ${
-                                                                            btn.color === c.id ? "ring-2 ring-offset-1 ring-slate-700 scale-110" : "opacity-60 hover:opacity-100"
-                                                                        }`}
+                                                                        className={`w-3.5 h-3.5 rounded-full ${c.bg} transition ${btn.color === c.id ? "ring-2 ring-offset-1 ring-slate-700 scale-110" : "opacity-60 hover:opacity-100"
+                                                                            }`}
                                                                         title={`Color accent: ${c.id}`}
                                                                     />
                                                                 ))}
@@ -1515,15 +1514,14 @@ function CreateWhatsAppTemplate() {
                                                     return (
                                                         <div
                                                             key={btn.id || idx}
-                                                            className={`w-full border font-bold text-[10px] py-1.5 px-3 rounded-xl flex items-center justify-center gap-1.5 shadow-2xs text-center transition ${
-                                                                isRed
+                                                            className={`w-full border font-bold text-[10px] py-1.5 px-3 rounded-xl flex items-center justify-center gap-1.5 shadow-2xs text-center transition ${isRed
                                                                     ? "bg-white/95 text-rose-800 border-rose-300 hover:bg-rose-50"
                                                                     : isGreen
-                                                                    ? "bg-white/95 text-emerald-800 border-emerald-300 hover:bg-emerald-50"
-                                                                    : isIndigo
-                                                                    ? "bg-white/95 text-indigo-800 border-indigo-300 hover:bg-indigo-50"
-                                                                    : "bg-white/95 text-slate-800 border-slate-300 hover:bg-slate-50"
-                                                            }`}
+                                                                        ? "bg-white/95 text-emerald-800 border-emerald-300 hover:bg-emerald-50"
+                                                                        : isIndigo
+                                                                            ? "bg-white/95 text-indigo-800 border-indigo-300 hover:bg-indigo-50"
+                                                                            : "bg-white/95 text-slate-800 border-slate-300 hover:bg-slate-50"
+                                                                }`}
                                                         >
                                                             <Icon size={12} className={isRed ? "text-rose-600 shrink-0" : isGreen ? "text-emerald-600 shrink-0" : "text-slate-600 shrink-0"} />
                                                             <span className="truncate">{btn.text || "Button Label"}</span>

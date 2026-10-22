@@ -272,9 +272,8 @@ function WhatsAppTemplates() {
                     filteredTemplates.map((tmpl) => (
                         <div
                             key={tmpl._id}
-                            className={`bg-white border rounded-2xl p-5 shadow-2xs hover:shadow-md transition-all flex flex-col justify-between ${
-                                tmpl.is_active ? "border-slate-200/80" : "border-slate-200/50 opacity-60"
-                            }`}
+                            className={`bg-white border rounded-2xl p-5 shadow-2xs hover:shadow-md transition-all flex flex-col justify-between ${tmpl.is_active ? "border-slate-200/80" : "border-slate-200/50 opacity-60"
+                                }`}
                         >
                             <div>
                                 <div className="flex items-start justify-between mb-3">
@@ -419,7 +418,7 @@ function WhatsAppTemplates() {
                                 </div>
                             )}
                             <p className="text-xs leading-relaxed whitespace-pre-wrap font-mono">{previewTemplate.content}</p>
-                            
+
                             {previewTemplate.response_buttons?.length > 0 && (
                                 <div className="mt-3 pt-2 border-t border-emerald-200/70 flex flex-col gap-1.5">
                                     {previewTemplate.response_buttons.map((btn, idx) => (
