@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import * as XLSX from "xlsx";
 import WhatsAppHeader from "../components/WhatsAppHeader";
@@ -8,8 +8,74 @@ import { useWhatsAppNumber } from "../context/WhatsAppNumberContext";
 import {
     FiUploadCloud, FiFileText, FiCheckCircle, FiUsers, FiAlertTriangle,
     FiUserCheck, FiStar, FiClock, FiSearch, FiCheck, FiX, FiPlus, FiEye,
-    FiEdit2, FiTrash2, FiPhone, FiMail, FiTag, FiDownload
+    FiEdit2, FiTrash2, FiPhone, FiMail, FiTag, FiDownload, FiFolder
 } from "react-icons/fi";
+
+const NEW_GROUP = "__new__";
+
+// Demo groups with sample contacts, seeded once per business number so the groups UI has data to work with.
+const DEMO_GROUPS = [
+    {
+        id: "grp_demo_vip", name: "VIP Customers", contacts: [
+            ["Aarav Sharma", "+919810011001", "aarav.sharma@example.com", "VIP Client", "Valid"],
+            ["Priya Mehta", "+919810011002", "priya.mehta@example.com", "VIP Client", "Valid"],
+            ["Rohan Kapoor", "+919810011003", "rohan.kapoor@example.com", "VIP Client", "Valid"],
+            ["Ananya Iyer", "+919810011004", "ananya.iyer@example.com", "VIP Client", "DND"]
+        ]
+    },
+    {
+        id: "grp_demo_leads", name: "New Leads", contacts: [
+            ["Vikram Singh", "+919820022001", "vikram.singh@example.com", "Recently Imported", "Valid"],
+            ["Sneha Reddy", "+919820022002", "sneha.reddy@example.com", "Recently Imported", "Valid"],
+            ["Karan Malhotra", "+919820022003", "", "Recently Imported", "Valid"],
+            ["Neha Gupta", "+919820022004", "neha.gupta@example.com", "Recently Contacted", "Valid"],
+            ["Arjun Nair", "+919820022005", "", "Recently Imported", "DND"]
+        ]
+    },
+    {
+        id: "grp_demo_regular", name: "Regular Clients", contacts: [
+            ["Meera Joshi", "+919830033001", "meera.joshi@example.com", "Regular Contact", "Valid"],
+            ["Siddharth Rao", "+919830033002", "siddharth.rao@example.com", "Regular Contact", "Valid"],
+            ["Kavya Pillai", "+919830033003", "kavya.pillai@example.com", "Recently Contacted", "Valid"]
+        ]
+    }
+];
+
+const seedDemoGroups = () => {
+    const key = contactsStorageKey();
+    const flagKey = `${key}:demoSeeded`;
+    try {
+        if (localStorage.getItem(flagKey)) return;
+        const groups = JSON.parse(localStorage.getItem(`${key}:groups`) || "[]");
+        const contacts = JSON.parse(localStorage.getItem(key) || "[]");
+        if (!Array.isArray(groups) || !Array.isArray(contacts)) return;
+        const now = new Date().toISOString();
+        const existingPhones = new Set(contacts.map(c => c.phone));
+        let nextId = Date.now();
+        DEMO_GROUPS.forEach(g => {
+            if (!groups.some(x => x.id === g.id)) groups.push({ id: g.id, name: g.name, createdAt: now });
+            g.contacts.forEach(([name, phone, email, category, status]) => {
+                if (existingPhones.has(phone)) return;
+                contacts.push({ id: nextId++, name, phone, email, category, status, notes: "Demo contact", lastContact: "Just Now", groupIds: [g.id] });
+            });
+        });
+        localStorage.setItem(`${key}:groups`, JSON.stringify(groups));
+        localStorage.setItem(key, JSON.stringify(contacts));
+        localStorage.setItem(flagKey, "1");
+    } catch (err) {
+        console.error("Failed to seed demo contact groups", err);
+    }
+};
+
+const getInitialGroups = () => {
+    seedDemoGroups();
+    try {
+        const parsed = JSON.parse(localStorage.getItem(`${contactsStorageKey()}:groups`) || "[]");
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+};
 
 const INITIAL_CONTACTS = [];
 
@@ -22,6 +88,7 @@ const DUMMY_PHONES = new Set([
 ]);
 
 const getInitialContacts = () => {
+    seedDemoGroups();
     try {
         // Contacts of the selected business number only (the page remounts when the number changes).
         const saved = localStorage.getItem(contactsStorageKey());
@@ -64,6 +131,101 @@ function WhatsAppContacts() {
         }
     }, [contacts, storageKey]);
 
+    // Contact groups (per business number, like contacts). Contacts reference groups via groupIds.
+    const [groups, setGroups] = useState(getInitialGroups);
+    const [importGroupId, setImportGroupId] = useState(NEW_GROUP);
+    const [newGroupName, setNewGroupName] = useState("");
+    const [viewGroupId, setViewGroupId] = useState(null);
+    const [renamingGroupId, setRenamingGroupId] = useState(null);
+    const [renameValue, setRenameValue] = useState("");
+
+    useEffect(() => {
+        try {
+            localStorage.setItem(`${storageKey}:groups`, JSON.stringify(groups));
+        } catch (err) {
+            console.error("Failed to save contact groups to localStorage", err);
+        }
+    }, [groups, storageKey]);
+
+    const groupContacts = (groupId) => contacts.filter(c => c.groupIds?.includes(groupId));
+
+    // Returns the target group id for an import (creating the group if needed), or null for no group.
+    const resolveImportGroup = (fileName) => {
+        if (!importGroupId) return null;
+        if (importGroupId !== NEW_GROUP) return importGroupId;
+        const groupName = newGroupName.trim() || fileName.replace(/\.[^.]+$/, "");
+        const existing = groups.find(g => g.name.toLowerCase() === groupName.toLowerCase());
+        if (existing) return existing.id;
+        const group = { id: `grp_${Date.now()}`, name: groupName, createdAt: new Date().toISOString() };
+        setGroups(prev => [...prev, group]);
+        return group.id;
+    };
+
+    const applyImport = (result, groupId) => {
+        const addToGroup = (c) => (groupId && !c.groupIds?.includes(groupId) ? { ...c, groupIds: [...(c.groupIds || []), groupId] } : c);
+        const existingIds = new Set(groupId ? result.existingIds : []);
+        setContacts(prev => [
+            ...result.validContacts.map(addToGroup),
+            ...prev.map(c => (existingIds.has(c.id) ? addToGroup(c) : c))
+        ]);
+        setNewGroupName("");
+    };
+
+    const importToastMessage = (count, groupedExisting) => {
+        let msg = `Successfully imported ${count} contact${count === 1 ? "" : "s"}`;
+        if (groupedExisting > 0) msg += ` and added ${groupedExisting} existing contact${groupedExisting === 1 ? "" : "s"} to the group`;
+        return `${msg}!`;
+    };
+
+    const startRenameGroup = (g) => {
+        setRenamingGroupId(g.id);
+        setRenameValue(g.name);
+    };
+
+    const saveRenameGroup = () => {
+        const cleanName = renameValue.trim();
+        if (!cleanName) {
+            showToast("Group name cannot be empty", "error");
+            return;
+        }
+        if (groups.some(g => g.id !== renamingGroupId && g.name.toLowerCase() === cleanName.toLowerCase())) {
+            showToast("A group with this name already exists", "error");
+            return;
+        }
+        setGroups(prev => prev.map(g => (g.id === renamingGroupId ? { ...g, name: cleanName } : g)));
+        setRenamingGroupId(null);
+        showToast("Group renamed", "success");
+    };
+
+    const renderGroupPicker = () => (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Upload To Group</label>
+                <select
+                    value={importGroupId}
+                    onChange={(e) => setImportGroupId(e.target.value)}
+                    className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl font-medium cursor-pointer"
+                >
+                    <option value={NEW_GROUP}>+ Create new group</option>
+                    {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                    <option value="">No group</option>
+                </select>
+            </div>
+            {importGroupId === NEW_GROUP && (
+                <div>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">New Group Name</label>
+                    <input
+                        type="text"
+                        placeholder="Defaults to the file name"
+                        value={newGroupName}
+                        onChange={(e) => setNewGroupName(e.target.value)}
+                        className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                    />
+                </div>
+            )}
+        </div>
+    );
+
     // Contacts saved before multi-number support are copied into this number only on request.
     const importLegacyContacts = () => {
         const phones = new Set(contacts.map(c => c.phone));
@@ -95,6 +257,7 @@ function WhatsAppContacts() {
     }, [location.search]);
 
     const [searchQuery, setSearchQuery] = useState("");
+    const fileInputRef = useRef(null);
     const [dragActive, setDragActive] = useState(false);
     const [uploading, setUploading] = useState(false);
     const [uploadSuccess, setUploadSuccess] = useState(false);
@@ -111,15 +274,17 @@ function WhatsAppContacts() {
     const [category, setCategory] = useState("Regular Contact");
     const [status, setStatus] = useState("Valid");
     const [notes, setNotes] = useState("");
+    const [selectedGroupId, setSelectedGroupId] = useState("");
     const [formErrors, setFormErrors] = useState({});
 
-    const resetForm = () => {
+    const resetForm = (defaultGroupId = "") => {
         setName("");
         setPhone("");
         setEmail("");
         setCategory("Regular Contact");
         setStatus("Valid");
         setNotes("");
+        setSelectedGroupId(defaultGroupId);
         setFormErrors({});
         setEditingContact(null);
     };
@@ -173,7 +338,10 @@ function WhatsAppContacts() {
                 email: email.trim(),
                 category,
                 status,
-                notes: notes.trim()
+                notes: notes.trim(),
+                groupIds: selectedGroupId
+                    ? (c.groupIds?.includes(selectedGroupId) ? c.groupIds : [...(c.groupIds || []), selectedGroupId])
+                    : (c.groupIds || [])
             } : c));
             if (showToast) showToast("Contact updated successfully", "success");
         } else {
@@ -186,7 +354,8 @@ function WhatsAppContacts() {
                 category,
                 status,
                 notes: notes.trim(),
-                lastContact: "Just Now"
+                lastContact: "Just Now",
+                groupIds: selectedGroupId ? [selectedGroupId] : []
             };
             setContacts(prev => [newContact, ...prev]);
             if (showToast) showToast("Contact added successfully", "success");
@@ -196,6 +365,8 @@ function WhatsAppContacts() {
         resetForm();
     };
 
+    const [selectedContactIds, setSelectedContactIds] = useState([]);
+
     const handleEdit = (c) => {
         setEditingContact(c);
         setName(c.name);
@@ -204,13 +375,73 @@ function WhatsAppContacts() {
         setCategory(c.category || "Regular Contact");
         setStatus(c.status || "Valid");
         setNotes(c.notes || "");
+        setSelectedGroupId(c.groupIds?.[0] || "");
         setShowAddModal(true);
     };
 
     const handleDelete = (id) => {
         if (window.confirm("Are you sure you want to delete this contact?")) {
             setContacts(prev => prev.filter(c => c.id !== id));
+            setSelectedContactIds(prev => prev.filter(x => x !== id));
             if (showToast) showToast("Contact deleted", "info");
+        }
+    };
+
+    const handleRemoveFromGroup = (contactId, groupId) => {
+        if (window.confirm("Remove this contact from this group?")) {
+            setContacts(prev => prev.map(c => c.id === contactId ? {
+                ...c,
+                groupIds: (c.groupIds || []).filter(id => id !== groupId)
+            } : c));
+            if (showToast) showToast("Contact removed from group", "info");
+        }
+    };
+
+    const handleUploadToSpecificGroup = async (e, targetGroupId) => {
+        const file = e.target?.files?.[0];
+        if (!file) return;
+
+        try {
+            const result = await parseContactsFromFile(file);
+            if (result.validContacts.length === 0 && result.existingIds.length === 0) {
+                if (showToast) showToast(`No valid contacts found in file (${result.duplicateCount} duplicates)`, "error");
+                return;
+            }
+
+            applyImport(result, targetGroupId);
+            setDuplicatesCount(prev => prev + (result.duplicateCount || 0));
+            if (showToast) {
+                const total = result.validContacts.length + result.existingIds.length;
+                showToast(`Successfully added ${total} contact${total === 1 ? "" : "s"} to this group!`, "success");
+            }
+        } catch (err) {
+            console.error("Group file upload error:", err);
+            if (showToast) showToast(err.message || "Failed to parse file", "error");
+        } finally {
+            if (e.target) e.target.value = "";
+        }
+    };
+
+    const handleDeleteSelected = () => {
+        const toDeleteIds = selectedContactIds.length > 0
+            ? selectedContactIds
+            : (filteredContacts.length > 0 ? filteredContacts.map(c => c.id) : []);
+
+        if (toDeleteIds.length === 0) {
+            if (showToast) showToast("No contacts selected to delete.", "info");
+            return;
+        }
+
+        const count = toDeleteIds.length;
+        const confirmMsg = selectedContactIds.length > 0
+            ? `Are you sure you want to delete ${count} selected contact${count > 1 ? "s" : ""}?`
+            : `No contacts selected. Are you sure you want to select and delete all ${count} contact${count > 1 ? "s" : ""} in this directory?`;
+
+        if (window.confirm(confirmMsg)) {
+            const idSet = new Set(toDeleteIds);
+            setContacts(prev => prev.filter(c => !idSet.has(c.id)));
+            setSelectedContactIds(prev => prev.filter(id => !idSet.has(id)));
+            if (showToast) showToast(`${count} contact${count > 1 ? "s" : ""} deleted successfully.`, "info");
         }
     };
 
@@ -248,7 +479,7 @@ function WhatsAppContacts() {
                         throw new Error("No sheet found in file.");
                     }
                     const worksheet = workbook.Sheets[firstSheetName];
-                    const rawRows = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+                    const rawRows = XLSX.utils.sheet_to_json(worksheet, { defval: "", raw: false });
 
                     if (!rawRows || rawRows.length === 0) {
                         throw new Error("The uploaded file contains no data rows.");
@@ -258,22 +489,41 @@ function WhatsAppContacts() {
                     let duplicateCount = 0;
                     let invalidCount = 0;
                     const seenPhones = new Set(contacts.map(c => c.phone.replace(/[\s-]/g, "")));
+                    const existingByPhone = new Map(contacts.map(c => [c.phone.replace(/[\s-]/g, ""), c.id]));
+                    const existingIds = new Set();
 
                     for (let i = 0; i < rawRows.length; i++) {
                         const row = rawRows[i];
-                        const nameKey = Object.keys(row).find(k => /^(name|full\s*name|contact\s*name|customer\s*name|client\s*name)/i.test(k.trim()));
-                        const phoneKey = Object.keys(row).find(k => /^(phone|phone\s*number|mobile|mobile\s*number|contact\s*number|wa\s*number|whatsapp)/i.test(k.trim()));
-                        const emailKey = Object.keys(row).find(k => /^(email|e-mail|mail)/i.test(k.trim()));
-                        const categoryKey = Object.keys(row).find(k => /^(category|group|type|tag)/i.test(k.trim()));
-                        const statusKey = Object.keys(row).find(k => /^(status|wa\s*status|whatsapp\s*status)/i.test(k.trim()));
-                        const notesKey = Object.keys(row).find(k => /^(notes|note|remark|remarks|comments)/i.test(k.trim()));
+                        const keys = Object.keys(row);
+                        if (keys.length === 0) continue;
 
-                        const rawName = (nameKey ? row[nameKey] : Object.values(row)[0] || "").toString().trim();
-                        const rawPhone = (phoneKey ? row[phoneKey] : Object.values(row)[1] || "").toString().trim();
-                        const rawEmail = (emailKey ? row[emailKey] : "").toString().trim();
-                        const rawCategory = (categoryKey ? row[categoryKey] : "Recently Imported").toString().trim() || "Recently Imported";
-                        const rawStatus = (statusKey ? row[statusKey] : "Valid").toString().trim() || "Valid";
-                        const rawNotes = (notesKey ? row[notesKey] : "").toString().trim();
+                        const nameKey = keys.find(k => /(name|full\s*name|contact\s*name|customer|client|lead|person|user)/i.test(k.trim()));
+                        const phoneKey = keys.find(k => /(phone|mobile|wa|whatsapp|contact|tel|cell|number|no)/i.test(k.trim()));
+                        const emailKey = keys.find(k => /(email|e-mail|mail)/i.test(k.trim()));
+                        const categoryKey = keys.find(k => /(category|group|type|tag)/i.test(k.trim()));
+                        const statusKey = keys.find(k => /(status|wa\s*status|whatsapp\s*status)/i.test(k.trim()));
+                        const notesKey = keys.find(k => /(notes|note|remark|remarks|comments|msg|message)/i.test(k.trim()));
+
+                        let rawName = nameKey ? String(row[nameKey] ?? "").trim() : "";
+                        let rawPhone = phoneKey ? String(row[phoneKey] ?? "").trim() : "";
+                        const rawEmail = (emailKey ? String(row[emailKey] ?? "") : "").trim();
+                        const rawCategory = (categoryKey ? String(row[categoryKey] ?? "") : "Recently Imported").trim() || "Recently Imported";
+                        const rawStatus = (statusKey ? String(row[statusKey] ?? "") : "Valid").trim() || "Valid";
+                        const rawNotes = (notesKey ? String(row[notesKey] ?? "") : "").trim();
+
+                        if (!rawName && !rawPhone) {
+                            const vals = Object.values(row).map(v => String(v ?? "").trim()).filter(Boolean);
+                            const phoneVal = vals.find(v => v.replace(/[^\d]/g, "").length >= 7);
+                            const nameVal = vals.find(v => v !== phoneVal && /[a-zA-Z]/.test(v));
+                            rawPhone = phoneVal || "";
+                            rawName = nameVal || "";
+                        } else if (!rawName) {
+                            const otherVals = Object.entries(row).filter(([k]) => k !== phoneKey).map(([, v]) => String(v ?? "").trim()).filter(Boolean);
+                            rawName = otherVals[0] || "";
+                        } else if (!rawPhone) {
+                            const otherVals = Object.entries(row).filter(([k]) => k !== nameKey).map(([, v]) => String(v ?? "").trim()).filter(Boolean);
+                            rawPhone = otherVals.find(v => v.replace(/[^\d]/g, "").length >= 7) || otherVals[0] || "";
+                        }
 
                         if (!rawName && !rawPhone) {
                             continue;
@@ -294,26 +544,30 @@ function WhatsAppContacts() {
                         const normalizedPhoneKey = cleanPhone.replace(/[\s-]/g, "");
                         if (seenPhones.has(normalizedPhoneKey)) {
                             duplicateCount++;
+                            // Already-saved contacts can still be added to the target group.
+                            if (existingByPhone.has(normalizedPhoneKey)) existingIds.add(existingByPhone.get(normalizedPhoneKey));
                             continue;
                         }
 
                         seenPhones.add(normalizedPhoneKey);
 
                         parsed.push({
-                            id: Date.now() + i + Math.floor(Math.random() * 1000),
+                            id: Date.now() + i + Math.floor(Math.random() * 10000),
                             name: rawName || `Contact ${parsed.length + 1}`,
                             phone: cleanPhone,
                             email: rawEmail || "",
                             category: ["VIP Client", "Recently Contacted", "Recently Imported", "Regular Contact"].includes(rawCategory) ? rawCategory : "Recently Imported",
                             status: /dnd/i.test(rawStatus) ? "DND" : "Valid",
                             notes: rawNotes || "Imported via file",
-                            lastContact: "Just Now"
+                            lastContact: "Just Now",
+                            groupIds: []
                         });
                     }
 
                     resolve({
                         fileName: file.name,
                         validContacts: parsed,
+                        existingIds: [...existingIds],
                         duplicateCount,
                         invalidCount,
                         totalRows: rawRows.length
@@ -340,24 +594,27 @@ function WhatsAppContacts() {
             if (showToast) showToast(err.message || "Failed to parse file. Please upload a valid CSV or Excel file.", "error");
         } finally {
             setIsParsing(false);
+            if (e.target) e.target.value = "";
         }
     };
 
     const handleConfirmImport = () => {
-        if (!parsedBatch || parsedBatch.validContacts.length === 0) {
+        const canGroupExisting = importGroupId && parsedBatch?.existingIds.length > 0;
+        if (!parsedBatch || (parsedBatch.validContacts.length === 0 && !canGroupExisting)) {
             if (showToast) showToast("No valid contacts to import", "error");
             return;
         }
 
         const count = parsedBatch.validContacts.length;
-        setContacts(prev => [...parsedBatch.validContacts, ...prev]);
+        const groupId = resolveImportGroup(parsedBatch.fileName);
+        applyImport(parsedBatch, groupId);
         setDuplicatesCount(prev => prev + (parsedBatch.duplicateCount || 0));
         setImportedCount(count);
         setUploadSuccess(true);
         setTimeout(() => setUploadSuccess(false), 4000);
 
         if (showToast) {
-            showToast(`Successfully imported ${count} contact${count > 1 ? "s" : ""}!`, "success");
+            showToast(importToastMessage(count, groupId ? parsedBatch.existingIds.length : 0), "success");
         }
 
         setShowImportModal(false);
@@ -371,7 +628,7 @@ function WhatsAppContacts() {
         setUploading(true);
         try {
             const result = await parseContactsFromFile(file);
-            if (result.validContacts.length === 0) {
+            if (result.validContacts.length === 0 && !(importGroupId && result.existingIds.length > 0)) {
                 if (showToast) {
                     showToast(`No new valid contacts found (${result.duplicateCount} duplicates, ${result.invalidCount} invalid rows)`, "error");
                 }
@@ -379,14 +636,15 @@ function WhatsAppContacts() {
             }
 
             const count = result.validContacts.length;
-            setContacts(prev => [...result.validContacts, ...prev]);
+            const groupId = resolveImportGroup(result.fileName);
+            applyImport(result, groupId);
             setDuplicatesCount(prev => prev + (result.duplicateCount || 0));
             setImportedCount(count);
             setUploadSuccess(true);
             setTimeout(() => setUploadSuccess(false), 4000);
 
             if (showToast) {
-                showToast(`Successfully imported ${count} contact${count > 1 ? "s" : ""}!`, "success");
+                showToast(importToastMessage(count, groupId ? result.existingIds.length : 0), "success");
             }
         } catch (err) {
             console.error("Upload error:", err);
@@ -395,6 +653,7 @@ function WhatsAppContacts() {
             }
         } finally {
             setUploading(false);
+            if (e.target) e.target.value = "";
         }
     };
 
@@ -404,6 +663,25 @@ function WhatsAppContacts() {
         (c.email && c.email.toLowerCase().includes(searchQuery.toLowerCase())) ||
         (c.notes && c.notes.toLowerCase().includes(searchQuery.toLowerCase()))
     );
+
+    const isAllSelected = filteredContacts.length > 0 && filteredContacts.every(c => selectedContactIds.includes(c.id));
+    const isSomeSelected = selectedContactIds.length > 0 && !isAllSelected;
+
+    const handleToggleSelectAll = () => {
+        if (isAllSelected) {
+            const filteredIdSet = new Set(filteredContacts.map(c => c.id));
+            setSelectedContactIds(prev => prev.filter(id => !filteredIdSet.has(id)));
+        } else {
+            const newSelected = new Set([...selectedContactIds, ...filteredContacts.map(c => c.id)]);
+            setSelectedContactIds(Array.from(newSelected));
+        }
+    };
+
+    const handleToggleContact = (id) => {
+        setSelectedContactIds(prev =>
+            prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+        );
+    };
 
     return (
         <div className="space-y-6 mt-2 pb-12 animate-fade-in">
@@ -455,12 +733,47 @@ function WhatsAppContacts() {
             {/* Contact Directory Table */}
             <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-[0_2px_8px_rgba(15,23,42,0.01)] space-y-4">
                 <div className="flex justify-between items-center">
-                    <h3 className="text-sm font-bold text-slate-900 font-display">Contact Directory ({filteredContacts.length})</h3>
+                    <div className="flex items-center gap-2.5">
+                        <h3 className="text-sm font-bold text-slate-900 font-display">Contact Directory ({filteredContacts.length})</h3>
+                        {selectedContactIds.length > 0 && (
+                            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-100">
+                                {selectedContactIds.length} selected
+                            </span>
+                        )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={handleDeleteSelected}
+                            disabled={filteredContacts.length === 0}
+                            className={`p-2 rounded-xl transition cursor-pointer flex items-center gap-1.5 ${
+                                selectedContactIds.length > 0
+                                    ? "text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 shadow-2xs"
+                                    : "text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-slate-200/60"
+                            } disabled:opacity-40 disabled:cursor-not-allowed`}
+                            title={selectedContactIds.length > 0 ? `Delete ${selectedContactIds.length} selected contact(s)` : "Delete selected contacts"}
+                        >
+                            <FiTrash2 size={15} />
+                            {selectedContactIds.length > 0 && (
+                                <span className="text-xs font-semibold">Delete ({selectedContactIds.length})</span>
+                            )}
+                        </button>
+                    </div>
                 </div>
                 <div className="overflow-x-auto">
                     <table className="w-full">
                         <thead>
                             <tr className="border-b border-slate-100 bg-slate-50/50">
+                                <th className="w-10 px-4 py-3 text-left">
+                                    <input
+                                        type="checkbox"
+                                        checked={isAllSelected}
+                                        ref={el => { if (el) el.indeterminate = isSomeSelected; }}
+                                        onChange={handleToggleSelectAll}
+                                        className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                                        title="Select all contacts"
+                                    />
+                                </th>
                                 <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Contact Name</th>
                                 <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Phone Number</th>
                                 <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Category</th>
@@ -471,7 +784,15 @@ function WhatsAppContacts() {
                         </thead>
                         <tbody>
                             {filteredContacts.length > 0 ? filteredContacts.map((c) => (
-                                <tr key={c.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
+                                <tr key={c.id} className={`border-b border-slate-50 hover:bg-slate-50/50 transition-colors ${selectedContactIds.includes(c.id) ? "bg-emerald-50/30" : ""}`}>
+                                    <td className="w-10 px-4 py-3">
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedContactIds.includes(c.id)}
+                                            onChange={() => handleToggleContact(c.id)}
+                                            className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                                        />
+                                    </td>
                                     <td className="px-4 py-3 text-xs font-bold text-slate-800">
                                         <div className="flex items-center gap-2">
                                             <div className="w-7 h-7 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-[10px]">
@@ -509,7 +830,7 @@ function WhatsAppContacts() {
                                 </tr>
                             )) : (
                                 <tr>
-                                    <td colSpan={6} className="px-4 py-10 text-center text-xs text-slate-400">
+                                    <td colSpan={7} className="px-4 py-10 text-center text-xs text-slate-400">
                                         No contacts matching your search criteria.
                                     </td>
                                 </tr>
@@ -519,6 +840,62 @@ function WhatsAppContacts() {
                 </div>
             </div>
 
+            {/* Contact Groups */}
+            <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-[0_2px_8px_rgba(15,23,42,0.01)] space-y-4">
+                <h3 className="text-sm font-bold text-slate-900 font-display flex items-center gap-2">
+                    <FiFolder className="text-emerald-500" size={16} />
+                    Contact Groups ({groups.length})
+                </h3>
+                {groups.length > 0 ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {groups.map(g => {
+                            const members = groupContacts(g.id);
+                            return (
+                                <div
+                                    key={g.id}
+                                    onClick={() => setViewGroupId(g.id)}
+                                    className="p-4 border border-slate-200/80 rounded-xl hover:border-emerald-400 hover:shadow-xs transition space-y-2 cursor-pointer bg-white group"
+                                >
+                                    {renamingGroupId === g.id ? (
+                                        <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                                            <input
+                                                type="text"
+                                                autoFocus
+                                                value={renameValue}
+                                                onChange={(e) => setRenameValue(e.target.value)}
+                                                onKeyDown={(e) => { if (e.key === "Enter") saveRenameGroup(); if (e.key === "Escape") setRenamingGroupId(null); }}
+                                                className="flex-1 min-w-0 px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                                            />
+                                            <button onClick={saveRenameGroup} className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition cursor-pointer" title="Save"><FiCheck size={13} /></button>
+                                            <button onClick={() => setRenamingGroupId(null)} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg transition cursor-pointer" title="Cancel"><FiX size={13} /></button>
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center justify-between gap-2">
+                                            <p className="text-xs font-bold text-slate-800 truncate group-hover:text-emerald-700 transition-colors">{g.name}</p>
+                                            <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                                                <button onClick={() => setViewGroupId(g.id)} className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition cursor-pointer" title="View Group Details">
+                                                    <FiEye size={13} />
+                                                </button>
+                                                <button onClick={() => startRenameGroup(g)} className="p-1.5 text-slate-400 hover:text-emerald-600 rounded-lg hover:bg-emerald-50 transition cursor-pointer" title="Rename Group">
+                                                    <FiEdit2 size={13} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                    <div className="flex items-center gap-2 text-[10px]">
+                                        <span className="font-bold text-slate-700 flex items-center gap-1"><FiUsers size={11} /> {members.length} contact{members.length === 1 ? "" : "s"}</span>
+                                        <span className="font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-600 border border-emerald-100">{members.filter(c => c.status === "Valid").length} Valid</span>
+                                        <span className="font-bold px-2 py-0.5 rounded-md bg-rose-50 text-rose-600 border border-rose-100">{members.filter(c => c.status === "DND").length} DND</span>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                ) : (
+                    <p className="text-xs text-slate-400">No groups yet. Upload a CSV / Excel file below to create one.</p>
+                )}
+            </div>
+
             {/* Drag & Drop Enterprise Importer Card */}
             <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-[0_2px_8px_rgba(15,23,42,0.01)] space-y-4">
                 <h3 className="text-sm font-bold text-slate-900 font-display flex items-center gap-2">
@@ -526,12 +903,22 @@ function WhatsAppContacts() {
                     Enterprise Contact Importer (CSV / Excel)
                 </h3>
 
+                {renderGroupPicker()}
+
                 <div
+                    onClick={() => fileInputRef.current?.click()}
                     onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
                     onDragLeave={() => setDragActive(false)}
                     onDrop={(e) => { e.preventDefault(); setDragActive(false); handleFileUpload(e); }}
-                    className={`border-2 border-dashed rounded-2xl p-8 flex flex-col items-center justify-center text-center transition-all ${dragActive ? "border-emerald-500 bg-emerald-50/30" : "border-slate-200 bg-slate-50/40 hover:bg-slate-50"}`}
+                    className={`border-2 border-dashed rounded-2xl p-8 flex flex-col items-center justify-center text-center transition-all cursor-pointer ${dragActive ? "border-emerald-500 bg-emerald-50/30" : "border-slate-200 bg-slate-50/40 hover:bg-slate-50"}`}
                 >
+                    <input
+                        ref={fileInputRef}
+                        type="file"
+                        onChange={handleFileUpload}
+                        accept=".csv, .xlsx, .xls"
+                        className="hidden"
+                    />
                     {uploading ? (
                         <div className="space-y-3">
                             <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto animate-spin">
@@ -542,17 +929,20 @@ function WhatsAppContacts() {
                     ) : uploadSuccess ? (
                         <div className="space-y-2">
                             <FiCheckCircle className="text-emerald-500 mx-auto" size={36} />
-                            <p className="text-xs font-bold text-emerald-700">Successfully Imported {importedCount > 0 ? importedCount : 150} Contacts!</p>
+                            <p className="text-xs font-bold text-emerald-700">Successfully Imported {importedCount} Contacts!</p>
                         </div>
                     ) : (
                         <>
                             <FiUploadCloud size={36} className="text-slate-300 mb-2" />
                             <p className="text-xs font-bold text-slate-700">Drag & Drop your CSV or XLSX file here</p>
                             <p className="text-[10px] text-slate-400 mt-1 max-w-xs">Automatic phone format normalization, duplicate filtering & DND detection.</p>
-                            <label className="mt-4 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-semibold shadow-sm transition cursor-pointer">
+                            <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
+                                className="mt-4 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-semibold shadow-sm transition cursor-pointer"
+                            >
                                 Browse Files
-                                <input type="file" onChange={handleFileUpload} accept=".csv, .xlsx" className="hidden" />
-                            </label>
+                            </button>
                         </>
                     )}
                 </div>
@@ -645,6 +1035,20 @@ function WhatsAppContacts() {
                             </div>
 
                             <div>
+                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Assign to Group (Optional)</label>
+                                <select
+                                    value={selectedGroupId}
+                                    onChange={(e) => setSelectedGroupId(e.target.value)}
+                                    className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl font-medium cursor-pointer"
+                                >
+                                    <option value="">No Group</option>
+                                    {groups.map(g => (
+                                        <option key={g.id} value={g.id}>{g.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div>
                                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Notes (Optional)</label>
                                 <textarea
                                     placeholder="Add any specific context or notes..."
@@ -675,7 +1079,7 @@ function WhatsAppContacts() {
                     <div className="relative bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md border border-slate-200 space-y-4">
                         <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                             <h3 className="text-sm font-bold text-slate-900 font-display">Contact Details</h3>
-                            <button onClick={() => setShowDetailModal(null)} className="text-slate-400 hover:text-slate-600"><FiX size={16} /></button>
+                            <button onClick={() => setShowDetailModal(null)} className="text-slate-400 hover:text-slate-600 cursor-pointer"><FiX size={16} /></button>
                         </div>
                         <div className="space-y-2 text-xs">
                             <p><span className="text-slate-400 font-medium">Name:</span> <strong className="text-slate-800">{showDetailModal.name}</strong></p>
@@ -685,10 +1089,145 @@ function WhatsAppContacts() {
                             <p><span className="text-slate-400 font-medium">WhatsApp Status:</span> <span className="bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded text-[10px] font-bold">{showDetailModal.status}</span></p>
                             {showDetailModal.notes && <p><span className="text-slate-400 font-medium">Notes:</span> <span className="text-slate-700 italic block mt-0.5 p-2 bg-slate-50 rounded-lg">{showDetailModal.notes}</span></p>}
                         </div>
-                        <button onClick={() => setShowDetailModal(null)} className="w-full py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold">Close</button>
+                        <button onClick={() => setShowDetailModal(null)} className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold cursor-pointer transition">Close</button>
                     </div>
                 </div>
             )}
+
+            {/* GROUP DETAIL MODAL */}
+            {viewGroupId && (() => {
+                const group = groups.find(g => g.id === viewGroupId);
+                if (!group) return null;
+                const members = groupContacts(group.id);
+                return (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
+                        <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-xs" onClick={() => setViewGroupId(null)}></div>
+                        <div className="relative bg-white rounded-2xl shadow-2xl p-6 w-full max-w-2xl border border-slate-200 space-y-4 max-h-[90vh] overflow-y-auto">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                                <div className="flex items-center gap-2.5">
+                                    <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                                        <FiFolder size={18} />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-sm font-bold text-slate-900 font-display flex items-center gap-2">
+                                            {group.name}
+                                        </h3>
+                                        <p className="text-[11px] text-slate-400">{members.length} contact{members.length === 1 ? "" : "s"} in this group</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 text-xs font-semibold shadow-2xs transition cursor-pointer" title="Import contacts to this group">
+                                        <FiUploadCloud size={13} className="text-emerald-600" />
+                                        <span>Import CSV/Excel</span>
+                                        <input type="file" accept=".csv, .xlsx, .xls" onChange={(e) => handleUploadToSpecificGroup(e, group.id)} className="hidden" />
+                                    </label>
+                                    <button
+                                        type="button"
+                                        onClick={() => { resetForm(group.id); setShowAddModal(true); }}
+                                        className="flex items-center gap-1.5 bg-[#25D366] hover:bg-emerald-600 text-white px-3 py-1.5 rounded-xl text-xs font-semibold shadow-xs transition cursor-pointer"
+                                        title="Add contact manually to this group"
+                                    >
+                                        <FiPlus size={13} /> Add Contact
+                                    </button>
+                                    <button onClick={() => setViewGroupId(null)} className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition cursor-pointer">
+                                        <FiX size={16} />
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-3 gap-2">
+                                <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-center">
+                                    <span className="text-[10px] font-bold text-slate-500 uppercase block">Total Contacts</span>
+                                    <span className="text-lg font-extrabold text-slate-800">{members.length}</span>
+                                </div>
+                                <div className="p-2.5 bg-emerald-50 border border-emerald-200/70 rounded-xl text-center">
+                                    <span className="text-[10px] font-bold text-emerald-600 uppercase block">Valid WhatsApp</span>
+                                    <span className="text-lg font-extrabold text-emerald-700">{members.filter(c => c.status === "Valid").length}</span>
+                                </div>
+                                <div className="p-2.5 bg-rose-50 border border-rose-200/70 rounded-xl text-center">
+                                    <span className="text-[10px] font-bold text-rose-600 uppercase block">DND Excluded</span>
+                                    <span className="text-lg font-extrabold text-rose-700">{members.filter(c => c.status === "DND").length}</span>
+                                </div>
+                            </div>
+
+                            <div className="border border-slate-200/80 rounded-xl overflow-hidden">
+                                <div className="max-h-72 overflow-y-auto divide-y divide-slate-100 text-xs">
+                                    {members.length > 0 ? members.map(c => (
+                                        <div key={c.id} className="p-3 flex items-center justify-between hover:bg-slate-50/60 transition-colors">
+                                            <div className="flex items-center gap-2.5 min-w-0">
+                                                <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-xs shrink-0">
+                                                    {c.name[0]?.toUpperCase() || "C"}
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <p className="font-bold text-slate-800 truncate">{c.name}</p>
+                                                    <div className="flex items-center gap-2 text-[11px] text-slate-500">
+                                                        <span className="font-mono text-slate-600">{c.phone}</span>
+                                                        {c.email && <span className="text-slate-400 truncate">• {c.email}</span>}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-2 shrink-0">
+                                                {c.category && (
+                                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-600 border border-indigo-100 hidden sm:inline-block">
+                                                        {c.category}
+                                                    </span>
+                                                )}
+                                                <span className={`text-[9px] font-bold px-2 py-0.5 rounded-md border ${c.status === "Valid" ? "bg-emerald-50 text-emerald-600 border-emerald-100" : "bg-rose-50 text-rose-600 border-rose-100"}`}>
+                                                    {c.status}
+                                                </span>
+                                                <div className="flex items-center gap-1 border-l border-slate-200/60 pl-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setShowDetailModal(c)}
+                                                        className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+                                                        title="View Details"
+                                                    >
+                                                        <FiEye size={13} />
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleEdit(c)}
+                                                        className="p-1.5 text-slate-400 hover:text-emerald-600 rounded-lg hover:bg-emerald-50 transition cursor-pointer"
+                                                        title="Edit Contact"
+                                                    >
+                                                        <FiEdit2 size={13} />
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleRemoveFromGroup(c.id, group.id)}
+                                                        className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition cursor-pointer"
+                                                        title="Remove from this group"
+                                                    >
+                                                        <FiTrash2 size={13} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )) : (
+                                        <div className="p-8 text-center space-y-3">
+                                            <p className="text-xs text-slate-400">No contacts in this group yet.</p>
+                                            <div className="flex items-center justify-center gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => { resetForm(group.id); setShowAddModal(true); }}
+                                                    className="px-3 py-1.5 bg-[#25D366] hover:bg-emerald-600 text-white rounded-xl text-xs font-semibold shadow-xs transition cursor-pointer"
+                                                >
+                                                    <FiPlus size={12} className="inline mr-1" /> Add Contact Manually
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                            <div className="flex justify-end pt-1">
+                                <button onClick={() => setViewGroupId(null)} className="px-5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition cursor-pointer">
+                                    Close
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
 
             {/* IMPORT CONTACTS MODAL */}
             {showImportModal && (
@@ -797,6 +1336,11 @@ function WhatsAppContacts() {
                                     </div>
                                 )}
 
+                                {renderGroupPicker()}
+                                {importGroupId && parsedBatch.existingIds.length > 0 && (
+                                    <p className="text-[10px] text-slate-500">{parsedBatch.existingIds.length} contact(s) already in your directory will also be added to this group.</p>
+                                )}
+
                                 <div className="flex gap-3 pt-2">
                                     <button
                                         type="button"
@@ -808,7 +1352,7 @@ function WhatsAppContacts() {
                                     <button
                                         type="button"
                                         onClick={handleConfirmImport}
-                                        disabled={parsedBatch.validContacts.length === 0}
+                                        disabled={parsedBatch.validContacts.length === 0 && !(importGroupId && parsedBatch.existingIds.length > 0)}
                                         className="flex-1 py-2.5 text-xs font-semibold text-white bg-[#25D366] hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl shadow-xs transition cursor-pointer"
                                     >
                                         Import {parsedBatch.validContacts.length} Contacts

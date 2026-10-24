@@ -29,6 +29,124 @@ export const isEventForActiveNumber = (data) => (data?.number_id || null) === (a
 // Error codes meaning the selected number is gone or no longer accessible (the selector re-validates).
 export const NUMBER_SELECTION_ERRORS = ["number_not_found", "number_forbidden", "no_default_number"];
 
+export const DUMMY_PHONES = new Set([
+    "+91-9876543210",
+    "+91-9876543211",
+    "+91-9876543212",
+    "+91-9876543213",
+    "+91-9876543214"
+]);
+
+export const DEMO_GROUPS = [
+    {
+        id: "grp_demo_vip", name: "VIP Customers", contacts: [
+            ["Aarav Sharma", "+919810011001", "aarav.sharma@example.com", "VIP Client", "Valid"],
+            ["Priya Mehta", "+919810011002", "priya.mehta@example.com", "VIP Client", "Valid"],
+            ["Rohan Kapoor", "+919810011003", "rohan.kapoor@example.com", "VIP Client", "Valid"],
+            ["Ananya Iyer", "+919810011004", "ananya.iyer@example.com", "VIP Client", "DND"]
+        ]
+    },
+    {
+        id: "grp_demo_leads", name: "New Leads", contacts: [
+            ["Vikram Singh", "+919820022001", "vikram.singh@example.com", "Recently Imported", "Valid"],
+            ["Sneha Reddy", "+919820022002", "sneha.reddy@example.com", "Recently Imported", "Valid"],
+            ["Karan Malhotra", "+919820022003", "", "Recently Imported", "Valid"],
+            ["Neha Gupta", "+919820022004", "neha.gupta@example.com", "Recently Contacted", "Valid"],
+            ["Arjun Nair", "+919820022005", "", "Recently Imported", "DND"]
+        ]
+    },
+    {
+        id: "grp_demo_regular", name: "Regular Clients", contacts: [
+            ["Meera Joshi", "+919830033001", "meera.joshi@example.com", "Regular Contact", "Valid"],
+            ["Siddharth Rao", "+919830033002", "siddharth.rao@example.com", "Regular Contact", "Valid"],
+            ["Kavya Pillai", "+919830033003", "kavya.pillai@example.com", "Recently Contacted", "Valid"]
+        ]
+    }
+];
+
+export const seedDemoGroups = () => {
+    const key = contactsStorageKey();
+    const flagKey = `${key}:demoSeeded`;
+    try {
+        if (localStorage.getItem(flagKey)) return;
+        const groups = JSON.parse(localStorage.getItem(`${key}:groups`) || "[]");
+        const contacts = JSON.parse(localStorage.getItem(key) || "[]");
+        if (!Array.isArray(groups) || !Array.isArray(contacts)) return;
+        const now = new Date().toISOString();
+        const existingPhones = new Set(contacts.map(c => c.phone));
+        let nextId = Date.now();
+        DEMO_GROUPS.forEach(g => {
+            if (!groups.some(x => x.id === g.id)) groups.push({ id: g.id, name: g.name, createdAt: now });
+            g.contacts.forEach(([name, phone, email, category, status]) => {
+                if (existingPhones.has(phone)) return;
+                contacts.push({ id: nextId++, name, phone, email, category, status, notes: "Demo contact", lastContact: "Just Now", groupIds: [g.id] });
+            });
+        });
+        localStorage.setItem(`${key}:groups`, JSON.stringify(groups));
+        localStorage.setItem(key, JSON.stringify(contacts));
+        localStorage.setItem(flagKey, "1");
+    } catch (err) {
+        console.error("Failed to seed demo contact groups", err);
+    }
+};
+
+export const getSavedGroups = () => {
+    seedDemoGroups();
+    try {
+        const key = contactsStorageKey();
+        const parsed = JSON.parse(localStorage.getItem(`${key}:groups`) || "[]");
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        const legacy = JSON.parse(localStorage.getItem(`${LEGACY_CONTACTS_STORAGE_KEY}:groups`) || "[]");
+        if (Array.isArray(legacy) && legacy.length > 0) return legacy;
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+};
+
+export const getSavedContacts = () => {
+    seedDemoGroups();
+    try {
+        const key = contactsStorageKey();
+        const saved = localStorage.getItem(key);
+        if (saved !== null) {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed)) {
+                return parsed.filter(c => !DUMMY_PHONES.has(c.phone));
+            }
+        }
+        const legacy = localStorage.getItem(LEGACY_CONTACTS_STORAGE_KEY);
+        if (legacy !== null) {
+            const parsed = JSON.parse(legacy);
+            if (Array.isArray(parsed)) {
+                return parsed.filter(c => !DUMMY_PHONES.has(c.phone));
+            }
+        }
+        return [];
+    } catch {
+        return [];
+    }
+};
+
+export const isContactInGroup = (contact, group) => {
+    if (!contact || !group) return false;
+    if (group.id === "all") return true;
+    if (group.id === "ungrouped") {
+        const hasGroupId = (Array.isArray(contact.groupIds) && contact.groupIds.length > 0) || Boolean(contact.groupId);
+        return !hasGroupId;
+    }
+    if (Array.isArray(contact.groupIds) && contact.groupIds.includes(group.id)) return true;
+    if (contact.groupId === group.id) return true;
+    if (group.name) {
+        const gName = group.name.trim().toLowerCase();
+        if (contact.group && contact.group.trim().toLowerCase() === gName) return true;
+        if (contact.category && contact.category.trim().toLowerCase() === gName) return true;
+        if (gName === "vip customers" && contact.category?.trim().toLowerCase() === "vip client") return true;
+        if (gName === "regular clients" && contact.category?.trim().toLowerCase() === "regular contact") return true;
+    }
+    return false;
+};
+
 // Identify the acting ERP user on WhatsApp actions (campaign launch/cancel audit trail).
 API.interceptors.request.use((config) => {
     const userEmail = localStorage.getItem("userEmail");

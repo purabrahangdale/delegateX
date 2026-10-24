@@ -8,6 +8,7 @@ import {
     apiErrorMessage, getSendableTemplates, getWhatsAppSettings, previewCampaign, createCampaign,
     listCampaigns, getCampaign, getCampaignRecipients, launchCampaign, cancelCampaign, pauseCampaign,
     resumeCampaign, retryFailedCampaignRecipients, deleteDraftCampaign, isEventForActiveNumber, contactsStorageKey,
+    getSavedContacts, getSavedGroups, isContactInGroup,
 } from "../services/whatsappApi";
 import { useNumberSwitchGuard, useWhatsAppNumber } from "../context/WhatsAppNumberContext";
 import { useToast } from "../../context/ToastContext";
@@ -15,18 +16,8 @@ import { useWebSockets } from "../../context/WebSocketContext";
 import {
     FiSend, FiPlus, FiX, FiChevronLeft, FiChevronRight, FiUsers, FiFileText, FiSliders, FiEye,
     FiCalendar, FiCheckCircle, FiAlertTriangle, FiRefreshCw, FiPause, FiPlay, FiSlash, FiRotateCcw,
-    FiInfo, FiTrash2, FiClock, FiPhone,
+    FiInfo, FiTrash2, FiClock, FiPhone, FiFolder,
 } from "react-icons/fi";
-
-const getSavedContacts = () => {
-    try {
-        // Contacts of the selected business number only.
-        const parsed = JSON.parse(localStorage.getItem(contactsStorageKey()) || "[]");
-        return Array.isArray(parsed) ? parsed : [];
-    } catch {
-        return [];
-    }
-};
 
 const newRequestId = () => (window.crypto?.randomUUID ? window.crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
@@ -111,7 +102,8 @@ function CampaignBuilder({ onClose, onCreated }) {
     const [template, setTemplate] = useState(null);
     const [audienceSource, setAudienceSource] = useState("contacts");
     const [contacts] = useState(getSavedContacts);
-    const [categoryFilter, setCategoryFilter] = useState("all");
+    const [groups] = useState(getSavedGroups);
+    const [selectedGroupId, setSelectedGroupId] = useState("all");
     const [selectedIds, setSelectedIds] = useState(() => new Set(getSavedContacts().map((c) => String(c.id ?? c.phone))));
     const [mapping, setMapping] = useState({});
     const [preview, setPreview] = useState(null);
@@ -135,15 +127,41 @@ function CampaignBuilder({ onClose, onCreated }) {
         getWhatsAppSettings().then((s) => setSender(s?.effective || null));
     }, []);
 
-    const categories = useMemo(() => Array.from(new Set(contacts.map((c) => c.category).filter(Boolean))), [contacts]);
-    const visibleContacts = useMemo(
-        () => contacts.filter((c) => categoryFilter === "all" || c.category === categoryFilter),
-        [contacts, categoryFilter]
+    const ungroupedContacts = useMemo(
+        () => contacts.filter((c) => isContactInGroup(c, { id: "ungrouped" })),
+        [contacts]
     );
+
+    const visibleContacts = useMemo(() => {
+        if (selectedGroupId === "all") return contacts;
+        if (selectedGroupId === "ungrouped") return ungroupedContacts;
+        const group = groups.find((g) => g.id === selectedGroupId);
+        return contacts.filter((c) => isContactInGroup(c, group || { id: selectedGroupId }));
+    }, [contacts, selectedGroupId, groups, ungroupedContacts]);
+
     const chosenContacts = useMemo(
         () => contacts.filter((c) => selectedIds.has(String(c.id ?? c.phone))),
         [contacts, selectedIds]
     );
+
+    const selectedGroupName = useMemo(() => {
+        if (selectedGroupId === "all") return "All Contacts";
+        if (selectedGroupId === "ungrouped") return "Ungrouped Contacts";
+        const g = groups.find((grp) => grp.id === selectedGroupId);
+        return g ? g.name : selectedGroupId;
+    }, [selectedGroupId, groups]);
+
+    const handleGroupChange = (groupId) => {
+        setSelectedGroupId(groupId);
+        const targetGroup = groups.find((g) => g.id === groupId);
+        const members = contacts.filter((c) => {
+            if (groupId === "all") return true;
+            if (groupId === "ungrouped") return isContactInGroup(c, { id: "ungrouped" });
+            return isContactInGroup(c, targetGroup || { id: groupId });
+        });
+        setSelectedIds(new Set(members.map((c) => String(c.id ?? c.phone))));
+        setPreview(null);
+    };
 
     const fieldOptions = useMemo(() => {
         const base = AUDIENCE_FIELDS[audienceSource];
@@ -227,7 +245,7 @@ function CampaignBuilder({ onClose, onCreated }) {
             const created = await createCampaign({
                 name: name.trim(), purpose: purpose.trim(), template_id: template._id, variable_mapping: mapping,
                 audience_source: audienceSource,
-                audience_label: audienceSource === "contacts" ? (categoryFilter === "all" ? "WhatsApp contacts" : `Contacts: ${categoryFilter}`) : audienceSource,
+                audience_label: audienceSource === "contacts" ? selectedGroupName : audienceSource,
                 recipients: recipientsPayload, timezone, client_request_id: requestId.current,
             });
             let result = created;
@@ -346,16 +364,35 @@ function CampaignBuilder({ onClose, onCreated }) {
 
                     {key === "recipients" && (
                         <div className="space-y-3">
-                            <div className="grid grid-cols-3 gap-2">
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                                 {[
-                                    { v: "contacts", l: "WhatsApp Contacts", d: `${contacts.length} saved` },
-                                    { v: "crm_leads", l: "CRM Leads", d: "All leads with a phone" },
-                                    { v: "employees", l: "Employees", d: "All employees with a phone" },
+                                    { id: "all", name: "All Contacts", desc: `${contacts.length} saved` },
+                                    ...groups.map((g) => ({
+                                        id: g.id,
+                                        name: g.name,
+                                        desc: `${contacts.filter((c) => isContactInGroup(c, g)).length} saved`,
+                                    })),
+                                    ...(ungroupedContacts.length > 0 ? [{
+                                        id: "ungrouped",
+                                        name: "Ungrouped",
+                                        desc: `${ungroupedContacts.length} saved`,
+                                    }] : []),
                                 ].map((o) => (
-                                    <button key={o.v} type="button" onClick={() => { setAudienceSource(o.v); setPreview(null); }}
-                                        className={`p-3 rounded-xl border-2 text-left cursor-pointer ${audienceSource === o.v ? "border-[#25D366] bg-emerald-50/30" : "border-slate-200"}`}>
-                                        <p className="text-xs font-bold text-slate-800">{o.l}</p>
-                                        <p className="text-[10px] text-slate-400">{o.d}</p>
+                                    <button
+                                        key={o.id}
+                                        type="button"
+                                        onClick={() => {
+                                            setAudienceSource("contacts");
+                                            handleGroupChange(o.id);
+                                        }}
+                                        className={`p-3 rounded-xl border-2 text-left cursor-pointer transition-all ${
+                                            selectedGroupId === o.id
+                                                ? "border-[#25D366] bg-emerald-50/30"
+                                                : "border-slate-200 hover:border-slate-300"
+                                        }`}
+                                    >
+                                        <p className="text-xs font-bold text-slate-800 truncate">{o.name}</p>
+                                        <p className="text-[10px] text-slate-400">{o.desc}</p>
                                     </button>
                                 ))}
                             </div>
@@ -365,26 +402,66 @@ function CampaignBuilder({ onClose, onCreated }) {
                                 ) : (
                                     <div className="border border-slate-200 rounded-xl">
                                         <div className="flex items-center justify-between gap-2 p-2.5 border-b border-slate-100">
-                                            <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="text-[11px] border border-slate-200 rounded-lg px-2 py-1">
-                                                <option value="all">All categories</option>
-                                                {categories.map((c) => <option key={c} value={c}>{c}</option>)}
-                                            </select>
-                                            <div className="flex gap-2 text-[10px] font-semibold">
-                                                <button type="button" className="text-emerald-700 cursor-pointer" onClick={() => { setSelectedIds((p) => new Set([...p, ...visibleContacts.map((c) => String(c.id ?? c.phone))])); setPreview(null); }}>Select shown</button>
-                                                <button type="button" className="text-slate-500 cursor-pointer" onClick={() => { setSelectedIds(new Set()); setPreview(null); }}>Clear</button>
-                                                <span className="text-slate-400">{chosenContacts.length} selected</span>
+                                            <div className="flex items-center gap-1.5">
+                                                <FiFolder className="text-emerald-600 shrink-0" size={13} />
+                                                <span className="text-[11px] font-semibold text-slate-700">
+                                                    {selectedGroupName}
+                                                </span>
+                                                <span className="text-[10px] text-slate-400 font-normal">
+                                                    ({visibleContacts.length})
+                                                </span>
+                                            </div>
+                                            <div className="flex gap-2 text-[10px] font-semibold items-center">
+                                                <button
+                                                    type="button"
+                                                    className="text-emerald-700 hover:text-emerald-800 cursor-pointer"
+                                                    onClick={() => {
+                                                        setSelectedIds(new Set(visibleContacts.map((c) => String(c.id ?? c.phone))));
+                                                        setPreview(null);
+                                                    }}
+                                                >
+                                                    Select shown
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="text-slate-500 hover:text-slate-700 cursor-pointer"
+                                                    onClick={() => {
+                                                        setSelectedIds(new Set());
+                                                        setPreview(null);
+                                                    }}
+                                                >
+                                                    Clear
+                                                </button>
+                                                <span className="text-slate-400 font-medium">{chosenContacts.length} selected</span>
                                             </div>
                                         </div>
                                         <div className="max-h-64 overflow-y-auto divide-y divide-slate-50">
-                                            {visibleContacts.map((c) => (
-                                                <label key={String(c.id ?? c.phone)} className="flex items-center gap-2.5 px-3 py-2 text-xs cursor-pointer hover:bg-slate-50">
-                                                    <input type="checkbox" checked={selectedIds.has(String(c.id ?? c.phone))} onChange={() => toggleContact(c)} />
-                                                    <span className="font-semibold text-slate-800">{c.name || "—"}</span>
-                                                    <span className="font-mono text-slate-500">{c.phone}</span>
-                                                    {c.category && <span className="text-[9px] bg-indigo-50 text-indigo-600 px-1.5 rounded">{c.category}</span>}
-                                                    {c.status === "DND" && <span className="text-[9px] bg-rose-50 text-rose-600 px-1.5 rounded">DND</span>}
-                                                </label>
-                                            ))}
+                                            {visibleContacts.length === 0 ? (
+                                                <div className="p-4 text-center text-xs text-slate-400">
+                                                    No contacts found in this group.
+                                                </div>
+                                            ) : (
+                                                visibleContacts.map((c) => {
+                                                    const contactGroups = groups.filter((g) => isContactInGroup(c, g));
+                                                    return (
+                                                        <label key={String(c.id ?? c.phone)} className="flex items-center gap-2.5 px-3 py-2 text-xs cursor-pointer hover:bg-slate-50">
+                                                            <input type="checkbox" checked={selectedIds.has(String(c.id ?? c.phone))} onChange={() => toggleContact(c)} />
+                                                            <span className="font-semibold text-slate-800">{c.name || "—"}</span>
+                                                            <span className="font-mono text-slate-500">{c.phone}</span>
+                                                            {contactGroups.length > 0 ? (
+                                                                contactGroups.map((g) => (
+                                                                    <span key={g.id} className="text-[9px] bg-emerald-50 text-emerald-700 border border-emerald-200/60 px-1.5 rounded font-medium">
+                                                                        {g.name}
+                                                                    </span>
+                                                                ))
+                                                            ) : (
+                                                                c.category && <span className="text-[9px] bg-indigo-50 text-indigo-600 px-1.5 rounded">{c.category}</span>
+                                                            )}
+                                                            {c.status === "DND" && <span className="text-[9px] bg-rose-50 text-rose-600 px-1.5 rounded">DND</span>}
+                                                        </label>
+                                                    );
+                                                })
+                                            )}
                                         </div>
                                     </div>
                                 )
