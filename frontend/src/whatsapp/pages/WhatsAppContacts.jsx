@@ -12,6 +12,7 @@ import {
 } from "react-icons/fi";
 
 const NEW_GROUP = "__new__";
+const EXISTING_GROUPS = "__existing__";
 
 // Demo groups with sample contacts, seeded once per business number so the groups UI has data to work with.
 const DEMO_GROUPS = [
@@ -134,6 +135,7 @@ function WhatsAppContacts() {
     // Contact groups (per business number, like contacts). Contacts reference groups via groupIds.
     const [groups, setGroups] = useState(getInitialGroups);
     const [importGroupId, setImportGroupId] = useState(NEW_GROUP);
+    const [selectedExistingGroupId, setSelectedExistingGroupId] = useState("");
     const [newGroupName, setNewGroupName] = useState("");
     const [viewGroupId, setViewGroupId] = useState(null);
     const [renamingGroupId, setRenamingGroupId] = useState(null);
@@ -149,21 +151,36 @@ function WhatsAppContacts() {
 
     const groupContacts = (groupId) => contacts.filter(c => c.groupIds?.includes(groupId));
 
-    // Returns the target group id for an import (creating the group if needed), or null for no group.
-    const resolveImportGroup = (fileName) => {
-        if (!importGroupId) return null;
-        if (importGroupId !== NEW_GROUP) return importGroupId;
-        const groupName = newGroupName.trim() || fileName.replace(/\.[^.]+$/, "");
-        const existing = groups.find(g => g.name.toLowerCase() === groupName.toLowerCase());
-        if (existing) return existing.id;
-        const group = { id: `grp_${Date.now()}`, name: groupName, createdAt: new Date().toISOString() };
-        setGroups(prev => [...prev, group]);
-        return group.id;
+    const getSelectedExistingGroupId = () => {
+        if (importGroupId === EXISTING_GROUPS) return selectedExistingGroupId;
+        if (importGroupId && importGroupId !== NEW_GROUP) return importGroupId;
+        return "";
     };
 
-    const applyImport = (result, groupId) => {
-        const addToGroup = (c) => (groupId && !c.groupIds?.includes(groupId) ? { ...c, groupIds: [...(c.groupIds || []), groupId] } : c);
-        const existingIds = new Set(groupId ? result.existingIds : []);
+    const hasImportGroup = importGroupId === NEW_GROUP || Boolean(getSelectedExistingGroupId());
+
+    // Returns the target group ids for an import (creating the new group if needed); empty for no group.
+    const resolveImportGroups = (fileName) => {
+        const existingId = getSelectedExistingGroupId();
+        if (existingId) {
+            const targetGroup = groups.find(g => g.id === existingId);
+            return targetGroup ? [targetGroup.id] : [];
+        }
+        if (importGroupId !== NEW_GROUP) return [];
+        const groupName = newGroupName.trim() || fileName.replace(/\.[^.]+$/, "");
+        const existing = groups.find(g => g.name.toLowerCase() === groupName.toLowerCase());
+        if (existing) return [existing.id];
+        const group = { id: `grp_${Date.now()}`, name: groupName, createdAt: new Date().toISOString() };
+        setGroups(prev => [...prev, group]);
+        return [group.id];
+    };
+
+    const applyImport = (result, groupIds) => {
+        const addToGroup = (c) => {
+            const missing = groupIds.filter(id => !c.groupIds?.includes(id));
+            return missing.length > 0 ? { ...c, groupIds: [...(c.groupIds || []), ...missing] } : c;
+        };
+        const existingIds = new Set(groupIds.length > 0 ? result.existingIds : []);
         setContacts(prev => [
             ...result.validContacts.map(addToGroup),
             ...prev.map(c => (existingIds.has(c.id) ? addToGroup(c) : c))
@@ -197,34 +214,62 @@ function WhatsAppContacts() {
         showToast("Group renamed", "success");
     };
 
-    const renderGroupPicker = () => (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Upload To Group</label>
-                <select
-                    value={importGroupId}
-                    onChange={(e) => setImportGroupId(e.target.value)}
-                    className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl font-medium cursor-pointer"
-                >
-                    <option value={NEW_GROUP}>+ Create new group</option>
-                    {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                    <option value="">No group</option>
-                </select>
-            </div>
-            {importGroupId === NEW_GROUP && (
+    const renderGroupPicker = () => {
+        const isExistingMode = importGroupId === EXISTING_GROUPS || (importGroupId !== NEW_GROUP && importGroupId !== "");
+        return (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">New Group Name</label>
-                    <input
-                        type="text"
-                        placeholder="Defaults to the file name"
-                        value={newGroupName}
-                        onChange={(e) => setNewGroupName(e.target.value)}
-                        className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                    />
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Upload To Group</label>
+                    <select
+                        value={isExistingMode ? EXISTING_GROUPS : importGroupId}
+                        onChange={(e) => {
+                            const val = e.target.value;
+                            setImportGroupId(val);
+                            if (val === EXISTING_GROUPS && !selectedExistingGroupId && groups.length > 0) {
+                                setSelectedExistingGroupId(groups[0].id);
+                            }
+                        }}
+                        className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl font-medium cursor-pointer"
+                    >
+                        <option value={NEW_GROUP}>+ Create new group</option>
+                        <option value={EXISTING_GROUPS}>Select existing group</option>
+                        <option value="">No group</option>
+                    </select>
                 </div>
-            )}
-        </div>
-    );
+                {importGroupId === NEW_GROUP && (
+                    <div>
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">New Group Name</label>
+                        <input
+                            type="text"
+                            placeholder="Defaults to the file name"
+                            value={newGroupName}
+                            onChange={(e) => setNewGroupName(e.target.value)}
+                            className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                        />
+                    </div>
+                )}
+                {isExistingMode && (
+                    <div>
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Select Existing Group</label>
+                        {groups.length > 0 ? (
+                            <select
+                                value={selectedExistingGroupId}
+                                onChange={(e) => setSelectedExistingGroupId(e.target.value)}
+                                className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl font-medium cursor-pointer"
+                            >
+                                <option value="">-- Choose a group --</option>
+                                {groups.map(g => (
+                                    <option key={g.id} value={g.id}>{g.name}</option>
+                                ))}
+                            </select>
+                        ) : (
+                            <p className="text-[11px] text-slate-400 py-2">No groups yet. Choose "+ Create new group" instead.</p>
+                        )}
+                    </div>
+                )}
+            </div>
+        );
+    };
 
     // Contacts saved before multi-number support are copied into this number only on request.
     const importLegacyContacts = () => {
@@ -408,7 +453,7 @@ function WhatsAppContacts() {
                 return;
             }
 
-            applyImport(result, targetGroupId);
+            applyImport(result, [targetGroupId]);
             setDuplicatesCount(prev => prev + (result.duplicateCount || 0));
             if (showToast) {
                 const total = result.validContacts.length + result.existingIds.length;
@@ -599,22 +644,27 @@ function WhatsAppContacts() {
     };
 
     const handleConfirmImport = () => {
-        const canGroupExisting = importGroupId && parsedBatch?.existingIds.length > 0;
+        const canGroupExisting = hasImportGroup && parsedBatch?.existingIds.length > 0;
         if (!parsedBatch || (parsedBatch.validContacts.length === 0 && !canGroupExisting)) {
             if (showToast) showToast("No valid contacts to import", "error");
             return;
         }
+        const isExistingMode = importGroupId === EXISTING_GROUPS || (importGroupId !== NEW_GROUP && importGroupId !== "");
+        if (isExistingMode && !getSelectedExistingGroupId()) {
+            if (showToast) showToast("Please select an existing group", "error");
+            return;
+        }
 
         const count = parsedBatch.validContacts.length;
-        const groupId = resolveImportGroup(parsedBatch.fileName);
-        applyImport(parsedBatch, groupId);
+        const groupIds = resolveImportGroups(parsedBatch.fileName);
+        applyImport(parsedBatch, groupIds);
         setDuplicatesCount(prev => prev + (parsedBatch.duplicateCount || 0));
         setImportedCount(count);
         setUploadSuccess(true);
         setTimeout(() => setUploadSuccess(false), 4000);
 
         if (showToast) {
-            showToast(importToastMessage(count, groupId ? parsedBatch.existingIds.length : 0), "success");
+            showToast(importToastMessage(count, groupIds.length > 0 ? parsedBatch.existingIds.length : 0), "success");
         }
 
         setShowImportModal(false);
@@ -625,10 +675,17 @@ function WhatsAppContacts() {
         const file = e.target?.files?.[0] || e.dataTransfer?.files?.[0];
         if (!file) return;
 
+        const isExistingMode = importGroupId === EXISTING_GROUPS || (importGroupId !== NEW_GROUP && importGroupId !== "");
+        if (isExistingMode && !getSelectedExistingGroupId()) {
+            if (showToast) showToast("Please select an existing group", "error");
+            if (e.target) e.target.value = "";
+            return;
+        }
+
         setUploading(true);
         try {
             const result = await parseContactsFromFile(file);
-            if (result.validContacts.length === 0 && !(importGroupId && result.existingIds.length > 0)) {
+            if (result.validContacts.length === 0 && !(hasImportGroup && result.existingIds.length > 0)) {
                 if (showToast) {
                     showToast(`No new valid contacts found (${result.duplicateCount} duplicates, ${result.invalidCount} invalid rows)`, "error");
                 }
@@ -636,15 +693,15 @@ function WhatsAppContacts() {
             }
 
             const count = result.validContacts.length;
-            const groupId = resolveImportGroup(result.fileName);
-            applyImport(result, groupId);
+            const groupIds = resolveImportGroups(result.fileName);
+            applyImport(result, groupIds);
             setDuplicatesCount(prev => prev + (result.duplicateCount || 0));
             setImportedCount(count);
             setUploadSuccess(true);
             setTimeout(() => setUploadSuccess(false), 4000);
 
             if (showToast) {
-                showToast(importToastMessage(count, groupId ? result.existingIds.length : 0), "success");
+                showToast(importToastMessage(count, groupIds.length > 0 ? result.existingIds.length : 0), "success");
             }
         } catch (err) {
             console.error("Upload error:", err);
@@ -1337,7 +1394,7 @@ function WhatsAppContacts() {
                                 )}
 
                                 {renderGroupPicker()}
-                                {importGroupId && parsedBatch.existingIds.length > 0 && (
+                                {hasImportGroup && parsedBatch.existingIds.length > 0 && (
                                     <p className="text-[10px] text-slate-500">{parsedBatch.existingIds.length} contact(s) already in your directory will also be added to this group.</p>
                                 )}
 
@@ -1352,7 +1409,7 @@ function WhatsAppContacts() {
                                     <button
                                         type="button"
                                         onClick={handleConfirmImport}
-                                        disabled={parsedBatch.validContacts.length === 0 && !(importGroupId && parsedBatch.existingIds.length > 0)}
+                                        disabled={parsedBatch.validContacts.length === 0 && !(hasImportGroup && parsedBatch.existingIds.length > 0)}
                                         className="flex-1 py-2.5 text-xs font-semibold text-white bg-[#25D366] hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl shadow-xs transition cursor-pointer"
                                     >
                                         Import {parsedBatch.validContacts.length} Contacts
@@ -1362,6 +1419,8 @@ function WhatsAppContacts() {
                         ) : (
                             /* File Drop Zone */
                             <div className="space-y-4">
+                                {renderGroupPicker()}
+
                                 <div
                                     onDragOver={(e) => { e.preventDefault(); setImportModalDragActive(true); }}
                                     onDragLeave={() => setImportModalDragActive(false)}
