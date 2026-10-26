@@ -1,0 +1,120 @@
+name: CI / CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  VITE_API_BASE_URL: https://deligatex.sparshmagic.com
+  APP_DIR: /home/ubuntu/delegatex
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Check backend compiles
+        run: python -m compileall -q backend/app backend/main.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+          retention-days: 7
+
+  deploy:
+    needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          echo "${{ secrets.DEPLOY_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+
+      - name: Package release
+        run: |
+          tar czf release.tgz \
+            --exclude=venv --exclude=__pycache__ --exclude=.env --exclude=.secrets \
+            --exclude=chroma_db --exclude=tests \
+            backend knowledge_base templates template dist
+
+      - name: Upload and deploy
+        env:
+          TARGET: ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}
+        run: |
+          SSH="ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes"
+          scp -i ~/.ssh/deploy_key -o IdentitiesOnly=yes release.tgz "$TARGET:/tmp/delegatex-release.tgz"
+          $SSH "$TARGET" "APP_DIR=$APP_DIR bash -s" <<'EOF'
+          set -euo pipefail
+          cd "$APP_DIR"
+          rm -rf .release && mkdir .release
+          tar xzf /tmp/delegatex-release.tgz -C .release
+          rm /tmp/delegatex-release.tgz
+
+          # Backend: replace code, keep .env / .secrets / venv / chroma_db
+          rm -rf backend/app
+          cp -a .release/backend/. backend/
+          for d in knowledge_base templates template; do
+            rm -rf "$d" && mv ".release/$d" "$d"
+          done
+          backend/venv/bin/pip install -q -r backend/requirements.txt
+
+          # Frontend: swap in the build produced by CI
+          rm -rf frontend/dist.old
+          [ -d frontend/dist ] && mv frontend/dist frontend/dist.old
+          mv .release/dist frontend/dist
+          rm -rf .release frontend/dist.old
+
+          pm2 restart delegatex-backend --update-env
+          pm2 save
+          EOF
+
+      - name: Health check
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS -o /dev/null https://deligatex.sparshmagic.com/docs; then
+              curl -fsS -o /dev/null https://deligatex.sparshmagic.com/
+              echo "Deployed and healthy"; exit 0
+            fi
+            sleep 10
+          done
+          echo "Backend did not come up within 5 minutes"; exit 1
+
+      - name: Remove SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
