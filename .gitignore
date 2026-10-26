@@ -42,3 +42,6 @@ lerna-debug.log*
 
 # WhatsApp access-token encryption key (generated on the server when WHATSAPP_TOKEN_ENCRYPTION_KEY is not set)
 backend/.secrets/
+
+# SSH keys
+*.pem
