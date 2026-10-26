@@ -214,6 +214,39 @@ function WhatsAppContacts() {
         showToast("Group renamed", "success");
     };
 
+    const handleDeleteGroup = (g) => {
+        const count = groupContacts(g.id).length;
+        const warning = count > 0
+            ? `Delete group "${g.name}"?\n\nWarning: all ${count} contact${count === 1 ? "" : "s"} in this group will also be permanently deleted. This cannot be undone.`
+            : `Delete group "${g.name}"? This cannot be undone.`;
+        if (!window.confirm(warning)) return;
+        const removedIds = new Set(groupContacts(g.id).map(c => c.id));
+        setContacts(prev => prev.filter(c => !removedIds.has(c.id)));
+        setSelectedContactIds(prev => prev.filter(id => !removedIds.has(id)));
+        setGroups(prev => prev.filter(x => x.id !== g.id));
+        if (viewGroupId === g.id) setViewGroupId(null);
+        showToast(`Group "${g.name}" deleted${count > 0 ? ` along with ${count} contact${count === 1 ? "" : "s"}` : ""}`, "info");
+    };
+
+    const [showCreateGroup, setShowCreateGroup] = useState(false);
+    const [createGroupName, setCreateGroupName] = useState("");
+
+    const handleCreateGroup = () => {
+        const cleanName = createGroupName.trim();
+        if (!cleanName) {
+            showToast("Group name cannot be empty", "error");
+            return;
+        }
+        if (groups.some(g => g.name.toLowerCase() === cleanName.toLowerCase())) {
+            showToast("A group with this name already exists", "error");
+            return;
+        }
+        setGroups(prev => [...prev, { id: `grp_${Date.now()}`, name: cleanName, createdAt: new Date().toISOString() }]);
+        setCreateGroupName("");
+        setShowCreateGroup(false);
+        showToast("Group created", "success");
+    };
+
     const renderGroupPicker = () => {
         const isExistingMode = importGroupId === EXISTING_GROUPS || (importGroupId !== NEW_GROUP && importGroupId !== "");
         return (
@@ -899,10 +932,36 @@ function WhatsAppContacts() {
 
             {/* Contact Groups */}
             <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-[0_2px_8px_rgba(15,23,42,0.01)] space-y-4">
-                <h3 className="text-sm font-bold text-slate-900 font-display flex items-center gap-2">
-                    <FiFolder className="text-emerald-500" size={16} />
-                    Contact Groups ({groups.length})
-                </h3>
+                <div className="flex justify-between items-center">
+                    <h3 className="text-sm font-bold text-slate-900 font-display flex items-center gap-2">
+                        <FiFolder className="text-emerald-500" size={16} />
+                        Contact Groups ({groups.length})
+                    </h3>
+                    {!showCreateGroup && (
+                        <button
+                            type="button"
+                            onClick={() => setShowCreateGroup(true)}
+                            className="flex items-center gap-1.5 bg-[#25D366] hover:bg-emerald-600 text-white px-3.5 py-1.5 rounded-xl text-xs font-semibold shadow-xs transition cursor-pointer"
+                        >
+                            <FiPlus size={13} /> Create Group
+                        </button>
+                    )}
+                </div>
+                {showCreateGroup && (
+                    <div className="flex items-center gap-1.5">
+                        <input
+                            type="text"
+                            autoFocus
+                            placeholder="Group name (e.g. Festive Offers)"
+                            value={createGroupName}
+                            onChange={(e) => setCreateGroupName(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === "Enter") handleCreateGroup(); if (e.key === "Escape") { setShowCreateGroup(false); setCreateGroupName(""); } }}
+                            className="flex-1 min-w-0 px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                        />
+                        <button onClick={handleCreateGroup} className="px-3.5 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-semibold transition cursor-pointer">Create</button>
+                        <button onClick={() => { setShowCreateGroup(false); setCreateGroupName(""); }} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl transition cursor-pointer" title="Cancel"><FiX size={14} /></button>
+                    </div>
+                )}
                 {groups.length > 0 ? (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                         {groups.map(g => {
@@ -936,6 +995,9 @@ function WhatsAppContacts() {
                                                 <button onClick={() => startRenameGroup(g)} className="p-1.5 text-slate-400 hover:text-emerald-600 rounded-lg hover:bg-emerald-50 transition cursor-pointer" title="Rename Group">
                                                     <FiEdit2 size={13} />
                                                 </button>
+                                                <button onClick={() => handleDeleteGroup(g)} className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition cursor-pointer" title="Delete Group">
+                                                    <FiTrash2 size={13} />
+                                                </button>
                                             </div>
                                         </div>
                                     )}
@@ -953,61 +1015,10 @@ function WhatsAppContacts() {
                 )}
             </div>
 
-            {/* Drag & Drop Enterprise Importer Card */}
-            <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-[0_2px_8px_rgba(15,23,42,0.01)] space-y-4">
-                <h3 className="text-sm font-bold text-slate-900 font-display flex items-center gap-2">
-                    <FiUploadCloud className="text-emerald-500" size={18} />
-                    Enterprise Contact Importer (CSV / Excel)
-                </h3>
-
-                {renderGroupPicker()}
-
-                <div
-                    onClick={() => fileInputRef.current?.click()}
-                    onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
-                    onDragLeave={() => setDragActive(false)}
-                    onDrop={(e) => { e.preventDefault(); setDragActive(false); handleFileUpload(e); }}
-                    className={`border-2 border-dashed rounded-2xl p-8 flex flex-col items-center justify-center text-center transition-all cursor-pointer ${dragActive ? "border-emerald-500 bg-emerald-50/30" : "border-slate-200 bg-slate-50/40 hover:bg-slate-50"}`}
-                >
-                    <input
-                        ref={fileInputRef}
-                        type="file"
-                        onChange={handleFileUpload}
-                        accept=".csv, .xlsx, .xls"
-                        className="hidden"
-                    />
-                    {uploading ? (
-                        <div className="space-y-3">
-                            <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto animate-spin">
-                                <FiUploadCloud size={24} />
-                            </div>
-                            <p className="text-xs font-bold text-slate-700">Validating phone numbers & cleaning DND contacts...</p>
-                        </div>
-                    ) : uploadSuccess ? (
-                        <div className="space-y-2">
-                            <FiCheckCircle className="text-emerald-500 mx-auto" size={36} />
-                            <p className="text-xs font-bold text-emerald-700">Successfully Imported {importedCount} Contacts!</p>
-                        </div>
-                    ) : (
-                        <>
-                            <FiUploadCloud size={36} className="text-slate-300 mb-2" />
-                            <p className="text-xs font-bold text-slate-700">Drag & Drop your CSV or XLSX file here</p>
-                            <p className="text-[10px] text-slate-400 mt-1 max-w-xs">Automatic phone format normalization, duplicate filtering & DND detection.</p>
-                            <button
-                                type="button"
-                                onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
-                                className="mt-4 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-semibold shadow-sm transition cursor-pointer"
-                            >
-                                Browse Files
-                            </button>
-                        </>
-                    )}
-                </div>
-            </div>
 
             {/* ADD / EDIT CONTACT MODAL */}
             {showAddModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 animate-fade-in">
                     <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-xs" onClick={() => setShowAddModal(false)}></div>
                     <div className="relative bg-white rounded-2xl shadow-2xl p-6 w-full max-w-lg border border-slate-200/90 animate-slide-up space-y-4">
                         <div className="flex items-center justify-between border-b border-slate-100 pb-3">
