@@ -383,6 +383,10 @@ export const getAutomationWorkflows = async () => (await API.get("/api/whatsapp/
 export const saveAutomationBinding = async (key, data) => (await API.put(`/api/whatsapp/automations/${key}`, data)).data;
 export const getAutomationRuns = async (params = {}) => (await API.get("/api/whatsapp/automations/runs", { params })).data;
 
+// ── Custom auto-reply to customer messages (per number) ────────
+export const getCustomerAutoReply = async () => (await API.get("/api/whatsapp/auto-reply")).data.auto_reply;
+export const saveCustomerAutoReply = async (data) => (await API.put("/api/whatsapp/auto-reply", data)).data.auto_reply;
+
 // ── Diagnostics ────────────────────────────────────────────────
 export const getWhatsAppDiagnostics = async () => (await API.get("/api/whatsapp/diagnostics")).data;
 export const subscribeAppToWaba = async () => (await API.post("/api/whatsapp/diagnostics/subscribe")).data;

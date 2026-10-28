@@ -71,6 +71,7 @@ INDEXES = [
     (whatsapp_webhook_event_collection, [("number_id", ASCENDING), ("kind", ASCENDING), ("received_at", DESCENDING)], {"name": "number_kind_received"}),
     (whatsapp_automation_run_collection, [("number_id", ASCENDING), ("created_at", DESCENDING)], {"name": "number_created_at"}),
     (automation_log_collection, [("number_id", ASCENDING), ("execution_time", DESCENDING)], {"name": "number_execution_time"}),
+    (automation_log_collection, [("execution_time", DESCENDING)], {"name": "execution_time"}),
     (chat_access_log_collection, [("number_id", ASCENDING), ("chat_opened_at", DESCENDING)], {"name": "number_opened_at"}),
 ]
 

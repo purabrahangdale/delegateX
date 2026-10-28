@@ -30,6 +30,7 @@ from app.whatsapp.models import (
     CampaignPreview,
     CampaignLaunch,
     AutomationBindingUpdate,
+    CustomerAutoReplyUpdate,
     WhatsAppNumberCreate,
     WhatsAppNumberUpdate,
     WhatsAppNumberVerify,
@@ -487,8 +488,11 @@ def get_automation_logs(
     if workflow:
         filters["workflow_name"] = workflow
     
-    logs = AutomationLogRepository.get_all(limit=limit, skip=skip, filters=filters if filters else None)
-    total = AutomationLogRepository.count(filters if filters else None)
+    r = gather(
+        logs=lambda: AutomationLogRepository.get_all(limit=limit, skip=skip, filters=filters if filters else None),
+        total=lambda: AutomationLogRepository.count(filters if filters else None),
+    )
+    logs, total = r["logs"], r["total"]
     
     return {
         "logs": logs,
@@ -1049,6 +1053,22 @@ def save_automation_binding(workflow_key: str, payload: AutomationBindingUpdate,
     return {"message": "Automation saved", "binding": binding}
 
 
+# Not under /automations/: PUT /automations/{workflow_key} would capture it.
+@router.get("/auto-reply")
+def get_customer_auto_reply(scope: NumberScope = Depends(number_scope)):
+    """Custom reply sent to customer messages that match no keyword route, for the selected number."""
+    return {"auto_reply": automation_service.get_customer_auto_reply(scope.number), "number_id": scope.id}
+
+
+@router.put("/auto-reply")
+def save_customer_auto_reply(payload: CustomerAutoReplyUpdate, request: Request, scope: NumberScope = Depends(number_scope)):
+    try:
+        config = automation_service.save_customer_auto_reply(payload.dict(), scope.number, _user(request))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"message": "Auto-reply saved", "auto_reply": config}
+
+
 @router.get("/automations/runs")
 def list_automation_runs(
     limit: int = Query(100, ge=1, le=500),
@@ -1112,7 +1132,7 @@ async def trigger_automation(workflow_name: str, payload: dict = None, scope: Nu
             raise HTTPException(status_code=404, detail=f"Unknown automation '{workflow_name}'")
 
         if result is None or result == []:
-            binding = automation_service.get_bindings(scope.number).get(key) or {}
+            binding = (await asyncio.to_thread(automation_service.get_bindings, scope.number)).get(key) or {}
             note = "Automation is disabled — bind an approved template first." if not binding.get("enabled") else "No matching records to notify."
             return {"message": note, "result": result}
         return {"message": f"Workflow '{workflow_name}' executed", "result": result}

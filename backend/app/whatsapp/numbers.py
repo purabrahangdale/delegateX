@@ -752,6 +752,10 @@ def save_bindings(number_id: str, workflow_key: str, binding: dict):
     numbers.update_one({"_id": ObjectId(number_id)}, {"$set": {f"automation_bindings.{workflow_key}": binding}})
 
 
+def save_customer_auto_reply(number_id: str, config: dict):
+    numbers.update_one({"_id": ObjectId(number_id)}, {"$set": {"customer_auto_reply": config}})
+
+
 # ═══════════════════════════════════════════════════════════════════
 # LEGACY MIGRATION (idempotent, additive)
 # ═══════════════════════════════════════════════════════════════════

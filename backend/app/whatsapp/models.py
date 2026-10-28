@@ -222,6 +222,12 @@ class AutomationBindingUpdate(BaseModel):
     recipient_phone: Optional[str] = None
 
 
+class CustomerAutoReplyUpdate(BaseModel):
+    enabled: bool = False
+    # WhatsApp caps a text message body at 4096 characters.
+    message: str = Field("", max_length=4096)
+
+
 # ── Automation Log Models ─────────────────────────────────────────
 
 class AutomationLog(BaseModel):

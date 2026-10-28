@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import WhatsAppHeader from "../components/WhatsAppHeader";
 import WhatsAppDiagnostics from "../components/WhatsAppDiagnostics";
+import WhatsAppAutoReplySettings from "../components/WhatsAppAutoReplySettings";
 import WhatsAppNumberManager, { ConnectionBadge } from "../components/WhatsAppNumberManager";
 import { useWhatsAppNumber } from "../context/WhatsAppNumberContext";
 import { useToast } from "../../context/ToastContext";
@@ -203,6 +204,9 @@ function WhatsAppSettings() {
                     )}
                 </div>
             </div>
+
+            {/* Saves on its own: the auto-reply belongs to the selected number, not the global settings above. */}
+            <WhatsAppAutoReplySettings />
 
             <WhatsAppDiagnostics />
         </div>
