@@ -810,10 +810,12 @@ async def sync_templates_from_meta(number: Optional[dict] = None) -> dict:
     coll.update_many({"status": {"$exists": False}}, {"$set": {"status": "DRAFT", "status_source": "local"}})
 
     from app.config.database import whatsapp_number_collection
-    summary = {"waba_id": waba_id, "total_on_meta": len(meta_templates), "created": created, "updated": updated,
+    from app.whatsapp import numbers as number_registry
+    summary ={"waba_id": waba_id, "total_on_meta": len(meta_templates), "created": created, "updated": updated,
                "marked_deleted": removed, "reset_to_draft": corrected, "synced_at": _now()}
     # Every number of this WABA shares the catalogue, so all of them record the sync.
     whatsapp_number_collection.update_many({"waba_id": waba_id}, {"$set": {"last_template_sync": summary}})
+    number_registry.clear_scope_cache()
     return summary
 
 

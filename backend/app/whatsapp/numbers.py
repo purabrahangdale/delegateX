@@ -17,18 +17,20 @@ Rules enforced here:
     restores the original record.
 """
 
+import copy
 import logging
 import os
 import re
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from bson import ObjectId
 from pymongo import ReturnDocument
 
-from app.config.database import whatsapp_number_collection as numbers
+from app.config.database import whatsapp_number_collection
 from app.whatsapp.meta_api import DEFAULT_GRAPH_VERSION, MetaApiError, MetaClient, MetaConfig, load_config, webhook_health_warnings
 
 logger = logging.getLogger("whatsapp.numbers")
@@ -56,6 +58,56 @@ class NumberError(Exception):
 
 def _now() -> str:
     return datetime.utcnow().isoformat()
+
+
+# ═══════════════════════════════════════════════════════════════════
+# SCOPE CACHE
+# ═══════════════════════════════════════════════════════════════════
+# Every number-scoped request looks its number up, and each Atlas round trip costs a few hundred
+# milliseconds. resolve_scope() keeps the looked-up documents briefly; any write through this module
+# clears them, so changes made in the app apply to the next request. The TTL only bounds edits made
+# outside the app (the backend runs as a single worker). Webhooks and background jobs read fresh.
+
+SCOPE_CACHE_TTL_SECONDS = 30
+_scope_cache: Dict[Tuple[str, str], Tuple[float, Optional[dict]]] = {}
+
+
+def clear_scope_cache():
+    _scope_cache.clear()
+
+
+def _cached_lookup(key: Tuple[str, str], load) -> Optional[dict]:
+    hit = _scope_cache.get(key)
+    if hit and hit[0] > time.monotonic():
+        doc = hit[1]
+    else:
+        doc = load()
+        _scope_cache[key] = (time.monotonic() + SCOPE_CACHE_TTL_SECONDS, doc)
+    return copy.deepcopy(doc)  # callers may modify their copy
+
+
+class _ScopeCacheClearingCollection:
+    """The numbers collection; every write method also clears the scope cache."""
+    _WRITES = {"insert_one", "insert_many", "update_one", "update_many", "replace_one", "delete_one", "delete_many",
+               "find_one_and_update", "find_one_and_replace", "find_one_and_delete", "bulk_write"}
+
+    def __init__(self, collection):
+        self._collection = collection
+
+    def __getattr__(self, name):
+        attr = getattr(self._collection, name)
+        if name not in self._WRITES:
+            return attr
+
+        def write(*args, **kwargs):
+            try:
+                return attr(*args, **kwargs)
+            finally:
+                clear_scope_cache()
+        return write
+
+
+numbers = _ScopeCacheClearingCollection(whatsapp_number_collection)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -274,11 +326,11 @@ def resolve_scope(requested_id: Optional[str], user: Optional[str]) -> NumberSco
     # Look the number up first: the registry count is only needed to explain a miss, which saves a
     # database round trip on every number-scoped request.
     if requested_id:
-        doc = get_number(requested_id)
+        doc = _cached_lookup(("id", str(requested_id)), lambda: get_number(requested_id))
         if not doc:
             raise NumberError("The selected WhatsApp number no longer exists. Select another number.", 404, "number_not_found")
     else:
-        doc = default_number()
+        doc = _cached_lookup(("default", ""), default_number)
         if not doc:
             if count_numbers() == 0:
                 return NumberScope(None)

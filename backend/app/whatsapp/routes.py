@@ -580,11 +580,9 @@ def update_settings(payload: AutomationSettingsUpdate):
 # WHATSAPP BUSINESS NUMBERS (multi-number / multi-WABA configuration)
 # ═══════════════════════════════════════════════════════════════════
 
-def _number_out(doc: dict) -> dict:
+def _number_out(doc: dict, event_times: Optional[dict] = None) -> dict:
     out = number_registry.serialize(doc)
-    stats = webhook_service.event_stats(doc)
-    out["webhook"] = {"last_event_at": stats["last_event_at"], "last_inbound_message_at": stats["last_inbound_message_at"],
-                      "last_status_event_at": stats["last_status_event_at"]}
+    out["webhook"] = event_times or webhook_service.last_event_times(doc)
     return out
 
 
@@ -599,15 +597,17 @@ def _number_call(fn, *args):
 def list_numbers(request: Request):
     """Business numbers the current user may use (credentials are never included)."""
     user = _user(request)
-    r = gather(all_numbers=number_registry.all_numbers, default=number_registry.default_number)
+    r = gather(all_numbers=number_registry.all_numbers, default=number_registry.default_number, config=load_config)
     docs = [d for d in r["all_numbers"] if number_registry.can_access(d, user)]
     default = r["default"]
+    # Every number's webhook times at once, instead of one number after another.
+    event_times = gather(**{str(d["_id"]): (lambda d=d: webhook_service.last_event_times(d)) for d in docs})
     return {
-        "numbers": [_number_out(d) for d in docs],
+        "numbers": [_number_out(d, event_times[str(d["_id"])]) for d in docs],
         "default_number_id": str(default["_id"]) if default and number_registry.can_access(default, user) else None,
         "can_manage": number_registry.is_admin(user),
         "purposes": number_registry.PURPOSES,
-        "graph_api_default_version": load_config().graph_version,
+        "graph_api_default_version": r["config"].graph_version,
     }
 
 

@@ -129,7 +129,6 @@ function WhatsAppInbox() {
         setShowMobileChat(true);
         // Automatically mark as read & remove green unread badge immediately
         markConversationAsRead(conv.conversation_id);
-        fetchMessages(conv);
     };
 
     const normalizePhone = (phone) => (phone || "").replace(/\D/g, "");
@@ -160,7 +159,6 @@ function WhatsAppInbox() {
                 if (realList.length > 0) {
                     const first = realList[0];
                     markConversationAsRead(first.conversation_id);
-                    fetchMessages(first);
                     return first;
                 }
                 return null;
@@ -220,18 +218,20 @@ function WhatsAppInbox() {
         }).catch(e => console.warn("Provider fetch error:", e));
     }, []);
 
+    // Load messages (and log the access) once per opened chat. Keyed by the chat's id, not the object:
+    // refreshing the conversation list replaces the object, which must not reload the open chat.
+    const selectedConvId = selectedConv ? (selectedConv.conversation_id || selectedConv.id || selectedConv.recipient_phone) : null;
     useEffect(() => {
         if (selectedConv) {
             fetchMessages(selectedConv);
-            const convId = selectedConv.conversation_id || selectedConv.id || selectedConv.recipient_phone;
-            if (convId) {
-                logChatAccess(convId, {
+            if (selectedConvId) {
+                logChatAccess(selectedConvId, {
                     contact_phone: selectedConv.recipient_phone,
                     contact_name: selectedConv.recipient
                 });
             }
         }
-    }, [selectedConv]);
+    }, [selectedConvId]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
     useEffect(() => {

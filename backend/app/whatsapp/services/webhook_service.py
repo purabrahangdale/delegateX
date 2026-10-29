@@ -426,14 +426,27 @@ async def _process_inbound_message(event: dict) -> str:
 # DIAGNOSTICS
 # ═══════════════════════════════════════════════════════════════════
 
+def _last_received(query: dict) -> Optional[str]:
+    doc = events.find_one(query, {"received_at": 1}, sort=[("received_at", -1)])
+    return doc.get("received_at") if doc else None
+
+
+def last_event_times(number: dict) -> dict:
+    """When one number last received any webhook event, status and message (the number list shows only these)."""
+    from app.whatsapp.concurrency import gather
+    scope = {"number_id": str(number["_id"])}
+    return gather(
+        last_event_at=lambda: _last_received({"$or": [scope, {"waba_id": number.get("waba_id"), "kind": "template_status"}]}),
+        last_status_event_at=lambda: _last_received({**scope, "kind": "status"}),
+        last_inbound_message_at=lambda: _last_received({**scope, "kind": "message"}),
+    )
+
+
 def event_stats(number: Optional[dict] = None) -> dict:
     """Webhook health for one number (template events are counted for its WABA)."""
     scope = {"number_id": str(number["_id"])} if number else {}
     waba_scope = {"waba_id": number.get("waba_id")} if number else {}
-
-    def last(query):
-        doc = events.find_one(query, sort=[("received_at", -1)])
-        return doc.get("received_at") if doc else None
+    last = _last_received
 
     from app.whatsapp.concurrency import gather
     return {

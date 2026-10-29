@@ -224,6 +224,36 @@ def test_multiple_numbers_saved_independently_and_tokens_never_returned(three, c
     assert numbers.get_number(str(c["_id"]))["display_name"] == "Sales"
 
 
+def test_request_scope_cache_follows_changes_made_in_the_app(three, client, monkeypatch):
+    a, b, c = three
+    assert client.get("/api/whatsapp/auto-reply", headers=hdr(b)).status_code == 200  # B is now cached
+    with monkeypatch.context() as m:
+        m.setattr(numbers, "get_number", lambda *a, **k: pytest.fail("cached number looked up again"))
+        assert client.get("/api/whatsapp/auto-reply", headers=hdr(b)).json()["number_id"] == str(b["_id"])
+    # Changes through the app clear the cache, so the very next request sees them.
+    r = client.put("/api/whatsapp/auto-reply", headers=hdr(b), json={"enabled": True, "message": "Thanks!"})
+    assert r.status_code == 200
+    assert client.get("/api/whatsapp/auto-reply", headers=hdr(b)).json()["auto_reply"]["message"] == "Thanks!"
+    numbers.set_default(str(c["_id"]), "admin@delegatex.com")
+    assert client.get("/api/whatsapp/auto-reply", headers=ADMIN).json()["number_id"] == str(c["_id"])
+    assert client.delete(f"/api/whatsapp/numbers/{b['_id']}", headers=ADMIN).status_code == 200
+    assert client.get("/api/whatsapp/auto-reply", headers=hdr(b)).json()["detail"]["code"] == "number_not_found"
+
+
+def test_dashboard_counts_per_status(legacy_number, client):
+    scope = {"number_id": str(legacy_number["_id"])}
+    database.whatsapp_message_collection.insert_many([{**scope, "status": s, "direction": "outbound", "created_at": "2020-01-01"}
+                                                      for s in ["queued", "sent", "sent", "delivered", "read", "failed", None]])
+    database.whatsapp_message_collection.insert_one({"number_id": "other", "status": "sent"})
+    database.automation_log_collection.insert_many([{**scope, "status": s} for s in ["success", "success", "failed", "skipped"]])
+    database.whatsapp_campaign_collection.insert_many([{**scope, "status": s} for s in ["queued", "paused", "scheduled", "completed", "partially_failed", "draft"]])
+    stats = client.get("/api/whatsapp/dashboard/stats", headers=hdr(legacy_number)).json()
+    assert (stats["pending_messages"], stats["sent_count"], stats["read_count"], stats["failed_messages"]) == (1, 2, 1, 1)
+    assert stats["successful_deliveries"] == 2 and stats["total_messages"] == 7
+    assert (stats["total_automations"], stats["success_automations"], stats["failed_automations"]) == (4, 2, 1)
+    assert stats["campaigns"] == {"active": 2, "scheduled": 1, "completed": 2}
+
+
 def test_add_number_validation_and_duplicates(three, client):
     r = client.post("/api/whatsapp/numbers", headers=ADMIN, json={"display_name": "", "phone_number": "12", "waba_id": "x",
                                                                   "phone_number_id": "444444", "access_token": ""})

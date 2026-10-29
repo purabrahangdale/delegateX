@@ -43,12 +43,14 @@ import logging
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 
 from app.websocket.notifications import router as notifications_router
 from app.chatbot.routes import router as chatbot_router
 from app.whatsapp.routes import router as whatsapp_router
 from app.whatsapp.websocket import router as whatsapp_ws_router
+from app.auth.routes import router as auth_router
 from fastapi.staticfiles import StaticFiles
 import os
 
@@ -104,12 +106,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# List responses (inbox, templates, campaigns) are tens to hundreds of KB of JSON; compressed they are
+# a fraction of that, which matters on the long link between users and the server.
+app.add_middleware(GZipMiddleware, minimum_size=1024)
+
 # Routes
 
 app.include_router(notifications_router)
 app.include_router(chatbot_router)
 app.include_router(whatsapp_router)
 app.include_router(whatsapp_ws_router)
+app.include_router(auth_router)
 
 
 @app.on_event("startup")

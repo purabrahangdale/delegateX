@@ -478,18 +478,18 @@ def get_dashboard_stats(scope: Optional[dict] = None) -> dict:
     from app.whatsapp.concurrency import gather
     since = (datetime.utcnow() - timedelta(days=30)).isoformat()
 
-    # The reads are independent, so they run concurrently: one database round trip instead of seventeen.
+    from app.config.database import automation_log_collection
+
+    def by_status(collection) -> Dict[Any, int]:
+        """Document count per status in one query (instead of one count per status)."""
+        return {d["_id"]: d["n"] for d in collection.aggregate([{"$match": scope}, {"$group": {"_id": "$status", "n": {"$sum": 1}}}])}
+
+    # The reads are independent, so they run concurrently: one database round trip instead of eight.
     r = gather(
         today_count=lambda: MessageRepository.count_today(scope),
-        pending_count=lambda: MessageRepository.count_by_status("queued", scope),
-        sent_count=lambda: MessageRepository.count_by_status("sent", scope),
-        delivered_count=lambda: MessageRepository.count_by_status("delivered", scope),
-        read_count=lambda: MessageRepository.count_by_status("read", scope),
-        failed_count=lambda: MessageRepository.count_by_status("failed", scope),
-        total_messages=lambda: MessageRepository.count(scope),
-        total_automations=lambda: AutomationLogRepository.count(scope),
-        success_automations=lambda: AutomationLogRepository.count_by_status("success", scope),
-        failed_automations=lambda: AutomationLogRepository.count_by_status("failed", scope),
+        messages=lambda: by_status(whatsapp_message_collection),
+        automations=lambda: by_status(automation_log_collection),
+        campaigns=lambda: by_status(whatsapp_campaign_collection),
         recent_logs=lambda: AutomationLogRepository.get_latest(5, scope),
         agg=lambda: list(whatsapp_message_collection.aggregate([
             {"$match": {**scope, "direction": "outbound", "created_at": {"$gte": since}, "wamid": {"$nin": [None, ""]}}},
@@ -502,20 +502,18 @@ def get_dashboard_stats(scope: Optional[dict] = None) -> dict:
             }},
         ])),
         replies_30d=lambda: whatsapp_message_collection.count_documents({**scope, "direction": "inbound", "created_at": {"$gte": since}}),
-        campaigns_active=lambda: whatsapp_campaign_collection.count_documents({**scope, "status": {"$in": ["queued", "processing", "paused"]}}),
-        campaigns_scheduled=lambda: whatsapp_campaign_collection.count_documents({**scope, "status": "scheduled"}),
-        campaigns_completed=lambda: whatsapp_campaign_collection.count_documents({**scope, "status": {"$in": ["completed", "partially_failed"]}}),
     )
+    messages, automations, campaigns = r["messages"], r["automations"], r["campaigns"]
     today_count = r["today_count"]
-    pending_count = r["pending_count"]
-    sent_count = r["sent_count"]
-    delivered_count = r["delivered_count"]
-    read_count = r["read_count"]
-    failed_count = r["failed_count"]
-    total_messages = r["total_messages"]
-    total_automations = r["total_automations"]
-    success_automations = r["success_automations"]
-    failed_automations = r["failed_automations"]
+    pending_count = messages.get("queued", 0)
+    sent_count = messages.get("sent", 0)
+    delivered_count = messages.get("delivered", 0)
+    read_count = messages.get("read", 0)
+    failed_count = messages.get("failed", 0)
+    total_messages = sum(messages.values())
+    total_automations = sum(automations.values())
+    success_automations = automations.get("success", 0)
+    failed_automations = automations.get("failed", 0)
     recent_logs = r["recent_logs"]
 
     agg = r["agg"]
@@ -530,9 +528,9 @@ def get_dashboard_stats(scope: Optional[dict] = None) -> dict:
         "failure_rate": round(o["failed"] / o["accepted"] * 100, 1) if o["accepted"] else None,
     }
     campaign_counts = {
-        "active": r["campaigns_active"],
-        "scheduled": r["campaigns_scheduled"],
-        "completed": r["campaigns_completed"],
+        "active": sum(campaigns.get(s, 0) for s in ("queued", "processing", "paused")),
+        "scheduled": campaigns.get("scheduled", 0),
+        "completed": sum(campaigns.get(s, 0) for s in ("completed", "partially_failed")),
     }
 
     return {

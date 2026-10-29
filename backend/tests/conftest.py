@@ -52,6 +52,7 @@ def clean_db():
     campaign_service._template_cache.clear()
     # The pre-multi-number configuration (env above) becomes the default "legacy" number, as on upgrade.
     from app.whatsapp import numbers
+    numbers.clear_scope_cache()  # the collections were dropped behind the registry's back
     numbers.run_startup_migration()
     yield
 
