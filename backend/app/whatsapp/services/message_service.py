@@ -152,7 +152,11 @@ async def send_message(
         }
 
     conversation_id = _generate_conversation_id(recipient_phone)
-    
+
+    # Normalize Windows/old-Mac line endings so the stored and delivered text are identical.
+    if content:
+        content = content.replace("\r\n", "\n").replace("\r", "\n")
+
     # Build message document
     message_data = {
         "conversation_id": conversation_id,

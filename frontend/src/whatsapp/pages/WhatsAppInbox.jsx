@@ -856,13 +856,14 @@ function WhatsAppInbox() {
                                             )}
                                         </div>
 
-                                        <input
-                                            type="text"
+                                        {/* textarea, not <input>: inputs strip line breaks (incl. pasted ones). Enter sends, Shift+Enter adds a new line. */}
+                                        <textarea
+                                            rows={Math.min(newMessage.split("\n").length, 6)}
                                             value={newMessage}
                                             onChange={(e) => setNewMessage(e.target.value)}
                                             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
                                             placeholder="Type a message..."
-                                            className="flex-1 px-4 py-2.5 text-xs bg-slate-50 border border-slate-200/80 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 transition font-sans"
+                                            className="flex-1 px-4 py-2.5 text-xs bg-slate-50 border border-slate-200/80 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 transition font-sans resize-none overflow-y-auto"
                                         />
 
                                         <button
