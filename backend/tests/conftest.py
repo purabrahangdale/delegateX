@@ -26,6 +26,7 @@ TEST_ENV = {
     # Test-only key so tests never create the server key file.
     "WHATSAPP_TOKEN_ENCRYPTION_KEY": "ZSgGZoBIOoernc6K4EhasCCquDnIVLZ26B2nzv8-LzU=",
     "WHATSAPP_ADMIN_EMAILS": "admin@delegatex.com",
+    "AUTH_SECRET_KEY": "test-auth-secret",
 }
 os.environ.update(TEST_ENV)
 
@@ -55,6 +56,20 @@ def clean_db():
     numbers.clear_scope_cache()  # the collections were dropped behind the registry's back
     numbers.run_startup_migration()
     yield
+
+
+@pytest.fixture(autouse=True)
+def signed_in(request, monkeypatch):
+    """Requests count as signed in, so tests choose the acting user with X-User-Email alone.
+    Tests marked `real_auth` exercise the actual sign-in check."""
+    if request.node.get_closest_marker("real_auth"):
+        return
+    from app.auth import routes as auth_routes
+    monkeypatch.setattr(auth_routes, "verify_token", lambda token: auth_routes.admin_email())
+
+
+def pytest_configure(config):
+    config.addinivalue_line("markers", "real_auth: run with the real sign-in check")
 
 
 @pytest.fixture

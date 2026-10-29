@@ -50,6 +50,7 @@ from app.websocket.notifications import router as notifications_router
 from app.chatbot.routes import router as chatbot_router
 from app.whatsapp.routes import router as whatsapp_router
 from app.whatsapp.websocket import router as whatsapp_ws_router
+from app.auth import routes as auth_routes
 from app.auth.routes import router as auth_router
 from fastapi.staticfiles import StaticFiles
 import os
@@ -95,6 +96,26 @@ async def unhandled_errors_as_json(request: Request, call_next):
     except Exception:
         logging.exception("Unhandled error on %s %s", request.method, request.url.path)
         return JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
+
+
+# Reachable without signing in: sign-in itself, Meta's webhook (verified by its own signature), media
+# files (loaded by <img> tags and Meta), and the health/docs pages the deploy health check polls.
+PUBLIC_PATHS = {"/", "/docs", "/docs/oauth2-redirect", "/redoc", "/openapi.json", "/api/auth/login", "/api/whatsapp/webhook"}
+PUBLIC_PREFIXES = ("/static/",)
+
+
+@app.middleware("http")
+async def require_sign_in(request: Request, call_next):
+    path = request.url.path.rstrip("/") or "/"
+    if request.method == "OPTIONS" or path in PUBLIC_PATHS or path.startswith(PUBLIC_PREFIXES):
+        return await call_next(request)
+    user = auth_routes.verify_token(auth_routes.bearer_token(request.headers.get("Authorization")))
+    if not user:
+        return JSONResponse(status_code=401, content={"detail": "Sign in required"})
+    # Routes identify the acting user by X-User-Email; default it to the signed-in account.
+    if not request.headers.get("X-User-Email"):
+        request.scope["headers"] = [*request.scope["headers"], (b"x-user-email", user.encode())]
+    return await call_next(request)
 
 
 app.add_middleware(

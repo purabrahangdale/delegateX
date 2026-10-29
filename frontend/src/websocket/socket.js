@@ -1,4 +1,5 @@
 // WebSocket Base client with reconnection logic & singleton pool
+import { getToken } from "../context/AuthContext";
 
 export const getWebSocketUrl = (path) => {
     const apiBase = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
@@ -43,7 +44,10 @@ export class ReconnectingWebSocket {
         }
 
         try {
-            this.socket = new WebSocket(this.url, this.protocols);
+            // The session token is read on every (re)connect, so a fresh sign-in is picked up.
+            const token = getToken();
+            const url = token ? `${this.url}${this.url.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}` : this.url;
+            this.socket = new WebSocket(url, this.protocols);
         } catch (e) {
             this.scheduleReconnect();
             return;

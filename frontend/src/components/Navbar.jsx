@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useLocation, Link } from "react-router-dom";
 import { FiBell, FiChevronDown, FiLogOut, FiMenu, FiX } from "react-icons/fi";
 import { useWebSockets } from "../context/WebSocketContext";
+import { getUserEmail, signOut } from "../context/AuthContext";
 
 
 function Navbar({ onToggleMobileMenu }) {
@@ -196,10 +197,10 @@ function Navbar({ onToggleMobileMenu }) {
                             <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-2xl shadow-xl py-1.5 z-50 animate-slide-up">
                                 <div className="px-4 py-2 border-b border-slate-100">
                                     <p className="text-xs font-semibold text-slate-800">Admin User</p>
-                                    <p className="text-[9px] text-slate-400 truncate">admin@delegatex.com</p>
+                                    <p className="text-[9px] text-slate-400 truncate">{getUserEmail()}</p>
                                 </div>
                                 <div className="border-t border-slate-100 pt-1">
-                                    <button className="w-full text-left px-4 py-2 text-xs text-rose-600 hover:bg-rose-50 flex items-center gap-2 transition font-medium cursor-pointer">
+                                    <button onClick={signOut} className="w-full text-left px-4 py-2 text-xs text-rose-600 hover:bg-rose-50 flex items-center gap-2 transition font-medium cursor-pointer">
                                         <FiLogOut size={13} className="text-rose-400" />
                                         Sign Out
                                     </button>
@@ -207,6 +208,16 @@ function Navbar({ onToggleMobileMenu }) {
                             </div>
                         )}
                     </div>
+
+                    {/* Logout */}
+                    <button
+                        onClick={signOut}
+                        title="Logout"
+                        className="flex items-center gap-1.5 p-2.5 sm:px-3.5 rounded-xl border border-rose-200 bg-white text-rose-600 hover:bg-rose-50 hover:border-rose-300 text-xs font-semibold transition cursor-pointer"
+                    >
+                        <FiLogOut size={15} />
+                        <span className="hidden sm:inline">Logout</span>
+                    </button>
                 </div>
             </header>
 

@@ -5,6 +5,7 @@ Follows the same pattern as existing CRM/Delegation WebSocket endpoints.
 """
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from app.auth.routes import accept_signed_in
 from app.websocket.manager import manager
 
 router = APIRouter()
@@ -21,6 +22,8 @@ async def websocket_whatsapp_endpoint(websocket: WebSocket):
     - automation_log_created: New automation execution logged
     - template_updated: Template created/updated/deleted
     """
+    if not await accept_signed_in(websocket):
+        return
     await manager.connect(websocket, "whatsapp")
     try:
         while True:

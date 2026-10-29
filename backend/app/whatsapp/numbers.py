@@ -165,8 +165,10 @@ def _hint(secret: str) -> str:
 # ═══════════════════════════════════════════════════════════════════
 
 def admin_emails() -> set:
+    from app.auth.routes import admin_email
     raw = os.getenv("WHATSAPP_ADMIN_EMAILS", "admin@delegatex.com")
-    return {e.strip().lower() for e in raw.split(",") if e.strip()}
+    # The console's sign-in account always administers WhatsApp.
+    return {e.strip().lower() for e in raw.split(",") if e.strip()} | {admin_email()}
 
 
 def is_admin(user: Optional[str]) -> bool:

@@ -1,7 +1,8 @@
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import { FiMail, FiLock, FiArrowRight, FiInfo, FiActivity, FiTrendingUp, FiEye, FiEyeOff } from "react-icons/fi";
 import { useToast } from "../context/ToastContext";
+import { isSignedIn, signIn } from "../context/AuthContext";
 import Logo from "../components/Logo";
 
 function Login() {
@@ -40,7 +41,7 @@ function Login() {
     };
 
     // Handle submit
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
         
         if (!validateForm()) {
@@ -50,24 +51,27 @@ function Login() {
 
         setIsLoading(true);
 
-        // Simulate API request authentication check
-        setTimeout(() => {
+        try {
+            await signIn(email.trim(), password, rememberMe);
+            showToast("Logged in successfully! Welcome back.", "success");
+            // Return to the page that asked for a sign-in (in-app paths only).
+            const redirect = new URLSearchParams(window.location.search).get("redirect");
+            navigate(redirect && redirect.startsWith("/") && !redirect.startsWith("//") ? redirect : "/", { replace: true });
+        } catch (error) {
+            const status = error?.response?.status;
+            const message = status === 401
+                ? "Invalid email or password."
+                : error?.response?.data?.detail || "Cannot reach the server. Please try again.";
+            setErrors({ form: message });
+            showToast("Authentication failed.", "error");
+        } finally {
             setIsLoading(false);
-            if (email === "admin@delegatex.com" && password === "admin123") {
-                showToast("Logged in successfully! Welcome back.", "success");
-                localStorage.setItem("authToken", "mock-saas-jwt-token");
-                localStorage.setItem("userEmail", email);
-                // Return to the page that asked for a sign-in (in-app paths only).
-                const redirect = new URLSearchParams(window.location.search).get("redirect");
-                navigate(redirect && redirect.startsWith("/") && !redirect.startsWith("//") ? redirect : "/");
-            } else {
-                setErrors({
-                    form: "Invalid email or password. Please use the default credentials."
-                });
-                showToast("Authentication failed. Invalid credentials.", "error");
-            }
-        }, 1200);
+        }
     };
+
+    if (isSignedIn()) {
+        return <Navigate to="/" replace />;
+    }
 
     // Check if form is partially filled to manage active/disabled state
     const isFormEmpty = !email || !password;
@@ -314,15 +318,6 @@ function Login() {
                             )}
                         </button>
                     </form>
-
-                    {/* Developer Credentials Helper Box */}
-                    <div className="mt-6 p-3 rounded-xl border border-indigo-100 bg-indigo-50/20 text-indigo-900 text-[10px] sm:text-[11px] leading-relaxed flex gap-2.5">
-                        <FiInfo className="text-indigo-500 shrink-0 mt-0.5" size={14} />
-                        <div>
-                            <span className="font-bold block text-indigo-950 mb-0.5">Testing Credentials</span>
-                            Use <code className="bg-indigo-50 px-1 py-0.5 rounded border border-indigo-150 font-mono font-bold text-indigo-700 select-all">admin@delegatex.com</code> and password <code className="bg-indigo-50 px-1 py-0.5 rounded border border-indigo-150 font-mono font-bold text-indigo-700 select-all">admin123</code>.
-                        </div>
-                    </div>
                 </div>
 
                 {/* Mobile Copyright Line */}

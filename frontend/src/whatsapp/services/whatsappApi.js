@@ -1,4 +1,5 @@
 import axios from "axios";
+import { attachToken, handleUnauthorized } from "../../context/AuthContext";
 
 const primaryBaseURL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
@@ -149,6 +150,7 @@ export const isContactInGroup = (contact, group) => {
 
 // Identify the acting ERP user on WhatsApp actions (campaign launch/cancel audit trail).
 API.interceptors.request.use((config) => {
+    attachToken(config);
     const userEmail = localStorage.getItem("userEmail");
     if (userEmail && !config.headers["X-User-Email"]) {
         config.headers["X-User-Email"] = userEmail;
@@ -187,7 +189,7 @@ API.interceptors.response.use(
             originalRequest.baseURL = "http://localhost:8000";
             return API(originalRequest);
         }
-        return Promise.reject(error);
+        return handleUnauthorized(error);
     }
 );
 

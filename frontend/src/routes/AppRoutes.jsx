@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
 import AdminLayout from "../layouts/AdminLayout";
 import Login from "../pages/Login";
+import ProtectedRoute from "./ProtectedRoute";
 import { WhatsAppNumberLayout } from "../whatsapp/context/WhatsAppNumberContext";
 
 // Pages load on demand, so the first screen does not download every page and its libraries.
@@ -25,6 +26,7 @@ function AppRoutes() {
         <BrowserRouter>
             <Routes>
                 <Route path="/login" element={<Login />} />
+                <Route element={<ProtectedRoute />}>
                 <Route element={<AdminLayout />}>
                     <Route path="/" element={<Navigate to="/whatsapp/dashboard" replace />} />
 
@@ -48,6 +50,8 @@ function AppRoutes() {
                     <Route path="/whatsapp/settings" element={<WhatsAppSettings />} />
                     </Route>
                 </Route>
+                </Route>
+                <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
         </BrowserRouter>
     );

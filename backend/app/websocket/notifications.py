@@ -1,6 +1,7 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
 from bson import ObjectId
 from datetime import datetime
+from app.auth.routes import accept_signed_in
 from app.websocket.manager import manager
 from app.config.database import notification_collection
 
@@ -30,6 +31,8 @@ async def trigger_notification(notification_type: str, title: str, message: str)
 
 @router.websocket("/ws/notifications")
 async def websocket_notifications_endpoint(websocket: WebSocket):
+    if not await accept_signed_in(websocket):
+        return
     await manager.connect(websocket, "notifications")
     try:
         while True:
