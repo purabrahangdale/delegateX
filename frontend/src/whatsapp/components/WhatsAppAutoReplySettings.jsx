@@ -18,7 +18,7 @@ const renderPreview = (text) => text
 
 /**
  * Custom auto-reply for customer messages (e.g. a reply to a template) that match no keyword
- * command, configured per business number. While disabled, the AI assistant answers instead.
+ * command, configured per business number. While disabled, no automatic reply is sent.
  */
 function WhatsAppAutoReplySettings() {
     const { showToast } = useToast();
@@ -75,7 +75,7 @@ function WhatsAppAutoReplySettings() {
             const config = await saveCustomerAutoReply({ enabled: form.enabled, message: form.message });
             setSavedConfig(config);
             setForm({ enabled: config.enabled, message: config.message });
-            showToast(config.enabled ? "Custom auto-reply is on" : "Auto-reply saved — the AI assistant will answer", "success");
+            showToast(config.enabled ? "Custom auto-reply is on" : "Auto-reply is off — no automatic reply will be sent", "success");
         } catch (err) {
             showToast(apiErrorMessage(err, "Could not save the auto-reply"), "error");
         } finally {
@@ -92,7 +92,7 @@ function WhatsAppAutoReplySettings() {
                     </h3>
                     <p className="text-[10px] text-slate-400 mt-0.5">
                         Sent when a customer replies (for example to a template message) and the reply is not a keyword command
-                        such as STATUS or AGENT. While off, the AI assistant answers instead.
+                        such as STATUS or AGENT. While off, no automatic reply is sent.
                         {selected && <> Applies to {selected.display_name}.</>}
                     </p>
                 </div>

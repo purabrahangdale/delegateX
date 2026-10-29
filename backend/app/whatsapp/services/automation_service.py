@@ -512,7 +512,7 @@ def _incoming_number(incoming_message: dict) -> Optional[dict]:
 # CUSTOM AUTO-REPLY (per number, Settings → Customer Reply Auto-Reply)
 # ═══════════════════════════════════════════════════════════════════
 # When enabled, customer messages that match no keyword route (e.g. "YES" in reply to a template)
-# get this fixed text instead of the AI FAQ bot answer. Disabled → the AI bot answers, as before.
+# get this fixed text. Disabled → no automatic reply (the AI FAQ bot is never a fallback).
 
 # Sender names stored when WhatsApp gave no profile name; greeting them by it would read oddly.
 _UNKNOWN_SENDER_NAMES = {"", "whatsapp user", "customer", "contact"}
@@ -809,10 +809,12 @@ async def detect_intent_and_route(incoming_message: dict) -> Optional[dict]:
         )
     
     else:
-        # Default: the number's custom auto-reply when enabled, otherwise the AI FAQ bot
+        # Default: the number's custom auto-reply when enabled, otherwise no automatic reply.
+        # The setting is read fresh from the number doc on every message (no cache).
         number = await asyncio.to_thread(_incoming_number, incoming_message)
         auto_reply = get_customer_auto_reply(number)
         if number and auto_reply["enabled"] and auto_reply["message"]:
             return await trigger_custom_auto_reply(incoming_message, number, auto_reply["message"])
-        return await trigger_ai_faq_bot(incoming_message)
+        logger.info(f"[Auto Reply] off for number_id={incoming_message.get('number_id')} — no automatic reply sent")
+        return None
 
