@@ -550,7 +550,7 @@ def list_recipients(campaign_id: str, state: Optional[str] = None, search: Optio
 
 def enqueue_single(*, template_id: str, mapping: dict, recipient: dict, idempotency_key: str,
                    automation_run_id: Optional[str] = None, workflow: Optional[str] = None,
-                   number: Optional[dict] = None) -> dict:
+                   number: Optional[dict] = None, requested_by: Optional[str] = None) -> dict:
     """Queue one template message from `number`. Returns the job (existing job if the key was already used)."""
     existing = jobs.find_one({"idempotency_key": idempotency_key})
     if existing:
@@ -566,6 +566,7 @@ def enqueue_single(*, template_id: str, mapping: dict, recipient: dict, idempote
         "campaign_id": None,
         "automation_run_id": automation_run_id,
         "workflow": workflow,
+        "requested_by": requested_by,
         "source": "automation",
         "idempotency_key": idempotency_key,
         "phone": ev["phone"],
@@ -753,9 +754,39 @@ async def _process_job(job: dict):
     })
     logger.info(f"[Campaign Worker] accepted {_trace(job, config)} wamid={wamid} "
                 f"(Meta message_status={result.get('message_status')}; delivery is confirmed only by the status webhook)")
+    _record_recent_template_use(job, accepted_at)
     # A status webhook may have arrived before the wamid was stored; apply any buffered events now.
     from app.whatsapp.services import webhook_service
     webhook_service.reapply_status_events_for(wamid)
+
+
+# Campaigns / jobs already recorded as a recent template use by this worker (a campaign counts once,
+# not once per recipient). Repeats across workers are harmless: the entry only moves to the top again.
+_recent_use_recorded: set = set()
+
+
+def _record_recent_template_use(job: dict, at: str):
+    """Remember the template of a message Meta accepted as recently used by the person who sent it."""
+    from app.whatsapp.services import recent_template_service
+    try:
+        key = f"campaign:{job['campaign_id']}" if job.get("campaign_id") else f"job:{job['_id']}"
+        if key in _recent_use_recorded:
+            return
+        if job.get("campaign_id"):
+            camp = campaigns.find_one({"_id": ObjectId(job["campaign_id"])}, {"launched_by": 1, "created_by": 1})
+            user = (camp or {}).get("launched_by") or (camp or {}).get("created_by")
+        elif job.get("requested_by") is not None:
+            user = job["requested_by"]
+        else:
+            return  # automation triggers are not a person choosing a template
+        if len(_recent_use_recorded) > 5000:
+            _recent_use_recorded.clear()
+        _recent_use_recorded.add(key)
+        recent_template_service.record_template_use(
+            template_id=job["template"]["local_id"], number_id=job.get("number_id"), user=user, used_at=at,
+        )
+    except Exception as e:
+        logger.warning(f"[Campaign Worker] Could not record recent template use for job {job.get('_id')}: {e}")
 
 
 def _trace(job: dict, config=None) -> str:

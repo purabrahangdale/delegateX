@@ -363,6 +363,23 @@ async def apply_status_event(st: dict, number_id: Optional[str] = None) -> str:
     return "applied" if applied else "stale_or_duplicate"
 
 
+def extract_button(msg: dict) -> Optional[dict]:
+    """The button a customer clicked, exactly as WhatsApp reported it (None for any other message type).
+    Template quick replies carry {text, payload}; interactive replies carry {id, title}."""
+    msg_type = msg.get("type")
+    if msg_type == "button":
+        btn = msg.get("button") or {}
+        if btn.get("text") or btn.get("payload"):
+            return {"id": btn.get("payload") or "", "title": btn.get("text") or btn.get("payload") or "", "type": "quick_reply"}
+    elif msg_type == "interactive":
+        inter = msg.get("interactive") or {}
+        for kind in ("button_reply", "list_reply"):
+            reply = inter.get(kind) or {}
+            if reply.get("id") or reply.get("title"):
+                return {"id": reply.get("id") or "", "title": reply.get("title") or reply.get("id") or "", "type": kind}
+    return None
+
+
 async def _process_inbound_message(event: dict) -> str:
     from app.whatsapp.services import message_service, automation_service
     from app.whatsapp import numbers as number_registry
@@ -412,7 +429,8 @@ async def _process_inbound_message(event: dict) -> str:
         source="meta_webhook",
         mode="meta_cloud",
         wamid=msg.get("id"),
-        metadata={"context": msg.get("context"), "timestamp": _ts(msg.get("timestamp"))},
+        metadata={"context": msg.get("context"), "timestamp": _ts(msg.get("timestamp")),
+                  **({"button": button} if (button := extract_button(msg)) else {})},
         number=number,
     )
     logger.info(f"[Webhook] inbound message wamid={msg.get('id')} persisted id={(saved or {}).get('_id')} "

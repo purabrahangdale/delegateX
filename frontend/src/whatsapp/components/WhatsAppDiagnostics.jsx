@@ -1,80 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
-    apiErrorMessage, getWhatsAppDiagnostics, subscribeAppToWaba, getSendableTemplates, sendTestTemplateMessage, getSendJob,
+    apiErrorMessage, getWhatsAppDiagnostics, subscribeAppToWaba,
 } from "../services/whatsappApi";
 import { useToast } from "../../context/ToastContext";
-import TemplateSelector from "./TemplateSelector";
-import VariableMappingEditor from "./VariableMappingEditor";
-import { unmappedSlots } from "./variableMapping";
-import { FiCheckCircle, FiXCircle, FiRefreshCw, FiCopy, FiActivity, FiSend, FiLink } from "react-icons/fi";
+import { FiCheckCircle, FiXCircle, FiRefreshCw, FiCopy, FiActivity, FiLink } from "react-icons/fi";
 
 const fmt = (iso) => (iso ? new Date(iso.endsWith("Z") ? iso : `${iso}Z`).toLocaleString() : "never");
-
-function TestSend() {
-    const { showToast } = useToast();
-    const [templates, setTemplates] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [template, setTemplate] = useState(null);
-    const [phone, setPhone] = useState("");
-    const [mapping, setMapping] = useState({});
-    const [job, setJob] = useState(null);
-    const [sending, setSending] = useState(false);
-    const poll = useRef(null);
-
-    useEffect(() => {
-        getSendableTemplates().then(setTemplates).catch(() => setTemplates([])).finally(() => setLoading(false));
-        return () => clearInterval(poll.current);
-    }, []);
-
-    const send = async () => {
-        setSending(true);
-        try {
-            const res = await sendTestTemplateMessage({ phone, template_id: template._id, variable_mapping: mapping, client_request_id: `${Date.now()}` });
-            setJob(res.job);
-            clearInterval(poll.current);
-            poll.current = setInterval(async () => {
-                try {
-                    const j = await getSendJob(res.job._id);
-                    setJob(j);
-                    if (["read", "failed", "unknown", "invalid", "skipped"].includes(j.state)) clearInterval(poll.current);
-                } catch { clearInterval(poll.current); }
-            }, 3000);
-        } catch (e) {
-            showToast(apiErrorMessage(e), "error");
-        } finally {
-            setSending(false);
-        }
-    };
-
-    const missing = template ? unmappedSlots(template.slots, mapping) : [];
-
-    return (
-        <div className="space-y-3">
-            <TemplateSelector templates={templates} loading={loading} selectedId={template?._id} onSelect={(t) => { setTemplate(t); setMapping({}); setJob(null); }} />
-            {template && (
-                <>
-                    <VariableMappingEditor slots={template.slots} mapping={mapping} onChange={setMapping}
-                        fieldOptions={[{ value: "name", label: "Recipient name" }, { value: "phone", label: "Phone" }]} />
-                    <div className="flex gap-2">
-                        <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Test number with country code, e.g. +91 98765 43210" className="flex-1 px-3 py-2 text-xs border border-slate-200 rounded-xl font-mono" />
-                        <button onClick={send} disabled={sending || !phone.trim() || missing.length > 0} className="flex items-center gap-1.5 bg-[#25D366] text-white text-xs font-semibold px-4 py-2 rounded-xl disabled:opacity-40 cursor-pointer">
-                            <FiSend size={12} /> {sending ? "Queuing..." : "Send test"}
-                        </button>
-                    </div>
-                    <p className="text-[10px] text-slate-400">Only send to a number that has opted in. The message goes through the real queue and Meta API.</p>
-                </>
-            )}
-            {job && (
-                <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 text-[11px] space-y-1">
-                    <p>State: <strong>{job.state}</strong> {job.state === "accepted" && <span className="text-slate-500">— accepted by Meta, waiting for a delivery webhook…</span>}</p>
-                    {job.wamid && <p>wamid: <span className="font-mono">{job.wamid}</span></p>}
-                    {(job.error || job.reason) && <p className="text-rose-600">{job.error?.code ? `[${job.error.code}] ` : ""}{job.error?.message || job.reason}{job.error?.details ? ` — ${job.error.details}` : ""}</p>}
-                    {(job.status_history || []).map((h, i) => <p key={i} className="text-slate-500">{fmt(h.at)} — {h.state} ({h.source})</p>)}
-                </div>
-            )}
-        </div>
-    );
-}
 
 function WhatsAppDiagnostics() {
     const { showToast } = useToast();
@@ -158,11 +89,6 @@ function WhatsAppDiagnostics() {
                         </div>
                     </>
                 )}
-            </div>
-
-            <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-2xs space-y-3">
-                <h3 className="text-sm font-bold text-slate-900 font-display flex items-center gap-2"><FiSend className="text-emerald-500" /> Send a test template message</h3>
-                <TestSend />
             </div>
         </div>
     );

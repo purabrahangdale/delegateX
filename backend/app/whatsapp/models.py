@@ -228,6 +228,12 @@ class CustomerAutoReplyUpdate(BaseModel):
     message: str = Field("", max_length=4096)
 
 
+class KeywordAutoReplyUpdate(BaseModel):
+    keyword: str = Field("", max_length=60)  # title of a custom keyword; ignored for STOP / YES
+    enabled: bool = False
+    message: str = Field("", max_length=4096)
+
+
 # ── Automation Log Models ─────────────────────────────────────────
 
 class AutomationLog(BaseModel):

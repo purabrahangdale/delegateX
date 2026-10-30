@@ -359,7 +359,7 @@ function CampaignBuilder({ onClose, onCreated }) {
                     {key === "template" && (
                         templatesError
                             ? <p className="text-xs text-rose-600 bg-rose-50 border border-rose-100 p-3 rounded-xl">{templatesError}</p>
-                            : <TemplateSelector templates={templates} selectedId={template?._id} onSelect={selectTemplate} loading={templatesLoading} />
+                            : <TemplateSelector templates={templates} selectedId={template?._id} onSelect={selectTemplate} loading={templatesLoading} showRecent />
                     )}
 
                     {key === "recipients" && (

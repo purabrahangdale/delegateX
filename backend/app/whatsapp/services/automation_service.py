@@ -18,6 +18,7 @@ own idempotency key. Customer-initiated replies always go out from the number th
 
 import asyncio
 import logging
+import re
 import time
 from datetime import datetime, date
 from typing import Dict, Any, Optional, List
@@ -585,6 +586,188 @@ async def trigger_custom_auto_reply(incoming_message: dict, number: dict, messag
 
 
 # ═══════════════════════════════════════════════════════════════════
+# KEYWORD AUTO-REPLIES (per number, Settings → Keyword-Based Auto-Replies)
+# ═══════════════════════════════════════════════════════════════════
+# A customer message that is exactly a configured keyword (any case; surrounding spaces and a trailing "." or
+# "!" ignored; a quick-reply button with that title counts) is handled here, ahead of the keyword routes and
+# the Customer Reply Auto-Reply. Each keyword has its own toggle and text, separate from that auto-reply.
+# STOP and YES are built in; any other keyword (usually a quick-reply button title such as NOT INTERESTED)
+# is stored under its slug when first saved. The customer's response is recorded whether or not the reply is on:
+#   STOP — process_incoming_reply has already put the sender on the Global DND list, so campaigns and every
+#          other automation skip them. Only this confirmation is sent past DND. Off → nothing is sent.
+#          The other opt-out words (UNSUBSCRIBE, ...) behave the same when configured as a keyword.
+#   YES  — matching CRM leads record the response and move to Interested (Converted/Lost are left as they
+#          are), without the Lead Status Update automation sending anything. Off → the message is handled
+#          like any other customer reply.
+#   Any other keyword — its reply only. Off → handled like any other customer reply.
+
+KEYWORD_AUTO_REPLIES: Dict[str, Dict[str, str]] = {
+    "stop": {
+        "keyword": "STOP",
+        "label": "STOP Auto-Reply",
+        "default_message": "You have been successfully unsubscribed from our promotional messages. "
+                           "You will no longer receive marketing updates from us.",
+    },
+    "yes": {
+        "keyword": "YES",
+        "label": "YES Auto-Reply",
+        "default_message": "Thank you for showing interest! Our team will contact you shortly with further details.",
+    },
+}
+# Same words process_incoming_reply puts on the DND list.
+_OPT_OUT_KEYWORDS = {"stop", "unsubscribe", "remove", "quit", "dnd"}
+# Meta's limit for a quick-reply button title; longer messages are never a keyword.
+MAX_KEYWORD_LENGTH = 25
+_YES_KEEPS_STATUS = ["Interested", "Converted", "Lost"]
+
+
+def normalize_keyword(text: Optional[str]) -> str:
+    """'  Not   interested! ' → 'NOT INTERESTED'."""
+    return " ".join((text or "").strip().rstrip(".! ").upper().split())
+
+
+def keyword_key(text: Optional[str]) -> Optional[str]:
+    """Storage key of a keyword: 'NOT INTERESTED' → 'not_interested' (safe as a MongoDB field name)."""
+    key = re.sub(r"[\W_]+", "_", normalize_keyword(text).lower()).strip("_")
+    return key or None
+
+
+def reply_keyword(content: Optional[str], number: Optional[dict] = None) -> Optional[str]:
+    """Key of the keyword the whole message is (built-in, or saved on `number`), else None."""
+    if len(normalize_keyword(content)) > MAX_KEYWORD_LENGTH:
+        return None
+    key = keyword_key(content)
+    if key in KEYWORD_AUTO_REPLIES or (key and key in ((number or {}).get("keyword_auto_replies") or {})):
+        return key
+    return None
+
+
+def _keyword_config(key: str, config: dict) -> dict:
+    builtin = KEYWORD_AUTO_REPLIES.get(key, {})
+    default_message = builtin.get("default_message", "")
+    return {
+        "key": key,
+        "keyword": builtin.get("keyword") or config.get("keyword") or key.replace("_", " ").upper(),
+        "builtin": bool(builtin),
+        "enabled": bool(config.get("enabled")),
+        # Never saved → the suggested text, so the editor starts with something sensible (still off).
+        "message": config["message"] if "message" in config else default_message,
+        "default_message": default_message,
+        "updated_at": config.get("updated_at"),
+        "updated_by": config.get("updated_by"),
+    }
+
+
+def get_keyword_auto_replies(number: Optional[dict]) -> Dict[str, dict]:
+    stored = (number or {}).get("keyword_auto_replies") or {}
+    keys = list(KEYWORD_AUTO_REPLIES) + [k for k in stored if k not in KEYWORD_AUTO_REPLIES]
+    return {key: _keyword_config(key, stored.get(key) or {}) for key in keys}
+
+
+def save_keyword_auto_reply(key: str, data: dict, number: Optional[dict], user: Optional[str] = None) -> dict:
+    if key in KEYWORD_AUTO_REPLIES:
+        label = KEYWORD_AUTO_REPLIES[key]["keyword"]
+    else:
+        label = normalize_keyword(data.get("keyword"))
+        if not label:
+            raise ValueError("Enter the keyword (the quick-reply button title) for this auto-reply.")
+        if len(label) > MAX_KEYWORD_LENGTH:
+            raise ValueError(f"A keyword can be at most {MAX_KEYWORD_LENGTH} characters.")
+        if keyword_key(label) != key:
+            raise ValueError(f"Keyword '{label}' does not match auto-reply '{key}'.")
+    if number is None:
+        raise ValueError("Select a WhatsApp business number before configuring keyword auto-replies.")
+    message = (data.get("message") or "").strip()
+    enabled = bool(data.get("enabled"))
+    if enabled and not message:
+        raise ValueError(f"Enter the {label} reply message before enabling it.")
+    config = {
+        "keyword": label,
+        "enabled": enabled,
+        "message": message,
+        "updated_at": datetime.utcnow().isoformat(),
+        "updated_by": user,
+    }
+    number_registry.save_keyword_auto_reply(str(number["_id"]), key, config)
+    return _keyword_config(key, config)
+
+
+def _lead_phone_query(phone: str) -> Optional[dict]:
+    """Leads whose phone ends with the same 10 digits, however it was typed ("+91 98111-11111")."""
+    digits = re.sub(r"\D", "", phone or "")
+    if len(digits) < 10:
+        return None
+    return {"phone": {"$regex": r"\D*".join(digits[-10:]) + r"\D*$"}}
+
+
+def record_yes_response(incoming_message: dict) -> dict:
+    """Store the YES on matching CRM leads and mark them Interested (status written directly: no automation)."""
+    query = _lead_phone_query(incoming_message.get("sender_phone", ""))
+    if not query:
+        return {"leads_matched": 0, "leads_marked_interested": 0}
+    response = {
+        "keyword": "YES",
+        "at": datetime.utcnow().isoformat(),
+        "number_id": incoming_message.get("number_id"),
+        "message_id": str(incoming_message.get("_id") or ""),
+    }
+    moved = crm_lead_collection.update_many({**query, "status": {"$nin": _YES_KEEPS_STATUS}},
+                                            {"$set": {"status": "Interested", "statusUpdatedAt": response["at"]}})
+    matched = crm_lead_collection.update_many(query, {"$set": {"whatsappResponse": response}})
+    return {"leads_matched": matched.matched_count, "leads_marked_interested": moved.modified_count}
+
+
+async def trigger_keyword_auto_reply(incoming_message: dict, number: dict, keyword: str, message_text: str) -> Optional[dict]:
+    """Send the number's reply to `keyword` (free-form, inside the 24h window the customer just opened)."""
+    start_time = time.time()
+    label = get_keyword_auto_replies(number)[keyword]["keyword"]
+    kw = KEYWORD_AUTO_REPLIES.get(keyword) or {"keyword": label, "label": f"{label} Auto-Reply"}
+    sender_phone = incoming_message.get("sender_phone", "")
+    sender_name = incoming_message.get("sender", "Customer")
+    reply_content = render_customer_auto_reply(message_text, sender_name)
+
+    message = await send_message(
+        recipient_phone=sender_phone,
+        content=reply_content,
+        recipient_name=sender_name,
+        automation_workflow=kw["label"],
+        number=number,
+        metadata={"trigger": f"keyword_auto_reply:{keyword}", "original_message_id": incoming_message.get("_id", "")},
+        # A YES from someone on DND still gets nothing; only the confirmation of an opt-out itself goes through.
+        allow_dnd=keyword in _OPT_OUT_KEYWORDS,
+    )
+    skipped = (message or {}).get("status") == "skipped"
+
+    await _log_automation(
+        workflow_name=kw["label"],
+        trigger=f"Incoming Message ('{kw['keyword']}')",
+        status=AutomationStatus.SKIPPED.value if skipped else AutomationStatus.SUCCESS.value,
+        recipient=sender_name,
+        recipient_phone=sender_phone,
+        message_preview=reply_content,
+        duration_ms=int((time.time() - start_time) * 1000),
+        error=(message or {}).get("message") if skipped else None,
+        number_id=incoming_message.get("number_id"),
+    )
+    return message
+
+
+async def handle_reply_keyword(incoming_message: dict, keyword: str, number: Optional[dict] = None) -> tuple:
+    """(handled, sent message). handled=False when a non-opt-out reply is off: route it like any other reply."""
+    if keyword == "yes":
+        recorded = await asyncio.to_thread(record_yes_response, incoming_message)
+        logger.info(f"[Keyword Auto-Reply] YES from {incoming_message.get('sender_phone')} recorded: {recorded}")
+    # Read fresh from the number doc on every message (no cache), like the customer auto-reply.
+    if number is None:
+        number = await asyncio.to_thread(_incoming_number, incoming_message)
+    config = get_keyword_auto_replies(number).get(keyword) or {}
+    if number and config.get("enabled") and config.get("message"):
+        return True, await trigger_keyword_auto_reply(incoming_message, number, keyword, config["message"])
+    logger.info(f"[Keyword Auto-Reply] {keyword.upper()} reply off for number_id={incoming_message.get('number_id')}")
+    return keyword in _OPT_OUT_KEYWORDS, None
+
+
+# ═══════════════════════════════════════════════════════════════════
 # CUSTOMER-INITIATED AUTOMATIONS (free-form replies inside the 24h window)
 # ═══════════════════════════════════════════════════════════════════
 
@@ -747,7 +930,18 @@ async def detect_intent_and_route(incoming_message: dict) -> Optional[dict]:
     Automatically detect user intent and route to the appropriate handler.
     """
     content = incoming_message.get("content", "").lower().strip()
-    
+
+    # Keyword replies first: an opted-out customer must never fall through to another automation.
+    # Custom keywords live on the number doc, read only for messages short enough to be a button title.
+    keyword, number = reply_keyword(content), None
+    if not keyword and len(normalize_keyword(content)) <= MAX_KEYWORD_LENGTH and keyword_key(content):
+        number = await asyncio.to_thread(_incoming_number, incoming_message)
+        keyword = reply_keyword(content, number)
+    if keyword:
+        handled, message = await handle_reply_keyword(incoming_message, keyword, number)
+        if handled:
+            return message
+
     # Intent detection rules
     if "test" in content:
         reply = "WhatsApp automation is working."

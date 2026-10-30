@@ -664,8 +664,8 @@ class DNDRepository:
         return doc is not None
 
     @staticmethod
-    def get_dnd_list(search: Optional[str] = None, reason: Optional[str] = None, source: Optional[str] = None, skip: int = 0, limit: int = 100) -> Dict[str, Any]:
-        """Fetch list of DND numbers with optional search and filters."""
+    def list_query(search: Optional[str] = None, reason: Optional[str] = None, source: Optional[str] = None) -> dict:
+        """Mongo filter for active DND numbers matching the list page's search and filters."""
         query = {"is_active": True}
         if reason and reason.lower() != "all":
             query["reason"] = reason
@@ -678,6 +678,12 @@ class DNDRepository:
                 {"clean_phone": {"$regex": s, "$options": "i"}},
                 {"notes": {"$regex": s, "$options": "i"}},
             ]
+        return query
+
+    @staticmethod
+    def get_dnd_list(search: Optional[str] = None, reason: Optional[str] = None, source: Optional[str] = None, skip: int = 0, limit: int = 100) -> Dict[str, Any]:
+        """Fetch list of DND numbers with optional search and filters."""
+        query = DNDRepository.list_query(search=search, reason=reason, source=source)
 
         r = gather(
             total=lambda: whatsapp_dnd_collection.count_documents(query),

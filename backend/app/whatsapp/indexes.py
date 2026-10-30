@@ -15,6 +15,7 @@ from app.config.database import (
     whatsapp_webhook_event_collection,
     whatsapp_automation_run_collection,
     whatsapp_number_collection,
+    whatsapp_recent_template_collection,
     automation_log_collection,
     chat_access_log_collection,
 )
@@ -33,6 +34,8 @@ INDEXES = [
     # Messages: status webhooks look up by wamid
     (whatsapp_message_collection, [("wamid", ASCENDING)], {"name": "wamid"}),
     (whatsapp_message_collection, [("campaign_id", ASCENDING)], {"name": "campaign_id", "sparse": True}),
+    # Button engagement: replies are matched to the campaign message they answer
+    (whatsapp_message_collection, [("metadata.context.id", ASCENDING)], {"name": "context_wamid", "sparse": True}),
 
     # Campaigns
     (whatsapp_campaign_collection, [("status", ASCENDING), ("schedule.scheduled_at", ASCENDING)], {"name": "status_schedule"}),
@@ -73,6 +76,10 @@ INDEXES = [
     (automation_log_collection, [("number_id", ASCENDING), ("execution_time", DESCENDING)], {"name": "number_execution_time"}),
     (automation_log_collection, [("execution_time", DESCENDING)], {"name": "execution_time"}),
     (chat_access_log_collection, [("number_id", ASCENDING), ("chat_opened_at", DESCENDING)], {"name": "number_opened_at"}),
+
+    # Recently used templates: one entry per number + user + template, newest first
+    (whatsapp_recent_template_collection, [("number_id", ASCENDING), ("user", ASCENDING), ("template_id", ASCENDING)], {"name": "uniq_number_user_template", "unique": True}),
+    (whatsapp_recent_template_collection, [("number_id", ASCENDING), ("user", ASCENDING), ("last_used_at", DESCENDING)], {"name": "number_user_last_used"}),
 ]
 
 

@@ -31,6 +31,7 @@ from app.whatsapp.models import (
     CampaignLaunch,
     AutomationBindingUpdate,
     CustomerAutoReplyUpdate,
+    KeywordAutoReplyUpdate,
     WhatsAppNumberCreate,
     WhatsAppNumberUpdate,
     WhatsAppNumberVerify,
@@ -43,6 +44,7 @@ from app.whatsapp.repository import (
 )
 from app.whatsapp.services import message_service
 from app.whatsapp.services import template_service
+from app.whatsapp.services import recent_template_service
 from app.whatsapp.services import automation_service
 from app.whatsapp.services import campaign_service
 from app.whatsapp.services import webhook_service
@@ -299,6 +301,12 @@ def get_templates(
 def get_sendable_templates(scope: NumberScope = Depends(number_scope)):
     """Templates of the selected number's WABA approved by Meta, with the parameter slots needed to send them."""
     return {"templates": template_service.get_sendable_templates(scope.number)}
+
+
+@router.get("/templates/recent")
+def get_recent_templates(request: Request, scope: NumberScope = Depends(number_scope)):
+    """The acting user's 10 most recently sent templates on the selected number (still approved), newest first."""
+    return {"recent": recent_template_service.get_recent_templates(scope.number, _user(request))}
 
 
 @router.post("/templates/sync")
@@ -900,6 +908,7 @@ def send_test_template(request: Request, payload: dict = Body(...), scope: Numbe
             idempotency_key=f"test:{payload.get('client_request_id') or uuid.uuid4().hex}",
             workflow=f"Test message ({_user(request) or 'admin'})",
             number=scope.number,
+            requested_by=_user(request) or "",
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -1067,6 +1076,24 @@ def save_customer_auto_reply(payload: CustomerAutoReplyUpdate, request: Request,
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"message": "Auto-reply saved", "auto_reply": config}
+
+
+@router.get("/keyword-auto-replies")
+def get_keyword_auto_replies(scope: NumberScope = Depends(number_scope)):
+    """Keyword replies of the selected number: built-in STOP / YES plus every saved custom keyword."""
+    return {"keyword_auto_replies": automation_service.get_keyword_auto_replies(scope.number), "number_id": scope.id}
+
+
+@router.put("/keyword-auto-replies/{keyword}")
+def save_keyword_auto_reply(keyword: str, payload: KeywordAutoReplyUpdate, request: Request, scope: NumberScope = Depends(number_scope)):
+    # `keyword` is the storage key ('stop', 'not_interested'); a custom one needs its title in the body.
+    if keyword not in automation_service.KEYWORD_AUTO_REPLIES and not payload.keyword.strip():
+        raise HTTPException(status_code=404, detail=f"Unknown keyword auto-reply '{keyword}'.")
+    try:
+        config = automation_service.save_keyword_auto_reply(keyword, payload.dict(), scope.number, _user(request))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"message": f"{config['keyword']} auto-reply saved", "keyword_auto_reply": config}
 
 
 @router.get("/automations/runs")
@@ -1299,6 +1326,62 @@ def add_bulk_dnd_numbers(payload: dict):
     return {"message": f"Successfully processed {added_count} phone numbers into Global DND list", "added_count": added_count}
 
 
+@router.get("/dnd/export")
+def export_dnd_list(
+    format: str = Query("csv", description="csv or xlsx"),
+    list_type: str = Query("all", description="all, dnd (user opt-outs) or blocklist (every other reason)"),
+    search: Optional[str] = Query(None, description="Search phone number or notes"),
+    reason: Optional[str] = Query(None, description="Filter by block reason"),
+    source: Optional[str] = Query(None, description="Filter by entry source"),
+    from_date: Optional[str] = Query(None, description="Date added from (YYYY-MM-DD, UTC)"),
+    to_date: Optional[str] = Query(None, description="Date added to (YYYY-MM-DD, UTC)"),
+    scope: NumberScope = Depends(number_scope),
+):
+    """
+    Download every matching Global DND / Blocklist record (not just one page) as CSV or Excel.
+    Contact names come from inbound messages of the selected number only.
+    """
+    from app.whatsapp.services import dnd_export_service as export
+
+    if format not in ("csv", "xlsx"):
+        raise HTTPException(status_code=400, detail="format must be csv or xlsx.")
+    try:
+        query = export.build_query(list_type, search=search, reason=reason, source=source,
+                                   from_date=from_date, to_date=to_date)
+    except export.ExportError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    filename = export.file_name(list_type, format)
+    headers = {
+        "Content-Disposition": f'attachment; filename="{filename}"',
+        "Access-Control-Expose-Headers": "Content-Disposition",
+    }
+    scope_match = scope.match()
+
+    if format == "csv":
+        return StreamingResponse(
+            export.stream_csv(export.iter_rows(query, scope_match)),
+            media_type="text/csv; charset=utf-8",
+            headers=headers,
+        )
+
+    # Separate sheets per status when exporting both lists.
+    if list_type == "all":
+        seen = set()
+        sheets = [
+            (label, export.iter_rows(export.build_query(key, search=search, reason=reason, source=source,
+                                                        from_date=from_date, to_date=to_date), scope_match, seen))
+            for key, label in export.STATUS_LABELS.items()
+        ]
+    else:
+        sheets = [(export.STATUS_LABELS[list_type], export.iter_rows(query, scope_match))]
+    return Response(
+        content=export.build_excel(sheets),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers=headers,
+    )
+
+
 @router.delete("/dnd/{phone_number}")
 def remove_dnd_number(phone_number: str):
     """Unblock / remove a phone number from the Global DND list."""
@@ -1433,6 +1516,69 @@ def export_customer_replies(
 
     return Response(
         content=excel_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers=headers,
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════
+# INTERACTIVE BUTTON ENGAGEMENT REPORT
+# ═══════════════════════════════════════════════════════════════════
+
+@router.get("/reports/button-engagement")
+def get_button_engagement(
+    campaign_id: Optional[str] = Query(None),
+    from_date: Optional[str] = Query(None, description="Campaign message sent from (YYYY-MM-DD, UTC)"),
+    to_date: Optional[str] = Query(None, description="Campaign message sent to (YYYY-MM-DD, UTC)"),
+    template: Optional[str] = Query(None),
+    button: Optional[str] = Query(None, description="Button name"),
+    response_status: Optional[str] = Query(None, description="responded or no_response"),
+    limit: int = Query(200, ge=1, le=1000),
+    skip: int = Query(0, ge=0),
+    scope: NumberScope = Depends(number_scope),
+):
+    """Button-wise analytics per campaign of the selected number, plus one page of contact-level responses."""
+    from app.whatsapp.services import button_engagement_service as engagement
+    try:
+        return engagement.build_report(scope.match(), campaign_id=campaign_id, from_date=from_date, to_date=to_date,
+                                       template=template, button=button, response_status=response_status,
+                                       limit=limit, skip=skip)
+    except engagement.EngagementError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/reports/button-engagement/export")
+def export_button_engagement(
+    format: str = Query("csv", description="csv or xlsx"),
+    all_records: bool = Query(False, description="Ignore the filters and export every campaign"),
+    campaign_id: Optional[str] = Query(None),
+    from_date: Optional[str] = Query(None),
+    to_date: Optional[str] = Query(None),
+    template: Optional[str] = Query(None),
+    button: Optional[str] = Query(None),
+    response_status: Optional[str] = Query(None),
+    scope: NumberScope = Depends(number_scope),
+):
+    """Download every matching contact-level button response (Excel adds a per-campaign button summary sheet)."""
+    from app.whatsapp.services import button_engagement_service as engagement
+
+    if format not in ("csv", "xlsx"):
+        raise HTTPException(status_code=400, detail="format must be csv or xlsx.")
+    filters = {} if all_records else {"campaign_id": campaign_id, "from_date": from_date, "to_date": to_date,
+                                      "template": template, "button": button, "response_status": response_status}
+    try:
+        rows, summary = engagement.export_rows(scope.match(), **filters)
+    except engagement.EngagementError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    headers = {
+        "Content-Disposition": f'attachment; filename="{engagement.file_name(format)}"',
+        "Access-Control-Expose-Headers": "Content-Disposition",
+    }
+    if format == "csv":
+        return StreamingResponse(engagement.stream_csv(rows), media_type="text/csv; charset=utf-8", headers=headers)
+    return Response(
+        content=engagement.build_excel(rows, summary),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers=headers,
     )

@@ -6,12 +6,13 @@ import {
     addWhatsAppDNDNumber,
     addWhatsAppDNDBulk,
     deleteWhatsAppDNDNumber,
+    exportWhatsAppDND,
 } from "../services/whatsappApi";
 import { useToast } from "../../context/ToastContext";
 import {
     FiSlash, FiPlus, FiUpload, FiSearch, FiX, FiCheckCircle,
     FiShieldOff, FiMessageSquare, FiUserX, FiFileText,
-    FiTrash2, FiRefreshCw, FiChevronRight, FiFilter, FiCheck
+    FiTrash2, FiRefreshCw, FiChevronRight, FiFilter, FiCheck, FiDownload
 } from "react-icons/fi";
 
 const REASON_OPTIONS = [
@@ -26,6 +27,25 @@ const SOURCE_OPTIONS = [
     "Manual Entry",
     "CSV Upload",
 ];
+
+const EXPORT_FORMATS = [
+    { value: "csv", label: "CSV (.csv)" },
+    { value: "xlsx", label: "Excel (.xlsx)" },
+];
+
+const EXPORT_LIST_TYPES = [
+    { value: "all", label: "DND + Blocklist", hint: "Both lists (Excel: one sheet each)" },
+    { value: "dnd", label: "DND only", hint: "User opt-outs" },
+    { value: "blocklist", label: "Blocklist only", hint: "Manual, spam & invalid blocks" },
+];
+
+const DEFAULT_EXPORT_OPTIONS = {
+    format: "csv",
+    list_type: "all",
+    scope: "all",
+    from_date: "",
+    to_date: "",
+};
 
 function WhatsAppDND() {
     const { showToast } = useToast();
@@ -51,6 +71,12 @@ function WhatsAppDND() {
     // CSV Bulk Input State
     const [csvInput, setCsvInput] = useState("");
     const [csvReason, setCsvReason] = useState("Manual Block");
+
+    // Export State
+    const [showExportModal, setShowExportModal] = useState(false);
+    const [exportOptions, setExportOptions] = useState(DEFAULT_EXPORT_OPTIONS);
+    const [exporting, setExporting] = useState(false);
+    const hasActiveFilters = Boolean(searchQuery.trim()) || filterReason !== "all" || filterSource !== "all";
 
     const fetchDND = async () => {
         try {
@@ -143,6 +169,40 @@ function WhatsAppDND() {
         }
     };
 
+    const openExportModal = () => {
+        setExportOptions(DEFAULT_EXPORT_OPTIONS);
+        setShowExportModal(true);
+    };
+
+    const handleExport = async (e) => {
+        e.preventDefault();
+        const { format, list_type, scope, from_date, to_date } = exportOptions;
+        if (from_date && to_date && from_date > to_date) {
+            showToast("'From' date must be on or before 'To' date", "warning");
+            return;
+        }
+
+        const params = { format, list_type };
+        if (scope === "filtered") {
+            if (searchQuery.trim()) params.search = searchQuery.trim();
+            if (filterReason !== "all") params.reason = filterReason;
+            if (filterSource !== "all") params.source = filterSource;
+        }
+        if (from_date) params.from_date = from_date;
+        if (to_date) params.to_date = to_date;
+
+        setExporting(true);
+        try {
+            const fileName = await exportWhatsAppDND(params);
+            showToast(`Downloaded ${fileName}`, "success");
+            setShowExportModal(false);
+        } catch (err) {
+            showToast("Failed to export DND / Blocklist records", "error");
+        } finally {
+            setExporting(false);
+        }
+    };
+
     const summary = dndData.summary || {};
     const items = dndData.items || [];
 
@@ -194,6 +254,13 @@ function WhatsAppDND() {
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
+                    <button
+                        onClick={openExportModal}
+                        className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-2 rounded-xl text-xs font-semibold transition cursor-pointer"
+                    >
+                        <FiDownload size={13} />
+                        <span>Export</span>
+                    </button>
                     <button
                         onClick={() => setShowCsvModal(true)}
                         className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-2 rounded-xl text-xs font-semibold transition cursor-pointer"
@@ -486,6 +553,128 @@ function WhatsAppDND() {
                                 className="px-4 py-2 text-xs font-semibold text-white bg-rose-600 rounded-xl hover:bg-rose-700 transition shadow-xs"
                             >
                                 Process Bulk Import
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            )}
+
+            {/* Export Modal */}
+            {showExportModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-xs" onClick={() => !exporting && setShowExportModal(false)}></div>
+                    <form
+                        onSubmit={handleExport}
+                        className="relative bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md border border-slate-200 space-y-4 font-sans animate-in fade-in zoom-in-95 duration-150"
+                    >
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                            <h3 className="text-sm font-bold text-slate-900 font-display flex items-center gap-2">
+                                <FiDownload className="text-rose-500" size={16} /> Export DND & Blocklist
+                            </h3>
+                            <button type="button" onClick={() => setShowExportModal(false)} disabled={exporting} className="text-slate-400 hover:text-slate-600">
+                                <FiX size={16} />
+                            </button>
+                        </div>
+
+                        <div className="space-y-3">
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-700 block mb-1">File Format</label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {EXPORT_FORMATS.map((f) => (
+                                        <button
+                                            key={f.value}
+                                            type="button"
+                                            onClick={() => setExportOptions({ ...exportOptions, format: f.value })}
+                                            className={`px-3 py-2 text-xs font-semibold rounded-xl border transition cursor-pointer ${exportOptions.format === f.value
+                                                ? "bg-rose-50 text-rose-700 border-rose-200"
+                                                : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"}`}
+                                        >
+                                            {f.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-700 block mb-1">Records</label>
+                                <select
+                                    value={exportOptions.list_type}
+                                    onChange={(e) => setExportOptions({ ...exportOptions, list_type: e.target.value })}
+                                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none cursor-pointer"
+                                >
+                                    {EXPORT_LIST_TYPES.map((t) => (
+                                        <option key={t.value} value={t.value}>{t.label} — {t.hint}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-700 block mb-1">Scope</label>
+                                <div className="space-y-1.5">
+                                    <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                                        <input
+                                            type="radio"
+                                            name="export-scope"
+                                            checked={exportOptions.scope === "all"}
+                                            onChange={() => setExportOptions({ ...exportOptions, scope: "all" })}
+                                            className="accent-rose-600"
+                                        />
+                                        All records
+                                    </label>
+                                    <label className={`flex items-center gap-2 text-xs ${hasActiveFilters ? "text-slate-700 cursor-pointer" : "text-slate-400 cursor-not-allowed"}`}>
+                                        <input
+                                            type="radio"
+                                            name="export-scope"
+                                            disabled={!hasActiveFilters}
+                                            checked={exportOptions.scope === "filtered"}
+                                            onChange={() => setExportOptions({ ...exportOptions, scope: "filtered" })}
+                                            className="accent-rose-600"
+                                        />
+                                        Only records matching current search & filters
+                                        {!hasActiveFilters && <span className="text-[10px]">(no filters applied)</span>}
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-700 block mb-1">Date Added (optional)</label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <input
+                                        type="date"
+                                        value={exportOptions.from_date}
+                                        max={exportOptions.to_date || undefined}
+                                        onChange={(e) => setExportOptions({ ...exportOptions, from_date: e.target.value })}
+                                        className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none"
+                                        aria-label="From date"
+                                    />
+                                    <input
+                                        type="date"
+                                        value={exportOptions.to_date}
+                                        min={exportOptions.from_date || undefined}
+                                        onChange={(e) => setExportOptions({ ...exportOptions, to_date: e.target.value })}
+                                        className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none"
+                                        aria-label="To date"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                            <button
+                                type="button"
+                                onClick={() => setShowExportModal(false)}
+                                disabled={exporting}
+                                className="px-4 py-2 text-xs font-semibold text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200 transition"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="submit"
+                                disabled={exporting}
+                                className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-rose-600 rounded-xl hover:bg-rose-700 transition shadow-xs disabled:opacity-60 disabled:cursor-wait"
+                            >
+                                {exporting ? <FiRefreshCw size={13} className="animate-spin" /> : <FiDownload size={13} />}
+                                <span>{exporting ? "Exporting..." : "Download"}</span>
                             </button>
                         </div>
                     </form>

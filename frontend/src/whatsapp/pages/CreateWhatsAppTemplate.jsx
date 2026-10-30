@@ -3,6 +3,7 @@ import { useNavigate, Link } from "react-router-dom";
 import { createWhatsAppTemplate, submitWhatsAppTemplate, apiErrorMessage, uploadWhatsAppMedia } from "../services/whatsappApi";
 import { useToast } from "../../context/ToastContext";
 import WhatsAppAiAssistant from "../components/WhatsAppAiAssistant";
+import KeywordAutoRepliesCard from "../components/KeywordAutoRepliesCard";
 import { SelectedNumberBadge } from "../components/WhatsAppNumberSelector";
 import { useNumberSwitchGuard, useWhatsAppNumber } from "../context/WhatsAppNumberContext";
 import {
@@ -167,6 +168,14 @@ const BUTTON_TYPES = [
     },
 ];
 
+const BUTTON_COLORS = [
+    { id: "green", bg: "bg-emerald-500" },
+    { id: "red", bg: "bg-rose-500" },
+    { id: "indigo", bg: "bg-indigo-500" },
+    { id: "slate", bg: "bg-slate-400" },
+];
+const BUTTON_INPUT_CLASS = "w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 text-slate-800";
+
 function CreateWhatsAppTemplate() {
     const navigate = useNavigate();
     const { showToast } = useToast();
@@ -234,6 +243,7 @@ function CreateWhatsAppTemplate() {
 
     // UI & Validation State
     const [saving, setSaving] = useState(false);
+    const keywordRepliesRef = useRef(null);
     const [errors, setErrors] = useState({});
 
     // Button Management Handlers
@@ -527,6 +537,12 @@ function CreateWhatsAppTemplate() {
             return;
         }
 
+        const keywordReplyError = keywordRepliesRef.current?.validate();
+        if (keywordReplyError) {
+            showToast(keywordReplyError, "error");
+            return;
+        }
+
         setSaving(true);
 
         const variableMatches = content.match(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g) || [];
@@ -579,6 +595,13 @@ function CreateWhatsAppTemplate() {
             showToast(`Failed to save template: ${apiErrorMessage(err)}`, "error");
             setSaving(false);
             return;
+        }
+
+        // Button auto-replies are saved per number (not inside the template), in the same Save.
+        try {
+            await keywordRepliesRef.current?.saveAll();
+        } catch (err) {
+            showToast(`Template saved, but ${err.message}.`, "error");
         }
 
         if (submitToMeta) {
@@ -985,42 +1008,28 @@ function CreateWhatsAppTemplate() {
                                 <span className="p-2 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100/80 shadow-2xs">
                                     <FiCheckCircle size={16} />
                                 </span>
-                                <div>
-                                    <h3 className="text-sm font-bold text-slate-900 font-display flex items-center gap-2">
-                                        Interactive Buttons
-                                        {showResponseButtons && (
-                                            <span className="text-[10px] font-semibold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full border border-emerald-200/60 font-mono">
-                                                {buttonsList.length} / 10
-                                            </span>
-                                        )}
-                                    </h3>
-                                    <p className="text-[11px] text-slate-400">Add quick reply, website links, calls, flows, offer codes or contacts.</p>
-                                </div>
+                                <h3 className="text-sm font-bold text-slate-900 font-display flex items-center gap-2">
+                                    Interactive Buttons
+                                    {showResponseButtons && (
+                                        <span className="text-[10px] font-semibold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full border border-emerald-200/60 font-mono">
+                                            {buttonsList.length} / 10
+                                        </span>
+                                    )}
+                                </h3>
                             </div>
 
                             <div className="flex items-center gap-3">
-                                {/* Clean Toggle Switch */}
-                                <label className="relative inline-flex items-center cursor-pointer select-none">
-                                    <input
-                                        type="checkbox"
-                                        checked={showResponseButtons}
-                                        onChange={(e) => setShowResponseButtons(e.target.checked)}
-                                        className="sr-only peer"
-                                    />
-                                    <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
-                                </label>
-
                                 {/* Dropdown Menu matching WhatsApp template builder (+ Add button) */}
                                 {showResponseButtons && (
                                     <div className="relative">
                                         <button
                                             type="button"
                                             onClick={() => setShowAddButtonDropdown(!showAddButtonDropdown)}
-                                            className="flex items-center gap-2 px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200/80 text-slate-700 rounded-xl text-xs font-semibold border border-slate-200/80 transition cursor-pointer shadow-2xs"
+                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200/80 text-slate-700 rounded-lg text-xs font-semibold border border-slate-200/80 transition cursor-pointer"
                                         >
-                                            <FiPlus size={14} className="text-slate-600" />
+                                            <FiPlus size={13} className="text-slate-600" />
                                             <span>Add button</span>
-                                            <FiChevronDown size={14} className={`text-slate-500 transition-transform duration-200 ${showAddButtonDropdown ? "rotate-180" : ""}`} />
+                                            <FiChevronDown size={13} className={`text-slate-500 transition-transform duration-200 ${showAddButtonDropdown ? "rotate-180" : ""}`} />
                                         </button>
 
                                         {showAddButtonDropdown && (
@@ -1051,175 +1060,174 @@ function CreateWhatsAppTemplate() {
                                         )}
                                     </div>
                                 )}
+
+                                {/* Clean Toggle Switch */}
+                                <label className="relative inline-flex items-center cursor-pointer select-none" title={showResponseButtons ? "Buttons on" : "Buttons off"}>
+                                    <input
+                                        type="checkbox"
+                                        checked={showResponseButtons}
+                                        onChange={(e) => setShowResponseButtons(e.target.checked)}
+                                        className="sr-only peer"
+                                        aria-label="Add interactive buttons to this template"
+                                    />
+                                    <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
+                                </label>
                             </div>
                         </div>
 
-                        {/* Buttons List Container */}
+                        {/* Buttons List: one compact row per button */}
                         {showResponseButtons && (
-                            <div className="space-y-2.5 pt-1 animate-fade-in">
+                            <div className="space-y-2 animate-fade-in">
                                 {buttonsList.length === 0 ? (
-                                    <div className="p-6 text-center bg-slate-50/60 border border-dashed border-slate-200 rounded-xl space-y-1">
-                                        <p className="text-xs font-semibold text-slate-600">No interactive buttons added yet.</p>
-                                        <p className="text-[11px] text-slate-400">Click <strong className="text-slate-700">+ Add button</strong> above to pick from Custom, Visit website, Call, Flow, Offer code or Contact options.</p>
-                                    </div>
-                                ) : (
-                                    <div className="space-y-2.5">
-                                        {buttonsList.map((btn, index) => {
-                                            const typeConfig = BUTTON_TYPES.find(b => b.id === btn.type) || BUTTON_TYPES[0];
-                                            const Icon = typeConfig.icon;
+                                    <p className="px-3 py-4 text-center text-[11px] text-slate-400 bg-slate-50/60 border border-dashed border-slate-200 rounded-xl">
+                                        No buttons yet — use <strong className="text-slate-600">Add button</strong>.
+                                    </p>
+                                ) : buttonsList.map((btn, index) => {
+                                    const typeConfig = BUTTON_TYPES.find(b => b.id === btn.type) || BUTTON_TYPES[0];
+                                    const Icon = typeConfig.icon;
 
-                                            return (
-                                                <div
-                                                    key={btn.id}
-                                                    className="group bg-slate-50/70 hover:bg-white border border-slate-200/80 hover:border-slate-300 rounded-xl p-3 transition duration-150 shadow-2xs space-y-2.5"
-                                                >
-                                                    <div className="flex items-center justify-between gap-2">
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-700 shadow-2xs">
-                                                                <Icon size={13} className="text-emerald-600" />
-                                                            </span>
-                                                            <span className="text-xs font-bold text-slate-800">
-                                                                {typeConfig.label}
-                                                            </span>
-                                                        </div>
+                                    return (
+                                        <div
+                                            key={btn.id}
+                                            className="flex flex-wrap sm:flex-nowrap items-center gap-2 bg-slate-50/70 hover:bg-white border border-slate-200/80 hover:border-slate-300 rounded-xl px-2.5 py-2 transition duration-150"
+                                        >
+                                            <span className="flex items-center gap-1.5 sm:w-32 shrink-0 text-[11px] font-semibold text-slate-600" title={typeConfig.label}>
+                                                <Icon size={13} className="text-emerald-600 shrink-0" />
+                                                <span className="truncate">{typeConfig.label}</span>
+                                            </span>
 
-                                                        {/* Color Pill Picker for Custom Button */}
-                                                        {btn.type === "custom" && (
-                                                            <div className="flex items-center gap-1.5 bg-white px-2 py-1 rounded-lg border border-slate-200">
-                                                                {[
-                                                                    { id: "green", bg: "bg-emerald-500" },
-                                                                    { id: "red", bg: "bg-rose-500" },
-                                                                    { id: "indigo", bg: "bg-indigo-500" },
-                                                                    { id: "slate", bg: "bg-slate-400" },
-                                                                ].map(c => (
-                                                                    <button
-                                                                        key={c.id}
-                                                                        type="button"
-                                                                        onClick={() => handleUpdateButton(btn.id, "color", c.id)}
-                                                                        className={`w-3.5 h-3.5 rounded-full ${c.bg} transition ${btn.color === c.id ? "ring-2 ring-offset-1 ring-slate-700 scale-110" : "opacity-60 hover:opacity-100"
-                                                                            }`}
-                                                                        title={`Color accent: ${c.id}`}
-                                                                    />
-                                                                ))}
-                                                            </div>
-                                                        )}
+                                            {/* Inputs */}
+                                            <div className={`flex-1 min-w-0 basis-full sm:basis-auto order-last sm:order-none grid grid-cols-1 gap-2 ${btn.type === "custom" ? "" : "sm:grid-cols-2"}`}>
+                                                <input
+                                                    type="text"
+                                                    value={btn.text}
+                                                    onChange={(e) => handleUpdateButton(btn.id, "text", e.target.value)}
+                                                    placeholder="Button Label (e.g. YES / Interested)"
+                                                    aria-label="Button label"
+                                                    className={`${BUTTON_INPUT_CLASS} font-medium`}
+                                                />
 
-                                                        {/* Actions */}
-                                                        <div className="flex items-center gap-0.5 ml-auto">
-                                                            <button
-                                                                type="button"
-                                                                disabled={index === 0}
-                                                                onClick={() => handleMoveButton(index, -1)}
-                                                                className="p-1 text-slate-400 hover:text-slate-700 disabled:opacity-20 cursor-pointer"
-                                                                title="Move Up"
-                                                            >
-                                                                <FiArrowUp size={13} />
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                disabled={index === buttonsList.length - 1}
-                                                                onClick={() => handleMoveButton(index, 1)}
-                                                                className="p-1 text-slate-400 hover:text-slate-700 disabled:opacity-20 cursor-pointer"
-                                                                title="Move Down"
-                                                            >
-                                                                <FiArrowDown size={13} />
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleRemoveButton(btn.id)}
-                                                                className="p-1 text-slate-400 hover:text-rose-500 transition cursor-pointer ml-1"
-                                                                title="Remove"
-                                                            >
-                                                                <FiTrash2 size={13} />
-                                                            </button>
-                                                        </div>
-                                                    </div>
+                                                {btn.type === "visit_website" && (
+                                                    <input
+                                                        type="url"
+                                                        value={btn.url}
+                                                        onChange={(e) => handleUpdateButton(btn.id, "url", e.target.value)}
+                                                        placeholder="URL (https://example.com) — add {{1}} at the end for a per-recipient link"
+                                                        className={`${BUTTON_INPUT_CLASS} font-mono`}
+                                                    />
+                                                )}
+                                                {btn.type === "visit_website" && (btn.url || "").includes("{{") && (
+                                                    <input
+                                                        type="url"
+                                                        value={btn.url_example || ""}
+                                                        onChange={(e) => handleUpdateButton(btn.id, "url_example", e.target.value)}
+                                                        placeholder="Full example URL for Meta review (e.g. https://example.com/order/123)"
+                                                        className="w-full px-3 py-1.5 text-xs bg-white border border-amber-300 rounded-lg text-slate-800 font-mono sm:col-span-2"
+                                                    />
+                                                )}
 
-                                                    {/* Inputs Grid */}
-                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                                {(btn.type === "call_whatsapp" || btn.type === "call_phone") && (
+                                                    <input
+                                                        type="text"
+                                                        value={btn.phone_number}
+                                                        onChange={(e) => handleUpdateButton(btn.id, "phone_number", e.target.value)}
+                                                        placeholder="Phone (+91 98765 43210)"
+                                                        className={`${BUTTON_INPUT_CLASS} font-mono`}
+                                                    />
+                                                )}
+
+                                                {btn.type === "complete_flow" && (
+                                                    <input
+                                                        type="text"
+                                                        value={btn.flow_id}
+                                                        onChange={(e) => handleUpdateButton(btn.id, "flow_id", e.target.value)}
+                                                        placeholder="Flow ID (e.g. flow_survey_v1)"
+                                                        className={`${BUTTON_INPUT_CLASS} font-mono`}
+                                                    />
+                                                )}
+
+                                                {btn.type === "copy_offer_code" && (
+                                                    <input
+                                                        type="text"
+                                                        value={btn.offer_code}
+                                                        onChange={(e) => handleUpdateButton(btn.id, "offer_code", e.target.value)}
+                                                        placeholder="Offer Code (e.g. WELCOME20)"
+                                                        className={`${BUTTON_INPUT_CLASS} font-mono uppercase font-bold`}
+                                                    />
+                                                )}
+
+                                                {btn.type === "share_contact" && (
+                                                    <div className="grid grid-cols-2 gap-1.5">
                                                         <input
                                                             type="text"
-                                                            value={btn.text}
-                                                            onChange={(e) => handleUpdateButton(btn.id, "text", e.target.value)}
-                                                            placeholder="Button Label (e.g. YES / Interested)"
-                                                            className="w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 text-slate-800 font-medium"
+                                                            value={btn.contact_name}
+                                                            onChange={(e) => handleUpdateButton(btn.id, "contact_name", e.target.value)}
+                                                            placeholder="Contact Name"
+                                                            className={BUTTON_INPUT_CLASS}
                                                         />
-
-                                                        {btn.type === "visit_website" && (
-                                                            <input
-                                                                type="url"
-                                                                value={btn.url}
-                                                                onChange={(e) => handleUpdateButton(btn.id, "url", e.target.value)}
-                                                                placeholder="URL (https://example.com) — add {{1}} at the end for a per-recipient link"
-                                                                className="w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 text-slate-800 font-mono"
-                                                            />
-                                                        )}
-                                                        {btn.type === "visit_website" && (btn.url || "").includes("{{") && (
-                                                            <input
-                                                                type="url"
-                                                                value={btn.url_example || ""}
-                                                                onChange={(e) => handleUpdateButton(btn.id, "url_example", e.target.value)}
-                                                                placeholder="Full example URL for Meta review (e.g. https://example.com/order/123)"
-                                                                className="w-full px-3 py-1.5 text-xs bg-white border border-amber-300 rounded-lg text-slate-800 font-mono"
-                                                            />
-                                                        )}
-
-                                                        {(btn.type === "call_whatsapp" || btn.type === "call_phone") && (
-                                                            <input
-                                                                type="text"
-                                                                value={btn.phone_number}
-                                                                onChange={(e) => handleUpdateButton(btn.id, "phone_number", e.target.value)}
-                                                                placeholder="Phone (+91 98765 43210)"
-                                                                className="w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 text-slate-800 font-mono"
-                                                            />
-                                                        )}
-
-                                                        {btn.type === "complete_flow" && (
-                                                            <input
-                                                                type="text"
-                                                                value={btn.flow_id}
-                                                                onChange={(e) => handleUpdateButton(btn.id, "flow_id", e.target.value)}
-                                                                placeholder="Flow ID (e.g. flow_survey_v1)"
-                                                                className="w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 text-slate-800 font-mono"
-                                                            />
-                                                        )}
-
-                                                        {btn.type === "copy_offer_code" && (
-                                                            <input
-                                                                type="text"
-                                                                value={btn.offer_code}
-                                                                onChange={(e) => handleUpdateButton(btn.id, "offer_code", e.target.value)}
-                                                                placeholder="Offer Code (e.g. WELCOME20)"
-                                                                className="w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 text-slate-800 font-mono uppercase font-bold"
-                                                            />
-                                                        )}
-
-                                                        {btn.type === "share_contact" && (
-                                                            <div className="grid grid-cols-2 gap-1.5 col-span-1">
-                                                                <input
-                                                                    type="text"
-                                                                    value={btn.contact_name}
-                                                                    onChange={(e) => handleUpdateButton(btn.id, "contact_name", e.target.value)}
-                                                                    placeholder="Contact Name"
-                                                                    className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 text-slate-800"
-                                                                />
-                                                                <input
-                                                                    type="text"
-                                                                    value={btn.contact_phone}
-                                                                    onChange={(e) => handleUpdateButton(btn.id, "contact_phone", e.target.value)}
-                                                                    placeholder="Phone Number"
-                                                                    className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 text-slate-800 font-mono"
-                                                                />
-                                                            </div>
-                                                        )}
+                                                        <input
+                                                            type="text"
+                                                            value={btn.contact_phone}
+                                                            onChange={(e) => handleUpdateButton(btn.id, "contact_phone", e.target.value)}
+                                                            placeholder="Phone Number"
+                                                            className={`${BUTTON_INPUT_CLASS} font-mono`}
+                                                        />
                                                     </div>
+                                                )}
+                                            </div>
+
+                                            {/* Color accent for Custom buttons */}
+                                            {btn.type === "custom" && (
+                                                <div className="flex items-center gap-1.5 px-1 ml-auto sm:ml-0">
+                                                    {BUTTON_COLORS.map(c => (
+                                                        <button
+                                                            key={c.id}
+                                                            type="button"
+                                                            onClick={() => handleUpdateButton(btn.id, "color", c.id)}
+                                                            className={`w-3.5 h-3.5 rounded-full ${c.bg} transition cursor-pointer ${btn.color === c.id ? "ring-2 ring-offset-1 ring-slate-700" : "opacity-50 hover:opacity-100"}`}
+                                                            title={`Color accent: ${c.id}`}
+                                                        />
+                                                    ))}
                                                 </div>
-                                            );
-                                        })}
-                                    </div>
-                                )}
+                                            )}
+
+                                            {/* Actions */}
+                                            <div className={`flex items-center gap-0.5 shrink-0 ${btn.type === "custom" ? "" : "ml-auto sm:ml-0"}`}>
+                                                <button
+                                                    type="button"
+                                                    disabled={index === 0}
+                                                    onClick={() => handleMoveButton(index, -1)}
+                                                    className="p-1 text-slate-400 hover:text-slate-700 disabled:opacity-20 cursor-pointer"
+                                                    title="Move Up"
+                                                >
+                                                    <FiArrowUp size={13} />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    disabled={index === buttonsList.length - 1}
+                                                    onClick={() => handleMoveButton(index, 1)}
+                                                    className="p-1 text-slate-400 hover:text-slate-700 disabled:opacity-20 cursor-pointer"
+                                                    title="Move Down"
+                                                >
+                                                    <FiArrowDown size={13} />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleRemoveButton(btn.id)}
+                                                    className="p-1 text-slate-400 hover:text-rose-500 transition cursor-pointer"
+                                                    title="Remove"
+                                                >
+                                                    <FiTrash2 size={13} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         )}
+
+                        {/* Auto-replies for the quick-reply buttons above (saved per number, not per template) */}
+                        {showResponseButtons && <KeywordAutoRepliesCard ref={keywordRepliesRef} buttons={buttonsList} />}
                     </div>
 
                     {/* Section 2.5: AI Writing Assistant */}

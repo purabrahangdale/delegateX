@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
 import WhatsAppHeader from "../components/WhatsAppHeader";
+import ButtonEngagementReport from "../components/ButtonEngagementReport";
 import {
     FiBarChart2, FiTrendingUp, FiDownload, FiCheckCircle, FiEye,
     FiMessageSquare, FiAlertCircle, FiPieChart, FiFilter, FiCalendar,
-    FiRefreshCw, FiSearch, FiUser, FiFileText, FiTag, FiClock, FiInbox
+    FiRefreshCw, FiSearch, FiUser, FiFileText, FiTag, FiClock, FiInbox, FiMousePointer
 } from "react-icons/fi";
 import {
     getCustomerReplies,
@@ -13,7 +14,7 @@ import {
 } from "../services/whatsappApi";
 
 function WhatsAppReports() {
-    const [activeTab, setActiveTab] = useState("replies"); // "overview" | "replies"
+    const [activeTab, setActiveTab] = useState("replies"); // "overview" | "replies" | "buttons"
     const [timeframe, setTimeframe] = useState("weekly");
 
     // Reply Report States
@@ -141,13 +142,20 @@ function WhatsAppReports() {
                     <p className="text-xs text-slate-400 mt-0.5">Comprehensive customer replies export, delivery rates, and messaging metrics.</p>
                 </div>
                 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                     <button
                         onClick={() => setActiveTab("replies")}
                         className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer ${activeTab === "replies" ? "bg-emerald-500 text-white shadow-md shadow-emerald-500/20" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
                     >
                         <FiMessageSquare size={13} />
                         <span>Customer Replies Report</span>
+                    </button>
+                    <button
+                        onClick={() => setActiveTab("buttons")}
+                        className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer ${activeTab === "buttons" ? "bg-emerald-500 text-white shadow-md shadow-emerald-500/20" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+                    >
+                        <FiMousePointer size={13} />
+                        <span>Button Engagement</span>
                     </button>
                     <button
                         onClick={() => setActiveTab("overview")}
@@ -526,6 +534,8 @@ function WhatsAppReports() {
                     </div>
                 </div>
             )}
+
+            {activeTab === "buttons" && <ButtonEngagementReport />}
 
             {/* ═══════════════════════════════════════════════════════════ */}
             {/* EXECUTIVE PERFORMANCE OVERVIEW TAB                          */}

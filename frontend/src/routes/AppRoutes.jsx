@@ -20,6 +20,7 @@ const WhatsAppReports = lazy(() => import("../whatsapp/pages/WhatsAppReports"));
 const WhatsAppTemplateInsights = lazy(() => import("../whatsapp/pages/WhatsAppTemplateInsights"));
 const WhatsAppDND = lazy(() => import("../whatsapp/pages/WhatsAppDND"));
 const ChatAccessHistory = lazy(() => import("../whatsapp/pages/ChatAccessHistory"));
+const WhatsAppKeywordReplies = lazy(() => import("../whatsapp/pages/WhatsAppKeywordReplies"));
 
 function AppRoutes() {
     return (
@@ -44,6 +45,7 @@ function AppRoutes() {
                     <Route path="/whatsapp/contacts" element={<WhatsAppContacts />} />
                     <Route path="/whatsapp/dnd" element={<WhatsAppDND />} />
                     <Route path="/whatsapp/automation" element={<WhatsAppAutomation />} />
+                    <Route path="/whatsapp/keyword-replies" element={<WhatsAppKeywordReplies />} />
                     <Route path="/whatsapp/reports" element={<WhatsAppReports />} />
                     <Route path="/whatsapp/access-history" element={<ChatAccessHistory />} />
                     <Route path="/whatsapp/logs" element={<WhatsAppLogs />} />

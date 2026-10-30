@@ -361,6 +361,8 @@ export const uploadWhatsAppMedia = async (file) => {
 // ── Template lifecycle (Meta) ──────────────────────────────────
 // These throw on failure so callers can show the real Meta error.
 export const getSendableTemplates = async () => (await API.get("/api/whatsapp/templates/sendable")).data.templates || [];
+// The acting user's last 10 sent templates on the selected number: [{ template_id, last_used_at, use_count }]
+export const getRecentTemplates = async () => (await API.get("/api/whatsapp/templates/recent")).data.recent || [];
 export const syncTemplatesFromMeta = async () => (await API.post("/api/whatsapp/templates/sync")).data;
 export const validateWhatsAppTemplate = async (id) => (await API.post(`/api/whatsapp/templates/${id}/validate`)).data;
 export const submitWhatsAppTemplate = async (id) => (await API.post(`/api/whatsapp/templates/${id}/submit`)).data;
@@ -388,6 +390,11 @@ export const getAutomationRuns = async (params = {}) => (await API.get("/api/wha
 // ── Custom auto-reply to customer messages (per number) ────────
 export const getCustomerAutoReply = async () => (await API.get("/api/whatsapp/auto-reply")).data.auto_reply;
 export const saveCustomerAutoReply = async (data) => (await API.put("/api/whatsapp/auto-reply", data)).data.auto_reply;
+
+// ── Keyword auto-replies: STOP / YES + quick-reply button titles (per number, each saved on its own) ──
+export const getKeywordAutoReplies = async () => (await API.get("/api/whatsapp/keyword-auto-replies")).data.keyword_auto_replies;
+// `key` is the storage key ("stop", "not_interested"); a custom keyword also sends its title as data.keyword.
+export const saveKeywordAutoReply = async (key, data) => (await API.put(`/api/whatsapp/keyword-auto-replies/${encodeURIComponent(key)}`, data)).data.keyword_auto_reply;
 
 // ── Diagnostics ────────────────────────────────────────────────
 export const getWhatsAppDiagnostics = async () => (await API.get("/api/whatsapp/diagnostics")).data;
@@ -514,6 +521,45 @@ export const checkWhatsAppDNDBatch = async (phoneNumbers) => {
     }
 };
 
+// Downloads every matching DND / Blocklist record as CSV or Excel (params: format, list_type, filters).
+export const exportWhatsAppDND = async (params = {}) => {
+    try {
+        const format = params.format === "xlsx" ? "xlsx" : "csv";
+        const response = await API.get("/api/whatsapp/dnd/export", {
+            params,
+            responseType: "blob",
+        });
+
+        const blob = new Blob([response.data], {
+            type: format === "xlsx"
+                ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                : "text/csv;charset=utf-8",
+        });
+
+        let fileName = `DND_Blocklist_${new Date().toISOString().slice(0, 10)}.${format}`;
+        const contentDisposition = response.headers["content-disposition"];
+        if (contentDisposition) {
+            const match = contentDisposition.match(/filename="?([^"]+)"?/);
+            if (match && match[1]) {
+                fileName = match[1];
+            }
+        }
+
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.setAttribute("download", fileName);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
+        return fileName;
+    } catch (error) {
+        console.error("WhatsApp DND export error:", error);
+        throw error;
+    }
+};
+
 // ── Customer Replies & Reports ─────────────────────────────────
 export const getCustomerReplies = async (params = {}) => {
     try {
@@ -571,6 +617,37 @@ export const exportCustomerRepliesExcel = async (params = {}) => {
         console.error("WhatsApp reply export error:", error);
         throw error;
     }
+};
+
+// ── Interactive Button Engagement ──────────────────────────────
+export const getButtonEngagementReport = async (params = {}) =>
+    (await API.get("/api/whatsapp/reports/button-engagement", { params })).data;
+
+// Downloads every matching contact-level button response as CSV or .xlsx (all_records ignores the filters).
+export const exportButtonEngagement = async (params = {}) => {
+    const format = params.format === "xlsx" ? "xlsx" : "csv";
+    const response = await API.get("/api/whatsapp/reports/button-engagement/export", {
+        params,
+        responseType: "blob",
+    });
+    const blob = new Blob([response.data], {
+        type: format === "xlsx"
+            ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            : "text/csv;charset=utf-8",
+    });
+    let fileName = `Button_Engagement_${new Date().toISOString().slice(0, 10)}.${format}`;
+    const match = (response.headers["content-disposition"] || "").match(/filename="?([^"]+)"?/);
+    if (match && match[1]) fileName = match[1];
+
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", fileName);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+    return fileName;
 };
 
 // Downloads every inbox chat (sent + received) of the selected number as .xlsx.

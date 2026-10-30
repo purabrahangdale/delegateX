@@ -108,11 +108,13 @@ async def send_message(
     automation_workflow: Optional[str] = None,
     metadata: Optional[Dict[str, Any]] = None,
     number: Optional[dict] = None,
+    allow_dnd: bool = False,
 ) -> dict:
     """
     Send a WhatsApp message through the configured provider, from exactly `number`.
     With Meta Cloud API the number must be active and configured; there is no fallback number.
-    
+    `allow_dnd` is only for the confirmation of a customer's own STOP; every other send respects DND.
+
     1. Pre-check Global DND / Blocklist
     2. Save message to MongoDB (status: queued)
     3. Invoke provider to send
@@ -127,7 +129,7 @@ async def send_message(
     number_fields = _number_fields(number)
 
     # 1. Global DND / Blocklist Auto-Exclusion Pre-check
-    if DNDRepository.is_dnd(recipient_phone):
+    if not allow_dnd and DNDRepository.is_dnd(recipient_phone):
         logger.info(f"[DND Auto-Exclusion] Intercepted message to blocked number: {recipient_phone}")
         
         # Log skipped event
@@ -415,23 +417,20 @@ async def process_incoming_reply(
         except Exception as e:
             logger.warning(f"[Opt-out] Confirmation not sent: {e}")
     
-    # Auto Opt-Out Listener Check
-    clean_text = content.strip().upper()
+    # Auto Opt-Out Listener Check ("Stop." and "stop!" count as STOP, as in the keyword auto-replies)
+    clean_text = content.strip().rstrip(".! ").upper()
     opt_out_keywords = ["STOP", "UNSUBSCRIBE", "REMOVE", "QUIT", "DND"]
-    
+
     if any(clean_text == kw or clean_text.startswith(kw + " ") for kw in opt_out_keywords):
         logger.info(f"[Inbound Opt-Out] Auto-registering DND for {sender_phone} keyword '{clean_text}'")
+        # Registered before the intent router runs, so no automation can reach the sender afterwards.
+        # The only confirmation is the STOP keyword auto-reply (Settings → Keyword-Based Auto-Replies).
         DNDRepository.add_dnd_number({
             "phone_number": sender_phone,
             "reason": "User Opt-out",
             "source": "Inbox Keyword",
             "notes": f"Triggered by keyword '{content}'",
         })
-        
-        asyncio.create_task(_confirm(
-            "🚫 You have been successfully unsubscribed and added to our Global DND list. You will not receive further campaign messages.",
-            "opt-out-confirmation",
-        ))
     elif clean_text == "START" or clean_text == "UNBLOCK":
         logger.info(f"[Inbound Opt-In] Removing DND for {sender_phone}")
         DNDRepository.remove_dnd(sender_phone)

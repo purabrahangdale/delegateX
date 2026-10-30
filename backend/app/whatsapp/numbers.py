@@ -810,6 +810,11 @@ def save_customer_auto_reply(number_id: str, config: dict):
     numbers.update_one({"_id": ObjectId(number_id)}, {"$set": {"customer_auto_reply": config}})
 
 
+def save_keyword_auto_reply(number_id: str, keyword: str, config: dict):
+    # Dotted path: saving one keyword never touches the other or any other number setting.
+    numbers.update_one({"_id": ObjectId(number_id)}, {"$set": {f"keyword_auto_replies.{keyword}": config}})
+
+
 # ═══════════════════════════════════════════════════════════════════
 # LEGACY MIGRATION (idempotent, additive)
 # ═══════════════════════════════════════════════════════════════════
