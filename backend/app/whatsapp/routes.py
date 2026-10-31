@@ -1129,7 +1129,7 @@ async def trigger_automation(workflow_name: str, payload: dict = None, scope: Nu
     only = [scope.number] if scope.number else []
 
     try:
-        if workflow_name in ("campaign", "bulk-message"):
+        if workflow_name == "campaign":
             raise HTTPException(status_code=410, detail="Bulk sending moved to the campaign builder: POST /api/whatsapp/campaigns then /launch.")
         if key == "welcome_message":
             if not payload.get("lead"):

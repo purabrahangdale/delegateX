@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { FiUsers, FiChevronLeft, FiChevronRight, FiGrid, FiPlusSquare, FiChevronDown, FiBarChart2, FiFileText, FiSettings, FiClipboard, FiMessageCircle, FiSend, FiZap, FiSlash, FiEye } from "react-icons/fi";
+import { FiUsers, FiChevronLeft, FiChevronRight, FiGrid, FiChevronDown, FiBarChart2, FiFileText, FiSettings, FiClipboard, FiMessageCircle, FiSend, FiZap, FiSlash, FiEye } from "react-icons/fi";
 import dtableLogo from "../assets/dtable-logo.png";
 
 
@@ -34,11 +34,6 @@ function Sidebar({ isCollapsed, setIsCollapsed, onClose }) {
                     title: "Campaigns",
                     path: "/whatsapp/campaigns",
                     icon: FiSend,
-                },
-                {
-                    title: "Bulk Messaging",
-                    path: "/whatsapp/bulk-send",
-                    icon: FiPlusSquare,
                 },
                 {
                     title: "Inbox",

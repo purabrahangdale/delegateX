@@ -1,5 +1,4 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import WhatsAppHeader from "../components/WhatsAppHeader";
 import TemplateSelector from "../components/TemplateSelector";
 import VariableMappingEditor from "../components/VariableMappingEditor";
@@ -781,10 +780,9 @@ function CampaignDetail({ campaignId, onClose, onChanged, refreshSignal }) {
 // PAGE
 // ═══════════════════════════════════════════════════════════════════
 
-function WhatsAppCampaigns({ isWizardOnly = false }) {
-    const navigate = useNavigate();
+function WhatsAppCampaigns() {
     const { whatsappSocket } = useWebSockets();
-    const [showBuilder, setShowBuilder] = useState(isWizardOnly);
+    const [showBuilder, setShowBuilder] = useState(false);
     const [campaigns, setCampaigns] = useState([]);
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState(null);
@@ -826,8 +824,8 @@ function WhatsAppCampaigns({ isWizardOnly = false }) {
 
             {showBuilder ? (
                 <CampaignBuilder
-                    onClose={() => (isWizardOnly ? navigate("/whatsapp/campaigns") : setShowBuilder(false))}
-                    onCreated={(c) => { setShowBuilder(false); setSelectedId(c._id); load(); if (isWizardOnly) navigate("/whatsapp/campaigns"); }}
+                    onClose={() => setShowBuilder(false)}
+                    onCreated={(c) => { setShowBuilder(false); setSelectedId(c._id); load(); }}
                 />
             ) : selectedId ? (
                 <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-2xs">

@@ -35,7 +35,6 @@ function AppRoutes() {
                     <Route element={<WhatsAppNumberLayout />}>
                     <Route path="/whatsapp/dashboard" element={<WhatsAppDashboard />} />
                     <Route path="/whatsapp/campaigns" element={<WhatsAppCampaigns />} />
-                    <Route path="/whatsapp/bulk-send" element={<WhatsAppCampaigns isWizardOnly={true} />} />
                     <Route path="/whatsapp/inbox" element={<WhatsAppInbox />} />
                     <Route path="/whatsapp/templates" element={<WhatsAppTemplates />} />
                     <Route path="/whatsapp/templates/insights" element={<WhatsAppTemplateInsights />} />

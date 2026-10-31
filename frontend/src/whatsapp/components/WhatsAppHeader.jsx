@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-    FiSearch, FiPlus, FiSend, FiFileText, FiUsers, FiDownload,
+    FiSearch, FiSend, FiFileText, FiUsers, FiDownload,
     FiMessageCircle, FiX, FiCheckCircle
 } from "react-icons/fi";
 import WhatsAppNumberSelector from "./WhatsAppNumberSelector";
@@ -70,14 +70,6 @@ function WhatsAppHeader({ activeTab = "dashboard", onSearchChange, searchQuery =
                     >
                         <FiSend size={13} />
                         <span>New Campaign</span>
-                    </button>
-
-                    <button
-                        onClick={() => navigate("/whatsapp/bulk-send")}
-                        className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white px-3.5 py-2 rounded-xl text-xs font-semibold shadow-md shadow-slate-900/10 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
-                    >
-                        <FiPlus size={13} />
-                        <span>Bulk Send</span>
                     </button>
 
                     <button
