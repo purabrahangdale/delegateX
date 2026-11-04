@@ -942,8 +942,18 @@ async def detect_intent_and_route(incoming_message: dict) -> Optional[dict]:
         if handled:
             return message
 
+    # Customer Reply Auto-Reply toggle (read fresh from the number doc on every message, no cache).
+    # Saved as off → no system-generated reply at all; the team replies manually from the inbox.
+    number = await asyncio.to_thread(_incoming_number, incoming_message)
+    auto_reply = get_customer_auto_reply(number)
+    if not (number and auto_reply["enabled"] and auto_reply["message"]):
+        logger.info(f"[Auto Reply] off for number_id={incoming_message.get('number_id')} — no automatic reply sent")
+        return None
+
     # Intent detection rules
-    if "test" in content:
+    # Exact match: a substring check sent this hardcoded text instead of the custom auto-reply to
+    # ordinary replies such as "send the latest price list".
+    if content == "test":
         reply = "WhatsApp automation is working."
         sender_phone = incoming_message.get("sender_phone", "")
         sender_name = incoming_message.get("sender", "Customer")
@@ -1003,12 +1013,6 @@ async def detect_intent_and_route(incoming_message: dict) -> Optional[dict]:
         )
     
     else:
-        # Default: the number's custom auto-reply when enabled, otherwise no automatic reply.
-        # The setting is read fresh from the number doc on every message (no cache).
-        number = await asyncio.to_thread(_incoming_number, incoming_message)
-        auto_reply = get_customer_auto_reply(number)
-        if number and auto_reply["enabled"] and auto_reply["message"]:
-            return await trigger_custom_auto_reply(incoming_message, number, auto_reply["message"])
-        logger.info(f"[Auto Reply] off for number_id={incoming_message.get('number_id')} — no automatic reply sent")
-        return None
+        # Default: the number's custom auto-reply (it is on — checked above).
+        return await trigger_custom_auto_reply(incoming_message, number, auto_reply["message"])
 

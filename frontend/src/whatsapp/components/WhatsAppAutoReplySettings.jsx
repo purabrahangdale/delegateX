@@ -31,6 +31,10 @@ function WhatsAppAutoReplySettings() {
     const [loadedFor, setLoadedFor] = useState(null);
     const [saving, setSaving] = useState(false);
     const loading = !!selected?.id && loadedFor !== selected.id;
+    // savedConfig is null after a failed load: the backend's state is unknown, so don't show or save a guess.
+    const loadFailed = !!selected && !loading && !savedConfig;
+    const currentNumberRef = useRef(selected?.id);
+    useEffect(() => { currentNumberRef.current = selected?.id; }, [selected?.id]);
 
     useEffect(() => {
         const numberId = selected?.id;
@@ -70,14 +74,21 @@ function WhatsAppAutoReplySettings() {
     };
 
     const handleSave = async () => {
+        const numberId = selected?.id;
         setSaving(true);
         try {
             const config = await saveCustomerAutoReply({ enabled: form.enabled, message: form.message });
+            // Saved for numberId; if the user switched numbers meanwhile, keep the new number's form intact.
+            if (currentNumberRef.current !== numberId) {
+                showToast("Auto-reply saved for the previous number", "success");
+                return;
+            }
             setSavedConfig(config);
             setForm({ enabled: config.enabled, message: config.message });
             showToast(config.enabled ? "Custom auto-reply is on" : "Auto-reply is off — no automatic reply will be sent", "success");
         } catch (err) {
-            showToast(apiErrorMessage(err, "Could not save the auto-reply"), "error");
+            // The previous saved configuration stays in effect; the unsaved edits stay in the form.
+            showToast(apiErrorMessage(err, "Could not save the auto-reply — the previous setting is still active"), "error");
         } finally {
             setSaving(false);
         }
@@ -101,7 +112,7 @@ function WhatsAppAutoReplySettings() {
                     role="switch"
                     aria-checked={form.enabled}
                     aria-label="Use custom auto-reply"
-                    disabled={!selected || loading}
+                    disabled={!selected || loading || loadFailed}
                     onClick={() => setForm({ ...form, enabled: !form.enabled })}
                     className={`relative shrink-0 w-10 h-5.5 rounded-full transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${form.enabled ? "bg-[#25D366]" : "bg-slate-300"}`}
                 >
@@ -113,6 +124,8 @@ function WhatsAppAutoReplySettings() {
                 <p className="text-xs text-slate-500">Add or select a WhatsApp business number to configure its auto-reply.</p>
             ) : loading ? (
                 <div className="h-32 bg-slate-100 rounded-xl animate-pulse" />
+            ) : loadFailed ? (
+                <p className="text-xs text-rose-500">Could not load the saved auto-reply. Refresh the page to try again.</p>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
@@ -158,17 +171,23 @@ function WhatsAppAutoReplySettings() {
                 </div>
             )}
 
-            {selected && !loading && (
+            {selected && !loading && !loadFailed && (
                 <div className="flex items-center gap-3">
                     <button
                         type="button"
                         onClick={handleSave}
                         disabled={!canSave}
-                        className="flex items-center gap-2 bg-[#25D366] hover:bg-emerald-600 text-white px-5 py-2 rounded-xl text-xs font-semibold shadow-md shadow-emerald-500/20 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        className={`flex items-center gap-2 bg-[#25D366] hover:bg-emerald-600 text-white px-5 py-2 rounded-xl text-xs font-semibold shadow-md shadow-emerald-500/20 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${dirty && !saving ? "ring-2 ring-amber-400 ring-offset-1" : ""}`}
                     >
                         {saving ? <FiCheckCircle size={14} className="animate-spin" /> : <FiSave size={14} />}
                         {saving ? "Saving..." : "Save Auto-Reply"}
                     </button>
+                    {dirty && !saving && (
+                        // The toggle/message are only a draft: the backend keeps following the saved setting.
+                        <span className="text-[10px] font-semibold text-amber-600">
+                            Unsaved changes — auto-reply stays {savedConfig.enabled ? "ON" : "OFF"} until you save
+                        </span>
+                    )}
                     {savedConfig?.updated_at && !dirty && (
                         <span className="text-[10px] text-slate-400">
                             {savedConfig.enabled ? "On" : "Off"} · last saved {new Date(savedConfig.updated_at + (savedConfig.updated_at.endsWith("Z") ? "" : "Z")).toLocaleString()}

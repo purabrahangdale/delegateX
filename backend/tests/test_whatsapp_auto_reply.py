@@ -101,6 +101,24 @@ def test_keyword_routes_are_unchanged(outbox, legacy_number):
     assert outbox["sent"][0]["automation_workflow"] == "Intent Detection — Agent Handoff"
 
 
+def test_words_containing_test_get_the_custom_reply(outbox, legacy_number):
+    enable(legacy_number, "My custom reply")
+    for text in ["Send me the latest price list", "testing", "contest details"]:
+        asyncio.run(automation_service.detect_intent_and_route(incoming(legacy_number, content=text)))
+    assert [s["content"] for s in outbox["sent"]] == ["My custom reply"] * 3
+    asyncio.run(automation_service.detect_intent_and_route(incoming(legacy_number, content="TEST")))
+    assert outbox["sent"][-1]["automation_workflow"] == "Webhook Test Automation"  # the exact command still works
+
+
+def test_unsaved_ui_state_never_reaches_backend(outbox, legacy_number):
+    """Only a successful PUT changes behaviour; a rejected save keeps the previous saved config working."""
+    enable(legacy_number, "Saved reply")
+    with pytest.raises(ValueError):  # what PUT /auto-reply turns into a 400
+        automation_service.save_customer_auto_reply({"enabled": True, "message": "   "}, numbers.get_number(str(legacy_number["_id"])))
+    asyncio.run(automation_service.detect_intent_and_route(incoming(legacy_number, content="Hello")))
+    assert [s["content"] for s in outbox["sent"]] == ["Saved reply"]
+
+
 def test_auto_reply_is_per_number(outbox, legacy_number):
     other = numbers.create_number({"display_name": "Support", "phone_number": "+91 90000 00002", "phone_number_id": "444444",
                                    "waba_id": "222222", "access_token": "token-b", "purpose": "Support"}, "admin@delegatex.com")
@@ -260,10 +278,11 @@ def test_setting_survives_restart(real_ai, legacy_number, client):
     assert real_ai["payloads"] == [] and real_ai["llm"] == []
 
 
-def test_keyword_routes_work_while_off(real_ai, legacy_number, client):
+def test_no_automatic_reply_of_any_kind_while_off(real_ai, legacy_number, client):
     client.put("/api/whatsapp/auto-reply", json={"enabled": False, "message": "custom"}, headers=hdr(legacy_number))
-    deliver(webhook("wamid.K1", "STATUS"))
-    deliver(webhook("wamid.K2", "AGENT"))
-    assert len(real_ai["payloads"]) == 2
-    assert outbound("CRM Lookup") and outbound("Intent Detection — Agent Handoff")
-    assert real_ai["llm"] == [] and outbound("Custom Auto Reply") == []
+    for i, text in enumerate(["STATUS", "AGENT", "test", "book a meeting", "can you help me", "Hello"]):
+        deliver(webhook(f"wamid.K{i}", text))
+    assert real_ai["payloads"] == [] and real_ai["llm"] == []
+    assert database.whatsapp_message_collection.count_documents({"direction": "outbound"}) == 0
+    # every customer message still reaches the inbox for a manual reply
+    assert database.whatsapp_message_collection.count_documents({"direction": "inbound"}) == 6
