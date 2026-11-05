@@ -119,8 +119,12 @@ def resolve_slot_values(slots: List[dict], mapping: Dict[str, dict], recipient: 
     return values
 
 
-def _evaluate_recipient(tmpl: dict, mapping: dict, raw: dict) -> dict:
-    """Validate one recipient and resolve its send components. Never mutates the input."""
+def _evaluate_recipient(tmpl: dict, mapping: dict, raw: dict, dnd_numbers: Optional[set] = None) -> dict:
+    """
+    Validate one recipient and resolve its send components. Never mutates the input.
+    Pass dnd_numbers (DNDRepository.active_numbers()) when evaluating many recipients, so the
+    DND list is read once instead of queried per recipient.
+    """
     name = (raw.get("name") or "").strip()
     phone = normalize_phone(raw.get("phone") or raw.get("recipient_phone") or "")
     extra = {k: v for k, v in raw.items() if k not in ("name", "phone", "recipient_phone") and isinstance(v, (str, int, float))}
@@ -138,7 +142,11 @@ def _evaluate_recipient(tmpl: dict, mapping: dict, raw: dict) -> dict:
     if raw.get("opt_in") is False or str(raw.get("opt_in", "")).lower() in ("false", "no", "0"):
         result.update(state="skipped", reason="Contact has not opted in to WhatsApp messages")
         return result
-    if DNDRepository.is_dnd(phone) or DNDRepository.is_dnd(raw.get("phone") or ""):
+    if dnd_numbers is not None:
+        is_dnd = DNDRepository.is_dnd_in(phone, dnd_numbers) or DNDRepository.is_dnd_in(raw.get("phone") or "", dnd_numbers)
+    else:
+        is_dnd = DNDRepository.is_dnd(phone) or DNDRepository.is_dnd(raw.get("phone") or "")
+    if is_dnd:
         result.update(state="skipped", reason="Opted out (Global DND list)")
         return result
     slots = template_service.get_send_slots(tmpl)
@@ -202,8 +210,9 @@ def load_audience(source: str, recipients: Optional[List[dict]] = None) -> List[
 def preview_campaign(template_id: str, mapping: dict, recipients: List[dict], sample_size: int = 5, number: Optional[dict] = None) -> dict:
     tmpl = _load_sendable_template(template_id, number)
     evaluated, seen, duplicates = [], set(), 0
+    dnd_numbers = DNDRepository.active_numbers()
     for raw in recipients:
-        ev = _evaluate_recipient(tmpl, mapping, raw)
+        ev = _evaluate_recipient(tmpl, mapping, raw, dnd_numbers)
         if ev["phone"] and ev["phone"] in seen:
             duplicates += 1
             continue
@@ -284,8 +293,9 @@ def create_campaign(payload: dict, user: Optional[str] = None, number: Optional[
         return get_campaign(str(campaigns.find_one({"client_request_id": client_key})["_id"]))
 
     seen, duplicates, batch = set(), 0, []
+    dnd_numbers = DNDRepository.active_numbers()
     for raw in recipients:
-        ev = _evaluate_recipient(tmpl, mapping, raw)
+        ev = _evaluate_recipient(tmpl, mapping, raw, dnd_numbers)
         if ev["phone"] and ev["phone"] in seen:
             duplicates += 1
             continue

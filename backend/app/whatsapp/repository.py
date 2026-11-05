@@ -664,6 +664,24 @@ class DNDRepository:
         return doc is not None
 
     @staticmethod
+    def active_numbers() -> set:
+        """All active DND numbers in one query, for checking many recipients without a lookup each."""
+        return {d["clean_phone"] for d in whatsapp_dnd_collection.find({"is_active": True}, {"clean_phone": 1}) if d.get("clean_phone")}
+
+    @staticmethod
+    def is_dnd_in(phone_number: str, dnd_numbers: set) -> bool:
+        """Same matching as is_dnd, against a set from active_numbers()."""
+        clean_phone = DNDRepository._normalize_phone(phone_number or "")
+        if not clean_phone:
+            return False
+        candidates = {clean_phone}
+        if len(clean_phone) >= 10:
+            import os
+            local = clean_phone[-10:]
+            candidates.update({local, os.getenv("WHATSAPP_DEFAULT_COUNTRY_CODE", "91") + local})
+        return not candidates.isdisjoint(dnd_numbers)
+
+    @staticmethod
     def list_query(search: Optional[str] = None, reason: Optional[str] = None, source: Optional[str] = None) -> dict:
         """Mongo filter for active DND numbers matching the list page's search and filters."""
         query = {"is_active": True}
