@@ -126,9 +126,13 @@ def get_messages(
 
 
 @router.get("/messages/conversations")
-def get_conversations(scope: NumberScope = Depends(number_scope)):
-    """Get conversation list for inbox sidebar (selected number only)."""
-    conversations = MessageRepository.get_conversations(scope.match())
+def get_conversations(
+    search: Optional[str] = Query(None, max_length=100, description="Contact name, phone or message text"),
+    only: Optional[str] = Query(None, pattern="^(replies|unread)$"),
+    scope: NumberScope = Depends(number_scope),
+):
+    """Get conversation list for inbox sidebar (selected number only), searched/filtered across all chats."""
+    conversations = MessageRepository.get_conversations(scope.match(), search=search, only=only)
     return {"conversations": conversations}
 
 

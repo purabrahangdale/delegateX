@@ -172,9 +172,15 @@ function WhatsAppInbox() {
 
     const normalizePhone = (phone) => (phone || "").replace(/\D/g, "");
 
+    // Search and the Unread/Replies tabs are applied by the server across every chat (the list holds only
+    // the newest 100). Kept in a ref so every refresh (send, reconnect, websocket) uses the current values.
+    const listQueryRef = useRef({ search: "", only: undefined });
+
     const fetchConversations = async () => {
         try {
-            const apiData = await getConversations();
+            const { search, only } = listQueryRef.current;
+            const isFiltered = Boolean(search || only);
+            const apiData = await getConversations({ search, only });
 
             // Only keep real, valid conversations from the database
             let realList = (Array.isArray(apiData) ? apiData : []).filter(c => !isDummyConversation(c));
@@ -194,8 +200,10 @@ function WhatsAppInbox() {
                 if (prevSelected) {
                     const match = realList.find(c => c.conversation_id === prevSelected.conversation_id);
                     if (match) return match;
+                    // Searching must not close the open chat (or open and mark another one as read).
+                    if (isFiltered) return prevSelected;
                 }
-                if (realList.length > 0) {
+                if (realList.length > 0 && !isFiltered) {
                     const first = realList[0];
                     markConversationAsRead(first.conversation_id);
                     return first;
@@ -247,6 +255,19 @@ function WhatsAppInbox() {
             setMessages([]);
         }
     };
+
+    // Re-query the server when the search text (debounced) or the Unread/Replies tab changes.
+    const listQueryReady = useRef(false);
+    useEffect(() => {
+        const only = filterTab === "unread" || filterTab === "replies" ? filterTab : undefined;
+        listQueryRef.current = { search: searchQuery.trim(), only };
+        if (!listQueryReady.current) {
+            listQueryReady.current = true; // the initial load below already fetches
+            return;
+        }
+        const timer = setTimeout(fetchConversations, 300);
+        return () => clearTimeout(timer);
+    }, [searchQuery, filterTab]);
 
     useEffect(() => {
         fetchConversations();
@@ -578,14 +599,7 @@ function WhatsAppInbox() {
     // Filter Logic
     const filteredConversations = conversations.filter(conv => {
         if (isDummyConversation(conv)) return false;
-        const query = searchQuery.toLowerCase();
-        const matchesSearch =
-            conv.recipient?.toLowerCase().includes(query) ||
-            conv.recipient_phone?.includes(query) ||
-            conv.last_message?.content?.toLowerCase().includes(query) ||
-            (conv.messages && conv.messages.some(m => m.content?.toLowerCase().includes(query)));
-
-        if (!matchesSearch) return false;
+        // Search matching is done by the server (any message, any phone format) — see fetchConversations.
 
         // Unread Filter: Display ONLY conversations where unread_count > 0
         if (filterTab === "unread") return (conv.unread_count || 0) > 0;

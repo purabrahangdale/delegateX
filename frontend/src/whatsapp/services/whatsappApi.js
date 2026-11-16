@@ -205,9 +205,13 @@ export const getWhatsAppDashboardStats = async () => {
 };
 
 // ── Messages / Inbox ───────────────────────────────────────────
-export const getConversations = async () => {
+// search / only ("replies" | "unread") run on the server across every conversation, not just the newest 100.
+export const getConversations = async ({ search, only } = {}) => {
     try {
-        const response = await API.get("/api/whatsapp/messages/conversations");
+        const params = {};
+        if (search && search.trim()) params.search = search.trim();
+        if (only) params.only = only;
+        const response = await API.get("/api/whatsapp/messages/conversations", { params });
         return response.data.conversations || [];
     } catch (error) {
         console.error("WhatsApp conversations error:", error);

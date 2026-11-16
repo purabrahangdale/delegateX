@@ -109,11 +109,37 @@ class MessageRepository:
             return []
 
     @staticmethod
-    def get_conversations(scope: Optional[dict] = None) -> List[dict]:
-        """Get the latest real message per conversation for the sidebar list."""
+    def get_conversations(scope: Optional[dict] = None, search: Optional[str] = None,
+                          only: Optional[str] = None, limit: int = 100) -> List[dict]:
+        """
+        Get the latest real message per conversation for the sidebar list.
+        `search` (name / phone / message text) and `only` ("replies" | "unread") are applied across every
+        conversation before the limit: large campaigns create thousands of conversations, and filtering
+        only the newest 100 in the browser hid older chats (e.g. a customer who replied last week).
+        """
         try:
+            match = _inbox_match(scope)
+            conv_filters = []
+            term = (search or "").strip()
+            if term:
+                pattern = {"$regex": re.escape(term), "$options": "i"}
+                or_fields = [{"sender": pattern}, {"recipient": pattern}, {"content": pattern}]
+                digits = re.sub(r"\D", "", term)
+                if len(digits) >= 3:
+                    phone_pattern = {"$regex": re.escape(digits)}
+                    or_fields += [{"sender_phone": phone_pattern}, {"recipient_phone": phone_pattern}]
+                conv_filters.append(whatsapp_message_collection.distinct("conversation_id", {**match, "$or": or_fields}))
+            if only == "replies":
+                conv_filters.append(whatsapp_message_collection.distinct("conversation_id", {**match, "direction": "inbound"}))
+            elif only == "unread":
+                conv_filters.append(whatsapp_message_collection.distinct(
+                    "conversation_id", {**match, "direction": "inbound", "status": {"$ne": "read"}}))
+            if conv_filters:
+                ids = set(conv_filters[0]).intersection(*conv_filters[1:])
+                match = {**match, "conversation_id": {"$in": list(ids)}}
+
             pipeline = [
-                {"$match": _inbox_match(scope)},
+                {"$match": match},
                 {"$sort": {"created_at": -1}},
                 {"$group": {
                     "_id": "$conversation_id",
@@ -131,7 +157,7 @@ class MessageRepository:
                     "has_reply": {"$max": {"$eq": ["$direction", "inbound"]}},
                 }},
                 {"$sort": {"last_message.created_at": -1}},
-                {"$limit": 100}
+                {"$limit": limit}
             ]
             results = list(whatsapp_message_collection.aggregate(pipeline))
             conversations = []
