@@ -1736,7 +1736,9 @@ async def receive_meta_webhook(request: Request):
     3. Process in the background (statuses, inbound messages, template status updates).
     """
     raw_body = await request.body()
-    mode = webhook_service.signature_mode()
+    # Signature lookup and ingest hit the database; run them off the event loop so a burst of
+    # status webhooks does not stall every other request.
+    mode = await asyncio.to_thread(webhook_service.signature_mode)
     if mode == "missing_secret":
         # Non-200 makes Meta retry later, so no events are lost while the secret is being configured.
         print("[Meta Webhook] Rejected with 503: META_APP_SECRET is not configured — delivery statuses cannot be recorded until it is set", flush=True)
@@ -1744,10 +1746,10 @@ async def receive_meta_webhook(request: Request):
     verified = False
     signer_wabas = None
     if mode == "enforced":
-        signer_wabas = webhook_service.match_signature(raw_body, request.headers.get("X-Hub-Signature-256"))
+        signer_wabas = await asyncio.to_thread(webhook_service.match_signature, raw_body, request.headers.get("X-Hub-Signature-256"))
         verified = signer_wabas is not None
         if not verified:
-            webhook_service.record_rejected_signature()
+            await asyncio.to_thread(webhook_service.record_rejected_signature)
             raise HTTPException(status_code=401, detail="Invalid signature")
 
     try:
@@ -1757,6 +1759,6 @@ async def receive_meta_webhook(request: Request):
     if payload.get("object") != "whatsapp_business_account":
         return {"status": "ignored"}
 
-    result = webhook_service.ingest(payload, signature_verified=verified, signer_wabas=signer_wabas)
+    result = await asyncio.to_thread(webhook_service.ingest, payload, signature_verified=verified, signer_wabas=signer_wabas)
     asyncio.create_task(webhook_service.process_pending_events())
     return {"status": "received", **result}

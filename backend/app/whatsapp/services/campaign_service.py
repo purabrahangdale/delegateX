@@ -36,7 +36,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from bson import ObjectId
-from pymongo import ReturnDocument
+from pymongo import ReturnDocument, UpdateOne
 from pymongo.errors import DuplicateKeyError
 
 from app.config.database import (
@@ -339,16 +339,23 @@ async def localize_campaign_media(campaign_id: str, number: Optional[dict]) -> d
     config = number_registry.config_for(number) if number else None
     if config:
         client = MetaClient(config)
+        # Writes are batched: one round trip per job made large campaigns exceed the proxy timeout.
+        ops = []
         for job in jobs.find({"campaign_id": campaign_id, "send_components": {"$ne": None}}, {"send_components": 1}):
             try:
                 localized = await client.localize_media(job["send_components"])
             except MetaApiError as e:
-                jobs.update_one({"_id": job["_id"]}, {"$set": {
+                ops.append(UpdateOne({"_id": job["_id"]}, {"$set": {
                     "state": "invalid", "send_components": None, "updated_at": _now(),
-                    "reason": f"Header media could not be uploaded to Meta: {e}"}})
-                continue
-            if localized != job["send_components"]:
-                jobs.update_one({"_id": job["_id"]}, {"$set": {"send_components": localized, "updated_at": _now()}})
+                    "reason": f"Header media could not be uploaded to Meta: {e}"}}))
+            else:
+                if localized != job["send_components"]:
+                    ops.append(UpdateOne({"_id": job["_id"]}, {"$set": {"send_components": localized, "updated_at": _now()}}))
+            if len(ops) >= 1000:
+                jobs.bulk_write(ops, ordered=False)
+                ops = []
+        if ops:
+            jobs.bulk_write(ops, ordered=False)
     return get_campaign(campaign_id)
 
 

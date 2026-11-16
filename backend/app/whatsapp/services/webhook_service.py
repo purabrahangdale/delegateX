@@ -237,8 +237,35 @@ def _retry_later(event: dict, result: str, error: Optional[str] = None):
     }})
 
 
+_drain_running = False
+_drain_requested = False
+
+
 async def process_pending_events(wamid: Optional[str] = None, limit: int = 200):
-    extra = {"wamid": wamid} if wamid else None
+    """
+    Apply unprocessed events. General drains (no wamid) run one at a time: every webhook delivery
+    asks for one, and hundreds running side by side only competed for the same events. A request
+    that arrives during a drain makes that drain run another pass instead.
+    """
+    global _drain_running, _drain_requested
+    if wamid:
+        await _drain(extra={"wamid": wamid}, limit=limit)
+        return
+    if _drain_running:
+        _drain_requested = True
+        return
+    _drain_running = True
+    try:
+        while True:
+            _drain_requested = False
+            await _drain(extra=None, limit=limit)
+            if not _drain_requested:
+                break
+    finally:
+        _drain_running = False
+
+
+async def _drain(extra: Optional[dict], limit: int):
     for _ in range(limit):
         event = await asyncio.to_thread(_claim_event, extra)
         if not event:
@@ -252,19 +279,21 @@ async def process_pending_events(wamid: Optional[str] = None, limit: int = 200):
                             + (f" error_code={err.get('code')} error={err.get('title') or err.get('message')}" if err else ""))
                 if result == "no_match":
                     # The send may not have stored its wamid yet — retry for a while.
-                    _retry_later(event, "no_match")
+                    await asyncio.to_thread(_retry_later, event, "no_match")
                 else:
-                    _complete(event, result)
+                    await asyncio.to_thread(_complete, event, result)
             elif event["kind"] == "message":
-                _complete(event, await _process_inbound_message(event))
+                result = await _process_inbound_message(event)
+                await asyncio.to_thread(_complete, event, result)
             elif event["kind"] == "template_status":
                 from app.whatsapp.services.template_service import apply_template_status_webhook
-                _complete(event, "updated" if apply_template_status_webhook(event["payload"], waba_id=event.get("waba_id")) else "no_match")
+                updated = await asyncio.to_thread(apply_template_status_webhook, event["payload"], waba_id=event.get("waba_id"))
+                await asyncio.to_thread(_complete, event, "updated" if updated else "no_match")
             else:
-                _complete(event, "logged")
+                await asyncio.to_thread(_complete, event, "logged")
         except Exception as e:
             logger.exception(f"[Webhook] Processing failed for event {event.get('dedupe_key')}: {e}")
-            _retry_later(event, "error", f"{type(e).__name__}: {e}")
+            await asyncio.to_thread(_retry_later, event, "error", f"{type(e).__name__}: {e}")
 
 
 def reapply_status_events_for(wamid: str):
@@ -278,17 +307,31 @@ def reapply_status_events_for(wamid: str):
 
 
 async def apply_status_event(st: dict, number_id: Optional[str] = None) -> str:
+    # The database work runs in a thread: done on the event loop, a burst of campaign status
+    # webhooks blocked every other request (uploads, page loads) for minutes.
+    result, broadcast = await asyncio.to_thread(_apply_status_db, st, number_id)
+    if broadcast:
+        try:
+            from app.whatsapp.services.message_service import _broadcast_whatsapp_event
+            await _broadcast_whatsapp_event("message_status_updated", broadcast)
+        except Exception:
+            pass
+    return result
+
+
+def _apply_status_db(st: dict, number_id: Optional[str] = None) -> Tuple[str, Optional[dict]]:
+    """Apply one status event to its job/message. Returns (result, payload to broadcast or None)."""
     wamid = st.get("id")
     status = (st.get("status") or "").lower()
     if not wamid or not status:
-        return "invalid"
+        return "invalid", None
     at = _ts(st.get("timestamp"))
     now = _now()
 
     job = jobs.find_one({"wamid": wamid}, {"_id": 1, "phone": 1, "number_id": 1})
     msg = messages.find_one({"wamid": wamid}, {"_id": 1, "number_id": 1})
     if not job and not msg:
-        return "no_match"
+        return "no_match", None
     # A status reported for one number must never update a record that belongs to another number.
     if number_id:
         if job and job.get("number_id") and job["number_id"] != number_id:
@@ -296,7 +339,7 @@ async def apply_status_event(st: dict, number_id: Optional[str] = None) -> str:
         if msg and msg.get("number_id") and msg["number_id"] != number_id:
             msg = None
         if not job and not msg:
-            return "number_mismatch"
+            return "number_mismatch", None
 
     error = None
     if st.get("errors"):
@@ -348,19 +391,16 @@ async def apply_status_event(st: dict, number_id: Optional[str] = None) -> str:
             DNDRepository.add_dnd_number({"phone_number": job["phone"], "reason": "User Opt-out", "source": "Meta Webhook",
                                           "notes": "Meta error 131050: user stopped marketing messages"})
     else:
-        return "ignored_status"
+        return "ignored_status", None
 
+    broadcast = None
     if applied and msg:
-        try:
-            from app.whatsapp.services.message_service import _broadcast_whatsapp_event
-            await _broadcast_whatsapp_event("message_status_updated", {
-                "message_id": str(msg["_id"]), "wamid": wamid, "status": status, "updated_at": now,
-                "number_id": msg.get("number_id"),
-                "error": (error or {}).get("message"),
-            })
-        except Exception:
-            pass
-    return "applied" if applied else "stale_or_duplicate"
+        broadcast = {
+            "message_id": str(msg["_id"]), "wamid": wamid, "status": status, "updated_at": now,
+            "number_id": msg.get("number_id"),
+            "error": (error or {}).get("message"),
+        }
+    return ("applied" if applied else "stale_or_duplicate"), broadcast
 
 
 def extract_button(msg: dict) -> Optional[dict]:
