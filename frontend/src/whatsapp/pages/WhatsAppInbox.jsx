@@ -51,6 +51,45 @@ function newerStatus(...statuses) {
     return known.reduce((best, s) => ((STATUS_RANK[s] ?? -1) > (STATUS_RANK[best] ?? -1) ? s : best), known[0]);
 }
 
+// Which player to use for a message's media: the WhatsApp message type first, then the stored mime type, then the file extension.
+function mediaKind(msg) {
+    const type = (msg.message_type || "").toLowerCase();
+    if (["audio", "video", "image", "document", "sticker"].includes(type)) return type === "sticker" ? "image" : type;
+    const mime = (msg.media_mime_type || "").toLowerCase();
+    const url = (msg.media_url || "").toLowerCase().split("?")[0];
+    if (mime.startsWith("audio/") || /\.(ogg|oga|opus|mp3|m4a|aac|amr|wav)$/.test(url)) return "audio";
+    if (mime.startsWith("video/") || /\.(mp4|3gp|mov|webm)$/.test(url)) return "video";
+    if (mime.startsWith("image/") || /\.(jpe?g|png|gif|webp)$/.test(url)) return "image";
+    return "document";
+}
+
+function MessageMedia({ msg }) {
+    const kind = mediaKind(msg);
+    const hideOnError = (e) => { e.currentTarget.style.display = "none"; };
+    if (kind === "audio") return (
+        <div className="mb-1.5">
+            <audio controls preload="metadata" src={msg.media_url} className="w-64 max-w-full h-10" onError={hideOnError}>
+                <a href={msg.media_url} target="_blank" rel="noreferrer">Download audio</a>
+            </audio>
+            {msg.media_voice && <p className="text-[9px] text-slate-400 mt-0.5">Voice message</p>}
+        </div>
+    );
+    if (kind === "video") return (
+        <video controls preload="metadata" src={msg.media_url} className="block mb-1.5 -mx-1 -mt-1 rounded-xl max-w-full max-h-80 bg-black" onError={hideOnError} />
+    );
+    if (kind === "image") return (
+        <a href={msg.media_url} target="_blank" rel="noreferrer" className="block mb-1.5 -mx-1 -mt-1 rounded-xl overflow-hidden bg-black/5">
+            <img src={msg.media_url} alt="Attachment" className="w-full h-auto block" onError={(e) => { e.currentTarget.parentElement.style.display = "none"; }} />
+        </a>
+    );
+    return (
+        <a href={msg.media_url} target="_blank" rel="noreferrer" download
+            className="flex items-center gap-2 mb-1.5 px-3 py-2 rounded-xl bg-black/5 hover:bg-black/10 text-xs font-medium text-slate-700">
+            <FiFileText size={14} /> <span className="truncate">{msg.media_filename || "Document"}</span> <FiDownload size={12} className="ml-auto shrink-0" />
+        </a>
+    );
+}
+
 const EMOJIS = ["😊", "👋", "✅", "🚀", "💬", "📌", "👍", "❤️", "📍", "🎉"];
 
 // Dummy phone and name filters to ensure only real chats are displayed
@@ -791,17 +830,10 @@ function WhatsAppInbox() {
                                                         {msg.direction === "inbound" && (
                                                             <p className="text-[9px] font-bold text-emerald-700 mb-0.5">{msg.sender || selectedConv.recipient}</p>
                                                         )}
-                                                        {msg.media_url && (
-                                                            <a href={msg.media_url} target="_blank" rel="noreferrer" className="block mb-1.5 -mx-1 -mt-1 rounded-xl overflow-hidden bg-black/5">
-                                                                <img
-                                                                    src={msg.media_url}
-                                                                    alt="Attachment"
-                                                                    className="w-full h-auto block"
-                                                                    onError={(e) => { e.currentTarget.parentElement.style.display = "none"; }}
-                                                                />
-                                                            </a>
+                                                        {msg.media_url && <MessageMedia msg={msg} />}
+                                                        {!(msg.media_url && /^\[(AUDIO|IMAGE|VIDEO|DOCUMENT|STICKER) Message\]$/.test(msg.content || "")) && (
+                                                            <p className="text-xs leading-relaxed whitespace-pre-wrap font-sans">{msg.content}</p>
                                                         )}
-                                                        <p className="text-xs leading-relaxed whitespace-pre-wrap font-sans">{msg.content}</p>
                                                         <div className="flex items-center justify-end gap-1 mt-1">
                                                             <span className="text-[8px] text-slate-400 font-mono">{formatTime(msg.created_at)}</span>
                                                             {msg.direction === "outbound" && <MessageStatus status={msg.status || "read"} />}

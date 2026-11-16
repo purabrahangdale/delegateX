@@ -322,9 +322,11 @@ async def process_incoming_reply(
     wamid: Optional[str] = None,
     metadata: Optional[Dict[str, Any]] = None,
     number: Optional[dict] = None,
+    media: Optional[Dict[str, Any]] = None,
 ) -> dict:
     """
     Unified entry point for saving incoming customer replies (Simulation Mode & Meta Webhooks).
+    `media` (media_url, media_mime_type, ...) is stored on the message for audio/image/video/document replies.
     Enforces duplicate protection, resolves campaign/template context, saves to DB, and broadcasts via WS.
     `number` is the business number that received the message; everything is stored against it.
     """
@@ -404,8 +406,9 @@ async def process_incoming_reply(
         # The customer's original send time (Meta webhook 'timestamp'), not when we processed the event.
         "created_at": _provider_time_utc(meta.get("timestamp")) or received_at,
         "updated_at": received_at,
+        **(media or {}),
     }
-    
+
     saved_message = MessageRepository.create(message_data)
     await _broadcast_whatsapp_event("new_message", saved_message)
 

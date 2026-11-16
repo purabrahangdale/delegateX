@@ -15,7 +15,7 @@ import time
 import logging
 import mimetypes
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
 import httpx
@@ -269,6 +269,26 @@ class MetaClient:
         if not media_id:
             raise MetaApiError(message="Meta did not return a media ID for the uploaded file", raw=data)
         return media_id
+
+    async def download_media(self, media_id: str) -> Tuple[bytes, str]:
+        """
+        Fetch media a customer sent (GET /{media_id} → short-lived URL, then GET it with the same token).
+        Returns (file bytes, mime type). Meta keeps inbound media for about 30 days.
+        """
+        self._require("access_token")
+        info = await self._request("GET", media_id)
+        url = info.get("url")
+        if not url:
+            raise MetaApiError(message=f"Meta returned no download URL for media {media_id}", raw=info)
+        try:
+            async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
+                resp = await client.get(url, headers=self._headers())
+        except httpx.HTTPError as e:
+            raise MetaApiError(message=f"Could not download media {media_id}: {type(e).__name__}", retryable=True)
+        if resp.status_code >= 400:
+            raise MetaApiError(message=f"Could not download media {media_id} (HTTP {resp.status_code})", http_status=resp.status_code)
+        mime = (info.get("mime_type") or resp.headers.get("content-type") or "application/octet-stream").split(";")[0].strip()
+        return resp.content, mime
 
     async def localize_media(self, payload: Any) -> Any:
         """

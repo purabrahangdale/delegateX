@@ -420,6 +420,80 @@ def extract_button(msg: dict) -> Optional[dict]:
     return None
 
 
+INBOUND_MEDIA_TYPES = ("image", "video", "audio", "document", "sticker")
+_MIME_EXTENSIONS = {
+    "audio/ogg": ".ogg", "audio/mpeg": ".mp3", "audio/mp4": ".m4a", "audio/aac": ".aac", "audio/amr": ".amr",
+    "image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp",
+    "video/mp4": ".mp4", "video/3gpp": ".3gp", "application/pdf": ".pdf",
+}
+
+
+def _save_media_file(name: str, data: bytes) -> None:
+    from app.whatsapp.meta_api import LOCAL_MEDIA_DIR
+    os.makedirs(LOCAL_MEDIA_DIR, exist_ok=True)
+    with open(os.path.join(LOCAL_MEDIA_DIR, name), "wb") as f:
+        f.write(data)
+
+
+async def fetch_inbound_media(number: dict, msg_type: str, media: dict) -> Dict[str, Any]:
+    """
+    Download media a customer sent and keep it under /static/whatsapp_media, so the inbox can play or
+    show it. Returns the fields to store on the message. On failure the media ID is still returned,
+    so the file can be fetched again later (backfill_inbound_media).
+    """
+    import mimetypes
+    import re
+    from app.whatsapp import numbers as number_registry
+    from app.whatsapp.meta_api import MetaClient
+
+    media_id = (media or {}).get("id")
+    fields: Dict[str, Any] = {"media_id": media_id, "media_mime_type": ((media or {}).get("mime_type") or "").split(";")[0].strip()}
+    if (media or {}).get("filename"):
+        fields["media_filename"] = media["filename"]
+    if (media or {}).get("voice"):
+        fields["media_voice"] = True
+    if not media_id:
+        return fields
+    try:
+        data, mime = await MetaClient(number_registry.config_for(number)).download_media(media_id)
+    except Exception as e:
+        logger.warning(f"[Webhook] could not download inbound {msg_type} media {media_id}: {e}")
+        fields["media_error"] = str(e)[:300]
+        return fields
+
+    ext = _MIME_EXTENSIONS.get(mime) or mimetypes.guess_extension(mime) or ""
+    original = re.sub(r"[^a-zA-Z0-9_.-]", "_", fields.get("media_filename") or "")
+    name = f"in_{media_id}_{original}" if original else f"in_{media_id}{ext}"
+    await asyncio.to_thread(_save_media_file, name, data)
+    base = (os.getenv("BACKEND_PUBLIC_URL") or "").rstrip("/")
+    fields.update(media_url=f"{base}/static/whatsapp_media/{name}", media_mime_type=mime, media_size=len(data))
+    fields.pop("media_error", None)
+    return fields
+
+
+async def backfill_inbound_media(limit: int = 500) -> Dict[str, int]:
+    """One-off/repair: download media for inbound messages stored without a playable file."""
+    from app.whatsapp import numbers as number_registry
+    done = failed = skipped = 0
+    query = {"direction": "inbound", "message_type": {"$in": list(INBOUND_MEDIA_TYPES)},
+             "$or": [{"media_url": {"$exists": False}}, {"media_url": ""}, {"media_url": None}]}
+    pending = await asyncio.to_thread(lambda: list(messages.find(query, {"_id": 1, "wamid": 1, "message_type": 1, "number_id": 1}).limit(limit)))
+    for m in pending:
+        ev = await asyncio.to_thread(events.find_one, {"wamid": m.get("wamid"), "kind": "message"}, {"payload": 1})
+        media = ((ev or {}).get("payload") or {}).get(m["message_type"])
+        number = number_registry.get_number(m.get("number_id"), include_deleted=True) if m.get("number_id") else None
+        if not media or not number:
+            skipped += 1
+            continue
+        fields = await fetch_inbound_media(number, m["message_type"], media)
+        await asyncio.to_thread(messages.update_one, {"_id": m["_id"]}, {"$set": fields})
+        if fields.get("media_url"):
+            done += 1
+        else:
+            failed += 1
+    return {"downloaded": done, "failed": failed, "skipped": skipped}
+
+
 async def _process_inbound_message(event: dict) -> str:
     from app.whatsapp.services import message_service, automation_service
     from app.whatsapp import numbers as number_registry
@@ -460,6 +534,10 @@ async def _process_inbound_message(event: dict) -> str:
         logger.info(f"[Webhook] inbound message wamid={msg.get('id')} already stored — duplicate ignored")
         return "stored"  # already stored (e.g. event replay after a crash mid-processing)
 
+    media_fields = None
+    if msg_type in INBOUND_MEDIA_TYPES:
+        media_fields = await fetch_inbound_media(number, msg_type, msg.get(msg_type) or {})
+
     saved = await message_service.process_incoming_reply(
         sender_phone=sender_phone,
         sender_name=contacts.get(sender_phone) or "WhatsApp User",
@@ -472,6 +550,7 @@ async def _process_inbound_message(event: dict) -> str:
         metadata={"context": msg.get("context"), "timestamp": _ts(msg.get("timestamp")),
                   **({"button": button} if (button := extract_button(msg)) else {})},
         number=number,
+        media=media_fields,
     )
     logger.info(f"[Webhook] inbound message wamid={msg.get('id')} persisted id={(saved or {}).get('_id')} "
                 f"conversation_id={(saved or {}).get('conversation_id')}; 'new_message' broadcast on /ws/whatsapp")
